@@ -1,0 +1,12 @@
+{
+  "durationFrames": 120,
+  "fps": 30,
+  "width": 1280,
+  "height": 720,
+  "props": {
+    "kicker": "Marketplace Component",
+    "title": "__DISPLAY_NAME__",
+    "background": "#101114",
+    "foreground": "#f4f1ea"
+  }
+}

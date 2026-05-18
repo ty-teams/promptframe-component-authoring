@@ -5,6 +5,7 @@
   "type": "module",
   "files": [
     "dist",
+    "templates",
     "README.md"
   ],
   "bin": {
@@ -41,8 +42,8 @@
     "test": "node -e \"console.log('placeholder test: create-promptframe-component')\"",
     "clean": "rm -rf dist"
   },
-  "dependencies": {},
   "devDependencies": {
+    "@types/node": "^24.12.4",
     "typescript": "~5.7.0"
   }
 }

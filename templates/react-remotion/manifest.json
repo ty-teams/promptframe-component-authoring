@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "component-manifest.v0.1.0",
+  "standardVersion": "component-standard.v0.1.0",
+  "standardSourceHash": "sha256:8c1e01c36155b4b646981064d24df9bd8cda501fd9cd9da93e5b62f40db22d52",
+  "id": "@marketplace/__COMPONENT_NAME__",
+  "name": "__COMPONENT_NAME__",
+  "displayName": "__DISPLAY_NAME__",
+  "version": "0.1.0",
+  "componentType": "scene_template",
+  "trustLevel": "untrusted_temporary",
+  "author": {
+    "id": "local-user",
+    "name": "Local User"
+  },
+  "description": "__DESCRIPTION__",
+  "tags": ["custom", "marketplace", "remotion"],
+  "designedDurationRange": {
+    "min": 90,
+    "max": 180
+  },
+  "entry": {
+    "sourcePath": "src/Component.tsx",
+    "componentExport": "default",
+    "propsSchemaPath": "src/schema.ts",
+    "sourceHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "schemaHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "remotion": "^4.0.0"
+  },
+  "assets": {},
+  "capabilityHints": ["animated scene template"],
+  "reviewStatus": "draft",
+  "license": "proprietary",
+  "createdAt": "2026-05-13T00:00:00.000Z"
+}

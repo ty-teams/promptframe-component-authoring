@@ -37,12 +37,15 @@
   "homepage": "https://github.com/ty-teams/promptframe-component-authoring#readme",
   "scripts": {
     "build": "tsc",
-    "lint": "tsc --noEmit",
+    "lint": "pnpm --filter @promptframe/contracts build && tsc --noEmit",
     "test": "node -e \"console.log('placeholder test: @promptframe/cli')\"",
     "clean": "rm -rf dist"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@promptframe/contracts": "0.0.0"
+  },
   "devDependencies": {
+    "@types/node": "^24.12.4",
     "typescript": "~5.7.0"
   }
 }
