@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   COMPONENT_STANDARD_SOURCE_HASH,
@@ -13,6 +14,19 @@ test('component-kit exposes the platform standard stamp', () => {
   assert.equal(stamp.sourceVersion, COMPONENT_STANDARD_VERSION);
   assert.equal(stamp.sourceHash, COMPONENT_STANDARD_SOURCE_HASH);
   assert.match(stamp.sourceHash, /^sha256:[a-f0-9]{64}$/);
+});
+
+test('component-kit standard stamp is sourced from public contracts', async () => {
+  const source = await readFile(new URL('../src/standard.ts', import.meta.url), 'utf-8');
+  const packageJson = JSON.parse(
+    await readFile(new URL('../package.json', import.meta.url), 'utf-8'),
+  ) as { dependencies?: Record<string, string> };
+
+  assert.match(source, /from '@promptframe\/contracts'/);
+  assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.2');
+  assert.doesNotMatch(source, /component-standard\.v0\.1\.0/);
+  assert.doesNotMatch(source, /component-manifest\.v0\.1\.0/);
+  assert.doesNotMatch(source, /sha256:8c1e01c36155b4b646981064d24df9bd8cda501fd9cd9da93e5b62f40db22d52/);
 });
 
 test('createDurationTimeline compresses short durations and holds long durations', () => {

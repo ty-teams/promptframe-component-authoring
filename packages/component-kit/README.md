@@ -8,7 +8,7 @@ npm install @promptframe/component-kit
 
 ## What It Includes
 
-- Standard version stamps for component metadata.
+- Standard version stamps for component metadata, sourced from `@promptframe/contracts`.
 - Preview constraints used by PromptFrame component tooling.
 - Timing helpers for deterministic Remotion animations.
 

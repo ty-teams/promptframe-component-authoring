@@ -1,8 +1,14 @@
-export const COMPONENT_STANDARD_VERSION = 'component-standard.v0.1.0' as const;
-export const COMPONENT_STANDARD_SOURCE_HASH = 'sha256:8c1e01c36155b4b646981064d24df9bd8cda501fd9cd9da93e5b62f40db22d52' as const;
-export const COMPONENT_STANDARD_SOURCE_PATH = 'docs/requirements/REQ-073/component-standard.md' as const;
-export const COMPONENT_KIT_VERSION = '0.1.3' as const;
-export const COMPONENT_MANIFEST_SCHEMA_VERSION = 'component-manifest.v0.1.0' as const;
+import {
+  COMPONENT_MANIFEST_SCHEMA_VERSION as CONTRACTS_COMPONENT_MANIFEST_SCHEMA_VERSION,
+  COMPONENT_STANDARD_SOURCE_HASH as CONTRACTS_COMPONENT_STANDARD_SOURCE_HASH,
+  COMPONENT_STANDARD_VERSION as CONTRACTS_COMPONENT_STANDARD_VERSION,
+} from '@promptframe/contracts';
+
+export const COMPONENT_STANDARD_VERSION = CONTRACTS_COMPONENT_STANDARD_VERSION;
+export const COMPONENT_STANDARD_SOURCE_HASH = CONTRACTS_COMPONENT_STANDARD_SOURCE_HASH;
+export const COMPONENT_STANDARD_SOURCE_PATH = 'https://github.com/ty-teams/promptframe-component-authoring#readme' as const;
+export const COMPONENT_KIT_VERSION = '0.1.4' as const;
+export const COMPONENT_MANIFEST_SCHEMA_VERSION = CONTRACTS_COMPONENT_MANIFEST_SCHEMA_VERSION;
 export const COMPONENT_REVIEW_CHECKLIST_VERSION = 'component-review-checklist.v0.1.0' as const;
 
 export function getComponentStandardStamp() {

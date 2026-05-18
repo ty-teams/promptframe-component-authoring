@@ -23,6 +23,9 @@ importers:
 
   packages/component-kit:
     dependencies:
+      '@promptframe/contracts':
+        specifier: ^0.1.2
+        version: link:../contracts
       react:
         specifier: ^19.0.0
         version: 19.2.6

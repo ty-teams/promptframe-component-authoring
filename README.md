@@ -58,4 +58,4 @@ Release configuration:
 
 To publish a new version, bump the package version, run local checks, push the matching package tag, and verify npm registry output after the workflow completes.
 
-Current registry baseline: `@promptframe/contracts@0.1.1`, `@promptframe/component-kit@0.1.3`, `create-promptframe-component@0.1.1`. `@promptframe/cli@0.1.2` is the next release candidate for real remote transport and stable JSON failure diagnostics.
+Current registry baseline before the next component-kit release: `@promptframe/contracts@0.1.2`, `@promptframe/component-kit@0.1.3`, `@promptframe/cli@0.1.3`, `create-promptframe-component@0.1.1`. The checked-in `@promptframe/component-kit@0.1.4` release candidate sources its public standard stamp from `@promptframe/contracts`.
