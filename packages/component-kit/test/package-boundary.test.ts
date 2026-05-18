@@ -12,6 +12,7 @@ const packageJson = JSON.parse(await readFile(new URL('../package.json', import.
   peerDependenciesMeta?: Record<string, { optional?: boolean }>;
   publishConfig?: Record<string, unknown>;
   license?: string;
+  scripts?: Record<string, string>;
   repository?: {
     type?: string;
     url?: string;
@@ -57,4 +58,10 @@ test('component-kit publish metadata is open for the confirmed PromptFrame relea
   assert.equal(packageJson.publishConfig?.registry, 'https://registry.npmjs.org/');
   assert.equal(packageJson.publishConfig?.access, 'public');
   assert.equal(packageJson.publishConfig?.provenance, true);
+});
+
+test('component-kit local scripts build public contracts before importing them', () => {
+  assert.match(packageJson.scripts?.test ?? '', /pnpm --filter @promptframe\/contracts build &&/);
+  assert.match(packageJson.scripts?.lint ?? '', /pnpm --filter @promptframe\/contracts build &&/);
+  assert.match(packageJson.scripts?.build ?? '', /pnpm --filter @promptframe\/contracts build &&/);
 });

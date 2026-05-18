@@ -1,6 +1,6 @@
 {
   "name": "@promptframe/component-kit",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -48,7 +48,7 @@
   "scripts": {
     "build": "pnpm --filter @promptframe/contracts build && tsc",
     "lint": "pnpm --filter @promptframe/contracts build && tsc --noEmit",
-    "test": "node --import tsx --test test/*.test.ts",
+    "test": "pnpm --filter @promptframe/contracts build && node --import tsx --test test/*.test.ts",
     "pack:dry-run": "pnpm build && npm pack --dry-run --json",
     "clean": "rm -rf dist"
   },
