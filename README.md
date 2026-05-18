@@ -11,14 +11,31 @@ Current packages:
 
 ```bash
 npm install @promptframe/component-kit
+npm install -D @promptframe/cli create-promptframe-component
 ```
 
 The package provides version stamps, preview constraints, and deterministic timing helpers. Component projects can depend on it during authoring; finished components are packaged and uploaded with the PromptFrame CLI.
+
+Typical author flow:
+
+```bash
+npx create-promptframe-component my-component
+cd my-component
+npm install
+npx promptframe validate .
+npx promptframe package . --out ./component.zip
+npx promptframe upload ./component.zip --endpoint https://your-promptframe.example/api-proxy
+npx promptframe status <buildId> --endpoint https://your-promptframe.example/api-proxy
+```
+
+The CLI never embeds a production/private endpoint default. Use `--endpoint`, `PROMPTFRAME_API_BASE`, `REMOTION_MEDIA_API_BASE`, or `promptframe configure --endpoint <url>`. Upload success means the platform accepted the source package for trust-pipeline admission; search, preview, render, and publish readiness are reported later by platform status/evidence/probe diagnostics.
 
 ## Local Checks
 
 ```bash
 pnpm install --frozen-lockfile
+pnpm lint:public
+pnpm --filter @promptframe/cli test
 pnpm --filter @promptframe/component-kit test
 pnpm --filter @promptframe/component-kit lint
 pnpm --filter @promptframe/component-kit build

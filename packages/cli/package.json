@@ -38,7 +38,7 @@
   "scripts": {
     "build": "tsc",
     "lint": "pnpm --filter @promptframe/contracts build && tsc --noEmit",
-    "test": "node -e \"console.log('placeholder test: @promptframe/cli')\"",
+    "test": "pnpm build && node --test test/*.test.mjs",
     "clean": "rm -rf dist"
   },
   "dependencies": {
