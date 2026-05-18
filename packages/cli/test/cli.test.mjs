@@ -215,10 +215,11 @@ test('local standard, doctor, and validate expose stable JSON diagnostics', asyn
     assert.equal(doctor.dir, componentDir);
     assert.equal(doctor.diagnostic.code, 'doctor.completed');
     assert.deepEqual(doctor.requiredFiles, [
-      'package.json',
       'manifest.json',
+      'package.json',
       'src/Component.tsx',
       'src/schema.ts',
+      'src/index.ts',
       'src/preview-props.json',
     ]);
 
@@ -237,6 +238,9 @@ test('local standard, doctor, and validate expose stable JSON diagnostics', asyn
       'manifest.identity.version',
       'manifest.component_type.supported',
       'evidence.schema_source_hash_present',
+      'runtime.deterministic.remotion',
+      'security.forbidden.browser_apis',
+      'security.no_raw_remote_url_import',
       'package.no_parent_imports',
     ]);
   } finally {
@@ -261,6 +265,144 @@ test('local JSON failures expose diagnostic failure reasons', async () => {
         assert.equal(payload.diagnostic.code, 'doctor.required_files.missing');
         assert.match(payload.failureReason, /Missing required files/);
         assert.equal(payload.retryable, false);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('doctor requires the public standard component entrypoint file', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-required-files-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await rm(path.join(componentDir, 'src/index.ts'), { force: true });
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'doctor',
+        componentDir,
+        '--json',
+      ]),
+      (error) => {
+        assert.equal(error.code, 1);
+        const payload = JSON.parse(error.stderr);
+        assert.equal(payload.success, false);
+        assert.equal(payload.command, 'doctor');
+        assert.equal(payload.diagnostic.code, 'doctor.required_files.missing');
+        assert.match(payload.failureReason, /src\/index\.ts/);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('validate rejects preview props that exceed the public standard limits', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-preview-policy-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(componentDir, 'src/preview-props.json'), JSON.stringify({
+      durationFrames: 181,
+      fps: 30,
+      width: 1280,
+      height: 720,
+      props: {},
+    }));
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'validate',
+        componentDir,
+        '--json',
+      ]),
+      (error) => {
+        assert.equal(error.code, 1);
+        const payload = JSON.parse(error.stderr);
+        assert.equal(payload.success, false);
+        assert.equal(payload.command, 'validate');
+        assert.equal(payload.diagnostic.code, 'component_standard.preview.duration_frames.max');
+        assert.match(payload.failureReason, /durationFrames/);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('validate rejects deterministic source and security policy violations', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-source-policy-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(componentDir, 'src/Component.tsx'), [
+      "import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';",
+      'export default function Component() {',
+      '  useCurrentFrame();',
+      '  useVideoConfig();',
+      '  const value = Math.random();',
+      '  return <AbsoluteFill style={{ width: "100%", height: "100%" }}>{value}</AbsoluteFill>;',
+      '}',
+    ].join('\n'));
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'validate',
+        componentDir,
+        '--json',
+      ]),
+      (error) => {
+        assert.equal(error.code, 1);
+        const payload = JSON.parse(error.stderr);
+        assert.equal(payload.success, false);
+        assert.equal(payload.command, 'validate');
+        assert.equal(payload.diagnostic.code, 'component_standard.source.no_math_random');
+        assert.match(payload.failureReason, /Math\.random/);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('validate rejects deterministic security gate violations', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-security-policy-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(componentDir, 'src/Component.tsx'), [
+      "import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';",
+      'export default function Component() {',
+      '  useCurrentFrame();',
+      '  useVideoConfig();',
+      "  eval('console.log(1)');",
+      '  return <AbsoluteFill style={{ width: "100%", height: "100%" }} />;',
+      '}',
+    ].join('\n'));
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'validate',
+        componentDir,
+        '--json',
+      ]),
+      (error) => {
+        assert.equal(error.code, 1);
+        const payload = JSON.parse(error.stderr);
+        assert.equal(payload.success, false);
+        assert.equal(payload.command, 'validate');
+        assert.equal(payload.diagnostic.code, 'code.eval');
+        assert.match(payload.failureReason, /eval/);
         return true;
       },
     );
@@ -336,6 +478,7 @@ async function writeFixtureComponent(componentDir) {
       '}',
     ].join('\n'),
     'src/schema.ts': 'export const schema = {};\n',
+    'src/index.ts': 'export { default } from "./Component";\n',
     'src/preview-props.json': JSON.stringify({ durationFrames: 60, fps: 30, width: 1280, height: 720, props: {} }),
   });
 }

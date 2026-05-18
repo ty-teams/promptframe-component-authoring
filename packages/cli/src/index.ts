@@ -15,6 +15,8 @@ import {
   COMPONENT_MANIFEST_SCHEMA_VERSION,
   COMPONENT_REF_VERSION,
   COMPONENT_STANDARD_VERSION,
+  PROMPTFRAME_PUBLIC_SECURITY_POLICY,
+  PROMPTFRAME_PUBLIC_STANDARD_POLICY,
   PROMPTFRAME_CONTRACTS_VERSION,
   parseComponentManifest,
   type ComponentManifest,
@@ -24,18 +26,15 @@ import {
 const command = process.argv[2] ?? 'help';
 const args = process.argv.slice(3);
 
-const REQUIRED_COMPONENT_FILES = [
-  'package.json',
-  'manifest.json',
-  'src/Component.tsx',
-  'src/schema.ts',
-  'src/preview-props.json',
-] as const;
+const REQUIRED_COMPONENT_FILES = PROMPTFRAME_PUBLIC_STANDARD_POLICY.requiredFiles;
 
 const VALIDATE_CHECKED_RULE_IDS: PublicPolicyRuleId[] = [
   'manifest.identity.version',
   'manifest.component_type.supported',
   'evidence.schema_source_hash_present',
+  'runtime.deterministic.remotion',
+  'security.forbidden.browser_apis',
+  'security.no_raw_remote_url_import',
   'package.no_parent_imports',
 ];
 
@@ -86,6 +85,9 @@ function standard(): void {
     componentStandardVersion: COMPONENT_STANDARD_VERSION,
     componentRefVersion: COMPONENT_REF_VERSION,
     supportedComponentTypes: ['scene_template', 'contained_widget', 'overlay', 'transition_effect'],
+    standardPolicyVersion: PROMPTFRAME_PUBLIC_STANDARD_POLICY.policyVersion,
+    securityPolicyVersion: PROMPTFRAME_PUBLIC_SECURITY_POLICY.policyVersion,
+    previewLimits: PROMPTFRAME_PUBLIC_STANDARD_POLICY.previewLimits,
     diagnostic: diagnostic('standard.completed', 'info', 'Public PromptFrame component standard fetched.'),
   });
 }
@@ -145,6 +147,9 @@ function validateComponentDirectory(dir: string): ComponentManifest {
   const manifestPath = join(dir, 'manifest.json');
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
   const parsed = parseComponentManifest(normalizeLegacyManifest(manifest));
+  validatePreviewProps(dir);
+  validateSourceSafety(dir);
+  validateSecurityPolicy(dir);
   checkImportBoundary(dir);
   return parsed;
 }
@@ -378,6 +383,132 @@ function assertRequiredFiles(dir: string): void {
   if (missing.length > 0) {
     fail(`Missing required files: ${missing.join(', ')}`, 'doctor.required_files.missing');
   }
+}
+
+function validatePreviewProps(dir: string): void {
+  const previewPath = join(dir, 'src/preview-props.json');
+  const preview = asRecord(JSON.parse(readFileSync(previewPath, 'utf8')));
+  if (!preview) {
+    fail('src/preview-props.json must be a JSON object.', 'component_standard.preview.object');
+  }
+  const limits = PROMPTFRAME_PUBLIC_STANDARD_POLICY.previewLimits;
+  const allowedFps: readonly number[] = limits.allowedFps;
+  const durationFrames = Number(preview.durationFrames);
+  const width = Number(preview.width);
+  const height = Number(preview.height);
+  const fps = Number(preview.fps);
+
+  if (!Number.isInteger(durationFrames) || durationFrames <= 0) {
+    fail('preview durationFrames must be a positive integer.', 'component_standard.preview.duration_frames.positive');
+  }
+  if (durationFrames > limits.maxDurationFrames) {
+    fail(`preview durationFrames exceeds the public standard limit: ${durationFrames} > ${limits.maxDurationFrames}.`, 'component_standard.preview.duration_frames.max');
+  }
+  if (!Number.isInteger(width) || width <= 0) {
+    fail('preview width must be a positive integer.', 'component_standard.preview.width.positive');
+  }
+  if (width > limits.maxWidth) {
+    fail(`preview width exceeds the public standard limit: ${width} > ${limits.maxWidth}.`, 'component_standard.preview.width.max');
+  }
+  if (!Number.isInteger(height) || height <= 0) {
+    fail('preview height must be a positive integer.', 'component_standard.preview.height.positive');
+  }
+  if (height > limits.maxHeight) {
+    fail(`preview height exceeds the public standard limit: ${height} > ${limits.maxHeight}.`, 'component_standard.preview.height.max');
+  }
+  if (!Number.isInteger(fps) || !allowedFps.includes(fps)) {
+    fail(`preview fps must be one of: ${allowedFps.join(', ')}.`, 'component_standard.preview.fps.allowed');
+  }
+  if (!asRecord(preview.props)) {
+    fail('src/preview-props.json must include a props object.', 'component_standard.preview.props.object');
+  }
+}
+
+function validateSourceSafety(dir: string): void {
+  for (const entry of collectPackageFiles(dir)) {
+    if (!isSourceSafetyScannableFile(entry.name)) continue;
+    const source = entry.data.toString('utf8');
+    for (const rule of PROMPTFRAME_PUBLIC_STANDARD_POLICY.sourceSafetyRules) {
+      const match = source.match(new RegExp(rule.pattern, 'i'));
+      if (!match) continue;
+      fail(`${entry.name}: ${rule.message} ${rule.repairHint}`, rule.id);
+    }
+  }
+}
+
+function validateSecurityPolicy(dir: string): void {
+  for (const entry of collectPackageFiles(dir)) {
+    if (!isSecurityScannableFile(entry.name)) continue;
+    const source = entry.data.toString('utf8');
+    const finding = firstSecurityFinding(entry.name, source);
+    if (!finding) continue;
+    fail(`${entry.name}: ${finding.label}: ${finding.reason} ${finding.recommendation}`, finding.id);
+  }
+}
+
+function firstSecurityFinding(file: string, source: string): {
+  id: string;
+  label: string;
+  reason: string;
+  recommendation: string;
+} | undefined {
+  for (const rule of PROMPTFRAME_PUBLIC_SECURITY_POLICY.forbiddenApis) {
+    if (!shouldScanSecurityRule(file, rule.id)) continue;
+    if (matchesAnyPattern(source, rule.patterns)) return rule;
+  }
+  for (const rule of PROMPTFRAME_PUBLIC_SECURITY_POLICY.mediatedApis) {
+    if (!shouldScanSecurityRule(file, rule.id)) continue;
+    if (matchesAnyPattern(source, rule.rawApis.map(apiToSecurityPattern))) return rule;
+  }
+  for (const rule of PROMPTFRAME_PUBLIC_SECURITY_POLICY.warningApis) {
+    if (!shouldScanSecurityRule(file, rule.id)) continue;
+    if (matchesAnyPattern(source, rule.patterns)) return rule;
+  }
+  return undefined;
+}
+
+function matchesAnyPattern(source: string, patterns: readonly string[]): boolean {
+  return patterns.some((pattern) => new RegExp(pattern, 'i').test(source));
+}
+
+function apiToSecurityPattern(api: string): string {
+  const escaped = api.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (api === 'fetch') return '\\bfetch\\s*\\(';
+  if (api === 'XMLHttpRequest') return '\\bnew\\s+XMLHttpRequest\\b|\\bXMLHttpRequest\\s*\\(';
+  if (api === 'WebSocket') return '\\bnew\\s+WebSocket\\b|\\bWebSocket\\s*\\(';
+  if (api === 'EventSource') return '\\bnew\\s+EventSource\\b|\\bEventSource\\s*\\(';
+  if (api === 'navigator.sendBeacon') return 'navigator\\.sendBeacon\\s*\\(';
+  return api.includes('.')
+    ? `${escaped}\\s*\\(`
+    : `\\b${escaped}\\b`;
+}
+
+function shouldScanSecurityRule(file: string, ruleId: string): boolean {
+  if (isDocumentationSecurityFile(file)) {
+    return ruleId === 'prompt.injection_string' || ruleId === 'network.remote_url';
+  }
+  if (isPackageManifestSecurityFile(file)) {
+    return ruleId === 'package.install_script'
+      || ruleId === 'prompt.injection_string'
+      || ruleId === 'network.remote_url';
+  }
+  return true;
+}
+
+function isSourceSafetyScannableFile(fileName: string): boolean {
+  return /\.(tsx?|jsx?|css)$/i.test(fileName);
+}
+
+function isSecurityScannableFile(fileName: string): boolean {
+  return /\.(tsx?|jsx?|mjs|cjs|json|md|mdx)$/i.test(fileName);
+}
+
+function isDocumentationSecurityFile(fileName: string): boolean {
+  return /\.(md|mdx)$/i.test(fileName);
+}
+
+function isPackageManifestSecurityFile(fileName: string): boolean {
+  return /(^|\/)package\.json$/i.test(fileName);
 }
 
 function checkImportBoundary(dir: string): void {
