@@ -22,6 +22,28 @@ export const promptFrameComponentTypeSchema = z.enum([
 ]);
 export type PromptFrameComponentType = z.infer<typeof promptFrameComponentTypeSchema>;
 
+export const promptFrameManifestLayerSchema = z.enum([
+  'foundation',
+  'atom',
+  'motion',
+  'element',
+  'scene_template',
+]);
+export type PromptFrameManifestLayer = z.infer<typeof promptFrameManifestLayerSchema>;
+
+export const promptFrameManifestCategorySchema = z.enum([
+  'background',
+  'text',
+  'media',
+  'shape',
+  'card',
+  'layout',
+  'motion',
+  'effect',
+  'scene_template',
+]);
+export type PromptFrameManifestCategory = z.infer<typeof promptFrameManifestCategorySchema>;
+
 export const componentVisibilitySchema = z.enum([
   'builtin',
   'private',
@@ -124,33 +146,53 @@ export const componentManifestEntrySchema = z.object({
   bundleHash: sha256Schema.optional(),
 });
 
-export const componentManifestSchema = z.object({
-  schemaVersion: z.literal(COMPONENT_MANIFEST_SCHEMA_VERSION),
-  standardVersion: z.literal(COMPONENT_STANDARD_VERSION),
-  standardSourceHash: sha256Schema.optional(),
-  id: componentIdSchema,
-  name: componentNameSchema,
-  displayName: nonEmptyStringSchema.max(80),
-  version: semverSchema,
-  componentType: promptFrameComponentTypeSchema,
-  trustLevel: z.enum(['trusted_builtin', 'trusted_private', 'trusted_marketplace', 'untrusted_temporary']).optional(),
-  author: componentManifestAuthorSchema,
-  description: z.string().trim().min(8).max(600),
-  tags: z.array(nonEmptyStringSchema.max(40)).min(1).max(16),
-  designedDurationRange: z.object({
-    min: z.number().int().positive(),
-    max: z.number().int().positive(),
-  }).refine((value) => value.max >= value.min, 'duration max must be greater than or equal to min'),
-  layout: layoutCapabilitySchema.partial().optional(),
-  entry: componentManifestEntrySchema,
-  dependencies: z.record(z.string()).default({}),
-  peerDependencies: z.record(z.string()).default({}),
-  assets: z.record(z.unknown()).default({}),
-  capabilityHints: z.array(nonEmptyStringSchema.max(80)).max(24).default([]),
-  reviewStatus: z.enum(['draft', 'pending_review', 'approved', 'rejected', 'archived']).optional(),
-  license: nonEmptyStringSchema.max(80),
-  createdAt: z.string().datetime(),
-}).strict();
+export const componentManifestSchema = z
+  .object({
+    schemaVersion: z.literal(COMPONENT_MANIFEST_SCHEMA_VERSION),
+    standardVersion: z.literal(COMPONENT_STANDARD_VERSION),
+    standardSourceHash: sha256Schema.optional(),
+    id: componentIdSchema,
+    name: componentNameSchema,
+    displayName: nonEmptyStringSchema.max(80),
+    version: semverSchema,
+    componentType: promptFrameComponentTypeSchema.optional(),
+    layer: promptFrameManifestLayerSchema.optional(),
+    category: promptFrameManifestCategorySchema.optional(),
+    trustLevel: z.enum(['trusted_builtin', 'trusted_private', 'trusted_marketplace', 'untrusted_temporary']).optional(),
+    author: componentManifestAuthorSchema,
+    description: z.string().trim().min(8).max(600),
+    tags: z.array(nonEmptyStringSchema.max(40)).min(1).max(16),
+    designedDurationRange: z.object({
+      min: z.number().int().positive(),
+      max: z.number().int().positive(),
+    }).refine((value) => value.max >= value.min, 'duration max must be greater than or equal to min'),
+    layout: layoutCapabilitySchema.partial().optional(),
+    entry: componentManifestEntrySchema,
+    dependencies: z.record(z.string()).default({}),
+    peerDependencies: z.record(z.string()).default({}),
+    assets: z.record(z.unknown()).default({}),
+    capabilityHints: z.array(nonEmptyStringSchema.max(80)).max(24).default([]),
+    reviewStatus: z.enum(['draft', 'pending_review', 'approved', 'rejected', 'archived']).optional(),
+    license: nonEmptyStringSchema.max(80),
+    createdAt: z.string().datetime(),
+  })
+  .strict()
+  .superRefine((manifest, ctx) => {
+    if (!manifest.componentType && !manifest.layer) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['componentType'],
+        message: 'componentType or platform layer is required',
+      });
+    }
+    if (manifest.layer && !manifest.category) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['category'],
+        message: 'category is required when layer is present',
+      });
+    }
+  });
 export type ComponentManifest = z.infer<typeof componentManifestSchema>;
 
 export const componentCapabilityCardSchema = z.object({

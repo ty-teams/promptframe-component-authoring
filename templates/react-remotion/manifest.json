@@ -6,7 +6,8 @@
   "name": "__COMPONENT_NAME__",
   "displayName": "__DISPLAY_NAME__",
   "version": "0.1.0",
-  "componentType": "scene_template",
+  "layer": "scene_template",
+  "category": "scene_template",
   "trustLevel": "untrusted_temporary",
   "author": {
     "id": "local-user",

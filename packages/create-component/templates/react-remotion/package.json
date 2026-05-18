@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@promptframe/component-kit": "^0.1.3",
-    "@promptframe/contracts": "^0.1.0",
+    "@promptframe/contracts": "^0.1.1",
     "@vitejs/plugin-react": "^6.0.1",
     "vite": "^8.0.10",
     "typescript": "~6.0.2",
