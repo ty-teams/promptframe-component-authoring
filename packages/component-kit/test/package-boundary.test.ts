@@ -39,10 +39,10 @@ test('component-kit exposes only public authoring entrypoints', () => {
 test('component-kit records PromptFrame public release provenance metadata', () => {
   assert.equal(packageJson.license, 'MIT');
   assert.equal(packageJson.repository?.type, 'git');
-  assert.equal(packageJson.repository?.url, 'git+https://github.com/ty-teams/promptframe-component-kit.git');
+  assert.equal(packageJson.repository?.url, 'git+https://github.com/ty-teams/promptframe-component-authoring.git');
   assert.equal(packageJson.repository?.directory, 'packages/component-kit');
-  assert.equal(packageJson.bugs?.url, 'https://github.com/ty-teams/promptframe-component-kit/issues');
-  assert.equal(packageJson.homepage, 'https://github.com/ty-teams/promptframe-component-kit#readme');
+  assert.equal(packageJson.bugs?.url, 'https://github.com/ty-teams/promptframe-component-authoring/issues');
+  assert.equal(packageJson.homepage, 'https://github.com/ty-teams/promptframe-component-authoring#readme');
 });
 
 test('component-kit keeps Remotion and React as optional peers', () => {

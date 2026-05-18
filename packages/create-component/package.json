@@ -1,31 +1,21 @@
 {
-  "name": "@promptframe/component-kit",
-  "version": "0.1.3",
+  "name": "create-promptframe-component",
+  "version": "0.0.0",
   "license": "MIT",
   "type": "module",
-  "sideEffects": false,
   "files": [
     "dist",
     "README.md"
   ],
+  "bin": {
+    "create-promptframe-component": "./dist/index.js"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    },
-    "./standard": {
-      "import": "./dist/standard.js",
-      "types": "./dist/standard.d.ts"
-    },
-    "./preview": {
-      "import": "./dist/preview.js",
-      "types": "./dist/preview.d.ts"
-    },
-    "./timing": {
-      "import": "./dist/timing.js",
-      "types": "./dist/timing.d.ts"
     },
     "./package.json": {
       "default": "./package.json"
@@ -39,7 +29,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ty-teams/promptframe-component-authoring.git",
-    "directory": "packages/component-kit"
+    "directory": "packages/create-component"
   },
   "bugs": {
     "url": "https://github.com/ty-teams/promptframe-component-authoring/issues"
@@ -48,24 +38,11 @@
   "scripts": {
     "build": "tsc",
     "lint": "tsc --noEmit",
-    "test": "node --import tsx --test test/*.test.ts",
+    "test": "node -e \"console.log('placeholder test: create-promptframe-component')\"",
     "clean": "rm -rf dist"
   },
   "dependencies": {},
-  "peerDependencies": {
-    "react": "^19.0.0",
-    "remotion": "^4.0.0"
-  },
-  "peerDependenciesMeta": {
-    "react": {
-      "optional": true
-    },
-    "remotion": {
-      "optional": true
-    }
-  },
   "devDependencies": {
-    "tsx": "^4.19.0",
     "typescript": "~5.7.0"
   }
 }
