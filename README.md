@@ -30,6 +30,8 @@ npx promptframe status <buildId> --endpoint https://your-promptframe.example/api
 
 The CLI never embeds a production/private endpoint default. Use `--endpoint`, `PROMPTFRAME_API_BASE`, `REMOTION_MEDIA_API_BASE`, or `promptframe configure --endpoint <url>`. Upload success means the platform accepted the source package for trust-pipeline admission; search, preview, render, and publish readiness are reported later by platform status/evidence/probe diagnostics.
 
+For automation, add `--json` to `standard`, `doctor`, `validate`, `upload`, `status`, `reindex`, or `probe`. JSON output includes stable `diagnostic.code`; validation output includes `checkedRuleIds`, and JSON failures include `failureReason` plus `retryable`.
+
 ## Local Checks
 
 ```bash

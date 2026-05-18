@@ -18,10 +18,26 @@ import {
   PROMPTFRAME_CONTRACTS_VERSION,
   parseComponentManifest,
   type ComponentManifest,
+  type PublicPolicyRuleId,
 } from '@promptframe/contracts';
 
 const command = process.argv[2] ?? 'help';
 const args = process.argv.slice(3);
+
+const REQUIRED_COMPONENT_FILES = [
+  'package.json',
+  'manifest.json',
+  'src/Component.tsx',
+  'src/schema.ts',
+  'src/preview-props.json',
+] as const;
+
+const VALIDATE_CHECKED_RULE_IDS: PublicPolicyRuleId[] = [
+  'manifest.identity.version',
+  'manifest.component_type.supported',
+  'evidence.schema_source_hash_present',
+  'package.no_parent_imports',
+];
 
 class PromptFrameCliError extends Error {
   constructor(message: string, public readonly code: string, public readonly exitCode = 1) {
@@ -32,19 +48,13 @@ class PromptFrameCliError extends Error {
 async function run(name: string, argv: string[]): Promise<void> {
   switch (name) {
     case 'standard':
-      printJson({
-        contractsVersion: PROMPTFRAME_CONTRACTS_VERSION,
-        manifestSchemaVersion: COMPONENT_MANIFEST_SCHEMA_VERSION,
-        componentStandardVersion: COMPONENT_STANDARD_VERSION,
-        componentRefVersion: COMPONENT_REF_VERSION,
-        supportedComponentTypes: ['scene_template', 'contained_widget', 'overlay', 'transition_effect'],
-      });
+      standard();
       break;
     case 'doctor':
-      doctor(argv[0] ?? '.');
+      doctor(argv);
       break;
     case 'validate':
-      validate(argv[0] ?? '.');
+      validate(argv);
       break;
     case 'package':
       packageComponent(argv);
@@ -68,15 +78,54 @@ async function run(name: string, argv: string[]): Promise<void> {
   }
 }
 
-function doctor(componentDir: string): void {
-  const dir = resolve(componentDir);
+function standard(): void {
+  printJson({
+    command: 'standard',
+    contractsVersion: PROMPTFRAME_CONTRACTS_VERSION,
+    manifestSchemaVersion: COMPONENT_MANIFEST_SCHEMA_VERSION,
+    componentStandardVersion: COMPONENT_STANDARD_VERSION,
+    componentRefVersion: COMPONENT_REF_VERSION,
+    supportedComponentTypes: ['scene_template', 'contained_widget', 'overlay', 'transition_effect'],
+    diagnostic: diagnostic('standard.completed', 'info', 'Public PromptFrame component standard fetched.'),
+  });
+}
+
+function doctor(argv: string[]): void {
+  const dir = resolve(firstPositionalArg(argv) ?? '.');
   assertRequiredFiles(dir);
+  const output = {
+    command: 'doctor',
+    dir,
+    requiredFiles: REQUIRED_COMPONENT_FILES,
+    diagnostic: diagnostic('doctor.completed', 'info', 'Component directory contains required authoring files.'),
+  };
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
   console.log(`doctor passed: ${dir}`);
 }
 
-function validate(componentDir: string): void {
-  const dir = resolve(componentDir);
-  validateComponentDirectory(dir);
+function validate(argv: string[]): void {
+  const dir = resolve(firstPositionalArg(argv) ?? '.');
+  const manifest = validateComponentDirectory(dir);
+  const output = {
+    command: 'validate',
+    dir,
+    manifest: {
+      id: manifest.id,
+      name: manifest.name,
+      displayName: manifest.displayName,
+      version: manifest.version,
+      componentType: manifest.componentType ?? manifest.layer,
+    },
+    checkedRuleIds: VALIDATE_CHECKED_RULE_IDS,
+    diagnostic: diagnostic('validate.completed', 'info', 'Component manifest and public source boundaries validated.'),
+  };
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
   console.log(`validate passed: ${dir}`);
 }
 
@@ -325,14 +374,7 @@ async function fetchJson(url: string, init: RequestInit, code: string): Promise<
 }
 
 function assertRequiredFiles(dir: string): void {
-  const required = [
-    'package.json',
-    'manifest.json',
-    'src/Component.tsx',
-    'src/schema.ts',
-    'src/preview-props.json',
-  ];
-  const missing = required.filter((file) => !existsSync(join(dir, file)));
+  const missing = REQUIRED_COMPONENT_FILES.filter((file) => !existsSync(join(dir, file)));
   if (missing.length > 0) {
     fail(`Missing required files: ${missing.join(', ')}`, 'doctor.required_files.missing');
   }
@@ -479,6 +521,10 @@ function valueAfter(argv: string[], flag: string): string | undefined {
   return next && !next.startsWith('--') ? next : undefined;
 }
 
+function firstPositionalArg(argv: string[]): string | undefined {
+  return argv.find((arg) => !arg.startsWith('--'));
+}
+
 function hasFlag(argv: string[], flag: string): boolean {
   return argv.includes(flag);
 }
@@ -589,7 +635,17 @@ try {
   await run(command, args);
 } catch (error) {
   if (error instanceof PromptFrameCliError) {
-    console.error(`${error.code}: ${error.message}`);
+    if (hasFlag(args, '--json')) {
+      console.error(JSON.stringify({
+        success: false,
+        command,
+        diagnostic: diagnostic(error.code, 'error', error.message),
+        failureReason: error.message,
+        retryable: false,
+      }, null, 2));
+    } else {
+      console.error(`${error.code}: ${error.message}`);
+    }
     process.exit(error.exitCode);
   }
   console.error(error instanceof Error ? error.message : String(error));

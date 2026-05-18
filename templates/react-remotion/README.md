@@ -49,7 +49,7 @@ npx promptframe status <jobId> --endpoint <promptframe-api-base>
 
 ## 安全策略
 
-安全规则来自平台标准 API。CLI 本地 `promptframe validate .` 和服务端准入会使用同一套公开 ruleId 口径，并在报错中显示 `ruleId`。
+安全规则来自平台标准 API。CLI 本地 `promptframe validate . --json` 和服务端准入会使用同一套公开 ruleId 口径；机器读取时看 `checkedRuleIds`、`diagnostic.code`、`failureReason` 和 `retryable`。
 
 - 不要使用 `eval`、`new Function`、字符串定时器、`node:fs`、`child_process`、`process.env`。
 - 不要直接使用 `fetch()` / XHR / WebSocket / Beacon。

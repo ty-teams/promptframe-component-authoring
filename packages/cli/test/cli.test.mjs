@@ -186,6 +186,89 @@ test('package validates a component folder and writes a platform zip artifact', 
   }
 });
 
+test('local standard, doctor, and validate expose stable JSON diagnostics', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-local-json-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+
+    const standard = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'standard',
+      '--json',
+    ])).stdout);
+    assert.equal(standard.command, 'standard');
+    assert.equal(standard.diagnostic.code, 'standard.completed');
+    assert.deepEqual(standard.supportedComponentTypes, [
+      'scene_template',
+      'contained_widget',
+      'overlay',
+      'transition_effect',
+    ]);
+
+    const doctor = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'doctor',
+      '--json',
+    ], { cwd: componentDir })).stdout);
+    assert.equal(doctor.command, 'doctor');
+    assert.equal(doctor.dir, componentDir);
+    assert.equal(doctor.diagnostic.code, 'doctor.completed');
+    assert.deepEqual(doctor.requiredFiles, [
+      'package.json',
+      'manifest.json',
+      'src/Component.tsx',
+      'src/schema.ts',
+      'src/preview-props.json',
+    ]);
+
+    const validate = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'validate',
+      componentDir,
+      '--json',
+    ])).stdout);
+    assert.equal(validate.command, 'validate');
+    assert.equal(validate.dir, componentDir);
+    assert.equal(validate.diagnostic.code, 'validate.completed');
+    assert.equal(validate.manifest.id, '@demo/fixture-component');
+    assert.equal(validate.manifest.componentType, 'scene_template');
+    assert.deepEqual(validate.checkedRuleIds, [
+      'manifest.identity.version',
+      'manifest.component_type.supported',
+      'evidence.schema_source_hash_present',
+      'package.no_parent_imports',
+    ]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('local JSON failures expose diagnostic failure reasons', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-local-json-failure-'));
+  try {
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'doctor',
+        '--json',
+      ], { cwd: dir }),
+      (error) => {
+        assert.equal(error.code, 1);
+        const payload = JSON.parse(error.stderr);
+        assert.equal(payload.success, false);
+        assert.equal(payload.command, 'doctor');
+        assert.equal(payload.diagnostic.code, 'doctor.required_files.missing');
+        assert.match(payload.failureReason, /Missing required files/);
+        assert.equal(payload.retryable, false);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 async function createServer(handler) {
   const server = http.createServer((req, res) => {
     handler(req, res).catch((error) => {

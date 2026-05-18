@@ -39,7 +39,7 @@ npm install
 npx promptframe standard
 npx promptframe doctor .
 npx promptframe validate .
-npx promptframe package . --out ./my-component.tgz
+npx promptframe package . --out ./my-component.zip
 ```
 
 To upload, the caller must provide the current platform endpoint:
@@ -50,6 +50,8 @@ npx promptframe status <jobId> --endpoint <promptframe-api-base>
 ```
 
 Do not guess private service addresses. If no endpoint is provided, finish local validation and report the missing endpoint.
+
+Automation can add `--json` to `standard`, `doctor`, `validate`, `upload`, `status`, `reindex`, and `probe`. Read `diagnostic.code`, `checkedRuleIds`, `failureReason`, and `retryable` instead of scraping prose logs.
 
 ## Component Types
 
