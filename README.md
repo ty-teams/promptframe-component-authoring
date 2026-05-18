@@ -14,15 +14,15 @@ pnpm --filter @promptframe/component-kit build
 cd packages/component-kit && npm pack --dry-run --json
 ```
 
-## Publishing
+## Releases
 
-`@promptframe/component-kit@0.1.0` has been bootstrapped to npm as a public package. Future releases should use npm Trusted Publishing from GitHub Actions. No `NPM_TOKEN` should be committed or stored for this repository.
+`@promptframe/component-kit` is published to the public npm registry. Releases are signed through npm Trusted Publishing from GitHub Actions.
 
-Expected trusted publisher fields:
+Release configuration:
 
 - npm package: `@promptframe/component-kit`
 - GitHub repo: `ty-teams/promptframe-component-kit`
 - Workflow file: `publish-component-kit.yml`
 - Environment: `npm-production`
 
-The `npm-production` GitHub environment is intentionally present so npm Trusted Publishing can bind future releases to this workflow. Do not add an `NPM_TOKEN` secret. To publish the next version, bump the package version, run local checks, push a `component-kit-vX.Y.Z` tag, and verify npm registry output after the workflow completes.
+To publish a new version, bump the package version, run local checks, push a `component-kit-vX.Y.Z` tag, and verify npm registry output after the workflow completes.

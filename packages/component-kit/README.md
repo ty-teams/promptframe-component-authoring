@@ -27,10 +27,10 @@ The package is published publicly. The confirmed public coordinates are:
 
 - npm package: `@promptframe/component-kit`
 - npm org/scope: `@promptframe`
-- current version: `0.1.0`
+- current version: `0.1.2`
 - release repository: `https://github.com/ty-teams/promptframe-component-kit`
 - license: MIT
 
-The `0.1.0` bootstrap publish is complete, and npm Trusted Publisher is configured for `ty-teams/promptframe-component-kit` / `publish-component-kit.yml` / `npm-production`. Future releases should use GitHub Actions Trusted Publishing. Do not add an `NPM_TOKEN` secret.
+The initial npm release is complete, and npm Trusted Publisher is configured for `ty-teams/promptframe-component-kit` / `publish-component-kit.yml` / `npm-production`. Future releases should use GitHub Actions Trusted Publishing.
 
 Marketplace/private components themselves do not publish to npm. They still move through platform CLI upload, build admission, security review, schema/policy/receipt generation, evidence indexing, artifact mirror, and resolver-backed preview/render.
