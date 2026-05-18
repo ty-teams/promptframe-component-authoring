@@ -19,7 +19,7 @@ The package provides version stamps, preview constraints, and deterministic timi
 Typical author flow:
 
 ```bash
-npx create-promptframe-component my-component
+npx create-promptframe-component ./my-component --name my-component --display-name "My Component"
 cd my-component
 npm install
 npx promptframe validate .
@@ -59,4 +59,4 @@ Release configuration:
 
 To publish a new version, bump the package version, run local checks, push the matching package tag, and verify npm registry output after the workflow completes.
 
-Current registry baseline: `@promptframe/contracts@0.1.3`, `@promptframe/component-kit@0.1.5`, `@promptframe/cli@0.1.5`, `create-promptframe-component@0.1.2`. `@promptframe/component-kit@0.1.5` sources its public standard stamp from `@promptframe/contracts`, and `create-promptframe-component@0.1.2` scaffolds templates that use those current public package ranges.
+Current registry baseline: `@promptframe/contracts@0.1.3`, `@promptframe/component-kit@0.1.5`, `@promptframe/cli@0.1.5`, `create-promptframe-component@0.1.3`. `@promptframe/component-kit@0.1.5` sources its public standard stamp from `@promptframe/contracts`, and `create-promptframe-component@0.1.3` scaffolds templates that use those current public package ranges while supporting explicit `--name` and `--force` for legacy wrapper compatibility.

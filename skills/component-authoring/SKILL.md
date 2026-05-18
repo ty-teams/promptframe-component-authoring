@@ -33,7 +33,7 @@ Do not use Vue, Svelte, global scripts, raw HTML runtimes, runtime package insta
 ## Quickstart
 
 ```bash
-npm create promptframe-component my-component -- --display-name "My Component"
+npm create promptframe-component ./my-component -- --name my-component --display-name "My Component"
 cd my-component
 npm install
 npx promptframe standard

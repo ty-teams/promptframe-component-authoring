@@ -6,19 +6,20 @@ import { fileURLToPath } from 'node:url';
 
 const targetArg = process.argv[2];
 if (!targetArg || targetArg === '--help' || targetArg === '-h') {
-  console.log('Usage: npm create promptframe-component <component-dir> [--display-name "Sales Funnel"]');
+  console.log('Usage: npm create promptframe-component <component-dir> [--name sales-funnel] [--display-name "Sales Funnel"] [--force]');
   process.exit(targetArg ? 0 : 1);
 }
 
+const argv = process.argv.slice(3);
 const targetDir = resolve(targetArg);
-if (existsSync(targetDir) && readdirSync(targetDir).length > 0) {
+if (existsSync(targetDir) && readdirSync(targetDir).length > 0 && !hasFlag(argv, '--force')) {
   console.error(`create.target_not_empty: ${targetDir} is not empty`);
   process.exit(1);
 }
 
-const componentName = toKebabName(targetArg.split(/[\\/]/).filter(Boolean).at(-1) ?? 'promptframe-component');
-const displayName = valueAfter(process.argv.slice(3), '--display-name') ?? toTitle(componentName);
-const description = valueAfter(process.argv.slice(3), '--description') ?? `${displayName} PromptFrame component`;
+const componentName = toKebabName(valueAfter(argv, '--name') ?? targetArg.split(/[\\/]/).filter(Boolean).at(-1) ?? 'promptframe-component');
+const displayName = valueAfter(argv, '--display-name') ?? toTitle(componentName);
+const description = valueAfter(argv, '--description') ?? `${displayName} PromptFrame component`;
 const packageRoot = dirname(fileURLToPath(import.meta.url));
 const templateDir = resolve(packageRoot, '../templates/react-remotion');
 
@@ -59,6 +60,10 @@ function valueAfter(argv: string[], flag: string): string | undefined {
   const index = argv.indexOf(flag);
   if (index < 0) return undefined;
   return argv[index + 1];
+}
+
+function hasFlag(argv: string[], flag: string): boolean {
+  return argv.includes(flag);
 }
 
 function toKebabName(value: string): string {
