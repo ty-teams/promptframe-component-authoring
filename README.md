@@ -57,6 +57,8 @@ Release configuration:
 - `@promptframe/cli`: workflow `publish-cli.yml`, tag `cli-vX.Y.Z`
 - `create-promptframe-component`: workflow `publish-create-component.yml`, tag `create-component-vX.Y.Z`
 
-To publish a new version, bump the package version, run local checks, push the matching package tag, and verify npm registry output after the workflow completes.
+To publish a new version, bump the package version, run local checks, push the matching package tag, and verify npm registry output after the workflow completes. Do not publish from a local npm token path for normal releases.
 
-Current source baseline: `@promptframe/contracts@0.1.4`, `@promptframe/component-kit@0.1.6`, `@promptframe/cli@0.1.5`, `create-promptframe-component@0.1.3`. `@promptframe/component-kit@0.1.6` sources its public standard stamp and style helper contract from `@promptframe/contracts`, and `create-promptframe-component@0.1.3` scaffolds templates that use those current public package ranges while supporting explicit `--name` and `--force` for legacy wrapper compatibility.
+Current registry baseline: `@promptframe/contracts@0.1.4`, `@promptframe/component-kit@0.1.6`, `@promptframe/cli@0.1.5`, `create-promptframe-component@0.1.3`. `@promptframe/component-kit@0.1.6` sources its public standard stamp and style helper contract from `@promptframe/contracts`, and `create-promptframe-component@0.1.3` scaffolds templates that use those current public package ranges while supporting explicit `--name` and `--force` for legacy wrapper compatibility.
+
+Before publishing, the platform repo should verify the local authoring source through its `pnpm authoring:link-local` gate. After publishing, it should switch back with `pnpm authoring:use-registry` and verify the real npm packages from `https://registry.npmjs.org/`; npm mirrors can lag new versions.

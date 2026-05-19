@@ -27,3 +27,5 @@ pnpm -r pack:dry-run
 ```
 
 Local development may link this repo into `remotion-media`, but Docker/CI/prod-like verification must install the real npm packages from the registry.
+
+Normal package releases must use GitHub Actions Trusted Publishing from this repo, environment `npm-production`, and tag patterns documented in README. Do not add `NPM_TOKEN` or publish from a local npm token path unless the user explicitly authorizes an emergency recovery. After a release, verify the official npm registry; mirror registries may lag and should not be treated as the source of truth for immediate post-publish checks.
