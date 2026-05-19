@@ -55,3 +55,18 @@ test('public skill documents common diagnostics and security rule fixes', async 
     assert.match(skill, new RegExp(code.replaceAll('.', '\\.')));
   }
 });
+
+test('public authoring docs describe the AI-first authoring boundary', async () => {
+  for (const docPath of [
+    'skills/component-authoring/SKILL.md',
+    'templates/react-remotion/README.md',
+    'packages/create-component/templates/react-remotion/README.md',
+  ]) {
+    const text = await readFile(path.join(repoRoot, docPath), 'utf8');
+    assert.match(text, /CodingAI/, docPath);
+    assert.match(text, /marketplace_authoring/, docPath);
+    assert.match(text, /project_private_generation/, docPath);
+    assert.match(text, /@promptframe\/component-kit\/style/, docPath);
+    assert.match(text, /color.*theme.*style|style.*theme.*color/s, docPath);
+  }
+});

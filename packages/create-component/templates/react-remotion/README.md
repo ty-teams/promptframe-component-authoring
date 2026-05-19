@@ -2,6 +2,14 @@
 
 平台标准 Remotion 组件市场组件。
 
+## AI-first 作者边界
+
+默认协作方式是：人类用户负责审美判断和业务取舍，CodingAI 负责把 brief、用户素材、PromptFrame public authoring skill、平台 standard API 和 CLI diagnostic 落成可复用组件。
+
+本模板默认面向 `marketplace_authoring`：组件要有清晰 props、可复用数据结构、响应式布局、安全默认值和严格上传准入。如果只是当前项目临时私有组件，应走平台的 `project_private_generation` lane，不要把一次性私有组件伪装成 marketplace-ready。
+
+CodingAI 不能读取 PromptFrame 平台源码、内部协作看板、REQ/TASK/QA、内部协作收件箱、secret、内部部署脚本或私有 endpoint 默认值。
+
 ## 本地开发
 
 ```bash
@@ -37,6 +45,10 @@ npx promptframe status <buildId> --endpoint <promptframe-api-base>
 - 禁止 CSS `transition`、`@keyframes`、计时器、`Date.now()`、`Math.random()`。
 
 项目级规则见 PromptFrame authoring skill 的 `rules/timing-ssot.md`。
+
+## 风格协议
+
+风格意图应来自 `@promptframe/contracts` 的公共合同，并通过 `@promptframe/component-kit/style` helper 解析。不要给单个组件发明私有 `color` / `theme` / `style` props；如果必须暴露风格控制，优先复用 shared style intent，或者把视觉选择保持为组件内部确定性默认值。
 
 ## 检索元数据
 

@@ -10,6 +10,14 @@ audience: coding-ai
 
 Use this skill when creating a PromptFrame component. A component is authored as source code, then submitted to the PromptFrame platform for build admission, security review, evidence indexing, artifact storage, schema lookup, preview, and render.
 
+## AI-First Authoring Boundary
+
+Assume the human user is the visual reviewer and product judge. The CodingAI is the component author that turns the brief, user assets, public authoring skill, platform standard API output, and CLI diagnostics into a reusable component.
+
+Default external authoring is `marketplace_authoring`: design for reusable marketplace quality, clear props, responsive layout, safe defaults, and strict upload admission. If the user only needs a temporary private component inside the product, use the platform's `project_private_generation` lane instead; do not pretend a one-off private component is marketplace-ready.
+
+The CodingAI must not read PromptFrame internal platform source, agent board, REQ/TASK/QA docs, inboxes, private prompts, secrets, deployment scripts, or internal endpoint defaults.
+
 ## Read First
 
 - [rules/timing-ssot.md](rules/timing-ssot.md): deterministic Remotion timing and duration adaptation.
@@ -29,6 +37,8 @@ Use:
 - `@promptframe/cli`
 
 Do not use Vue, Svelte, global scripts, raw HTML runtimes, runtime package installation, or remote ESM imports.
+
+For visual style, use the public style contract from `@promptframe/contracts` and helpers from `@promptframe/component-kit/style`. Do not invent private color/theme/style props that only one component understands; expose style intent through the shared contract or keep visual choices internal and deterministic.
 
 ## Quickstart
 
