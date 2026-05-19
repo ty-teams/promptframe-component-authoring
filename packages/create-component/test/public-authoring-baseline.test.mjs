@@ -14,7 +14,7 @@ test('public templates use the current PromptFrame authoring package baseline', 
     assert.equal(packageJson.dependencies?.['@promptframe/component-kit'], '^0.1.6', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.5', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@remotion/player'], '^4.0.0', templatePackagePath);
-    assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.9', templatePackagePath);
+    assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.10', templatePackagePath);
   }
 });
 

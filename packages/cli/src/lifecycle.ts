@@ -62,7 +62,7 @@ export function computePackageChanges(packageJson: ComponentPackageJson): Packag
   return requirements.flatMap((requirement) => {
     const current = findDependency(packageJson, requirement.name);
     const dependencySet = current?.dependencySet ?? requirement.dependencySet;
-    if (current?.version === requirement.next) return [];
+    if (current && !isBelowRequiredRange(current.version, requirement.next)) return [];
     return [{
       name: requirement.name,
       dependencySet,
@@ -116,6 +116,23 @@ function findDependency(
     if (version) return { dependencySet, version };
   }
   return undefined;
+}
+
+function isBelowRequiredRange(current: string, required: string): boolean {
+  const currentVersion = parseLooseSemver(current);
+  const requiredVersion = parseLooseSemver(required);
+  if (!currentVersion || !requiredVersion) return current !== required;
+  for (let index = 0; index < requiredVersion.length; index += 1) {
+    if (currentVersion[index] < requiredVersion[index]) return true;
+    if (currentVersion[index] > requiredVersion[index]) return false;
+  }
+  return false;
+}
+
+function parseLooseSemver(value: string): [number, number, number] | undefined {
+  const match = value.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!match) return undefined;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
 }
 
 function sortObject(input: Record<string, string>): Record<string, string> {

@@ -434,6 +434,26 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
       change.name === '@promptframe/cli'
       && change.next === '^0.1.6'
     )));
+
+    await writeFile(path.join(componentDir, 'package.json'), JSON.stringify({
+      name: 'fixture-component',
+      version: '0.1.0',
+      dependencies: {
+        '@promptframe/contracts': '^0.1.5',
+        '@promptframe/component-kit': '^0.1.6',
+      },
+      devDependencies: {
+        '@promptframe/cli': '^0.1.10',
+      },
+    }, null, 2));
+    const current = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'upgrade',
+      componentDir,
+      '--dry-run',
+      '--json',
+    ])).stdout);
+    assert.deepEqual(current.packageChanges, []);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
