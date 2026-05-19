@@ -25,6 +25,7 @@ import {
   authoringUploadTargetSchema,
   parseComponentManifest,
   type ComponentManifest,
+  type AuthoringStandardFreshnessDecision,
   type AuthoringUploadTarget,
   type PublicPolicyRuleId,
 } from '@promptframe/contracts';
@@ -71,7 +72,7 @@ async function run(name: string, argv: string[]): Promise<void> {
       validate(argv);
       break;
     case 'check':
-      check(argv);
+      await check(argv);
       break;
     case 'upgrade':
       upgrade(argv);
@@ -165,20 +166,18 @@ function validate(argv: string[]): void {
   console.log(`validate passed: ${dir}`);
 }
 
-function check(argv: string[]): void {
+async function check(argv: string[]): Promise<void> {
   const dir = resolve(firstPositionalArg(argv) ?? '.');
   const target = resolveUploadTarget(argv);
   const manifest = validateComponentDirectory(dir);
   assertAuthoringPackageFreshness(dir, target);
+  const freshness = await resolveSoftRemoteStandardFreshness(argv, target, 'check');
   const output = {
     command: 'check',
     dir,
     manifest: manifestSummary(manifest),
     checkedRuleIds: VALIDATE_CHECKED_RULE_IDS,
-    freshness: buildFreshnessDecision(
-      target,
-      diagnostic('check.freshness.current', 'info', 'Local authoring standard matches the current public release.'),
-    ),
+    freshness,
     diagnostic: diagnostic('check.completed', 'info', 'Component authoring checks completed.'),
   };
   if (hasFlag(argv, '--json')) {
@@ -258,6 +257,7 @@ async function dev(argv: string[]): Promise<void> {
   const target = resolveUploadTarget(argv);
   const manifest = validateComponentDirectory(dir);
   assertAuthoringPackageFreshness(dir, target);
+  const freshness = await resolveSoftRemoteStandardFreshness(argv, target, 'dev');
   const previewEnvelope = readPreviewProps(dir);
   const host = valueAfter(argv, '--host') ?? '127.0.0.1';
   const port = parsePort(valueAfter(argv, '--port') ?? '5173');
@@ -270,6 +270,7 @@ async function dev(argv: string[]): Promise<void> {
     renderingSystem: 'remotion-player',
     previewSource: 'src/preview-props.json',
     preview: previewEnvelope,
+    freshness,
     devServer: {
       url: `http://${host}:${port}`,
       command: devCommand,
@@ -288,6 +289,7 @@ async function dev(argv: string[]): Promise<void> {
   console.log(`dev ready: ${dir}`);
   console.log(`Rendering system: ${output.renderingSystem}`);
   console.log(`Preview URL: ${output.devServer.url}`);
+  console.log(`Freshness: ${freshness.status}`);
   console.log(`Command: ${devCommand.join(' ')}`);
   if (hasFlag(argv, '--dry-run')) return;
 
@@ -416,12 +418,20 @@ async function uploadComponent(argv: string[]): Promise<void> {
 }
 
 function resolveUploadTarget(argv: string[]): AuthoringUploadTarget {
-  const raw = valueAfter(argv, '--target') ?? valueAfter(argv, '--upload-target') ?? 'marketplace_authoring';
+  const raw = normalizeUploadTargetAlias(
+    valueAfter(argv, '--target') ?? valueAfter(argv, '--upload-target') ?? 'marketplace_authoring',
+  );
   const parsed = authoringUploadTargetSchema.safeParse(raw);
   if (!parsed.success) {
     fail(`Unknown component upload target: ${raw}.`, 'upload.target.invalid');
   }
   return parsed.data;
+}
+
+function normalizeUploadTargetAlias(raw: string): string {
+  if (raw === 'marketplace') return 'marketplace_authoring';
+  if (raw === 'project_private') return 'project_private_generation';
+  return raw;
 }
 
 function assertAuthoringPackageFreshness(dir: string, target: AuthoringUploadTarget): void {
@@ -446,11 +456,72 @@ async function assertRemoteStandardFreshness(endpoint: string, argv: string[]): 
     fail('PromptFrame standard endpoint did not return a sourceHash.', 'standard.freshness.remote_invalid');
   }
   if (remoteSourceHash !== COMPONENT_STANDARD_SOURCE_HASH) {
-    fail(
-      `PromptFrame component standard is stale: local=${COMPONENT_STANDARD_SOURCE_HASH}, platform=${remoteSourceHash}. Run promptframe upgrade . --apply before upload.`,
-      'standard.freshness.upload_blocking',
+    fail(formatRemoteStandardStaleFailure(remoteSourceHash), 'standard.freshness.upload_blocking');
+  }
+}
+
+async function resolveSoftRemoteStandardFreshness(
+  argv: string[],
+  target: AuthoringUploadTarget,
+  commandName: 'check' | 'dev',
+): Promise<AuthoringStandardFreshnessDecision> {
+  const endpoint = resolveOptionalEndpoint(argv);
+  if (!endpoint) {
+    return buildFreshnessWarningDecision(
+      target,
+      'standard.freshness.offline_degraded',
+      `${commandName} ran local policy and package checks without a platform endpoint; online standard sourceHash freshness was skipped.`,
     );
   }
+  let payload: Record<string, unknown>;
+  try {
+    payload = await fetchJson(`${endpoint}/components/standard`, {
+      headers: buildContextHeaders(argv),
+    }, 'standard.freshness.fetch_failed');
+  } catch {
+    return buildFreshnessWarningDecision(
+      target,
+      'standard.freshness.offline_degraded',
+      `${commandName} could not reach the platform standard endpoint; local checks passed but online sourceHash freshness is degraded.`,
+    );
+  }
+  const remoteSourceHash = extractRemoteStandardSourceHash(payload);
+  if (!remoteSourceHash) {
+    return buildFreshnessWarningDecision(
+      target,
+      'standard.freshness.offline_degraded',
+      `${commandName} platform standard response did not include sourceHash; local checks passed but online freshness is degraded.`,
+    );
+  }
+  if (remoteSourceHash !== COMPONENT_STANDARD_SOURCE_HASH) {
+    fail(formatRemoteStandardStaleFailure(remoteSourceHash), 'standard.freshness.upload_blocking');
+  }
+  return buildFreshnessDecision(
+    target,
+    diagnostic('standard.freshness.current', 'info', 'Local authoring standard matches the platform source hash.'),
+  );
+}
+
+function buildFreshnessWarningDecision(
+  target: AuthoringUploadTarget,
+  code: string,
+  message: string,
+): AuthoringStandardFreshnessDecision {
+  return {
+    status: 'warning',
+    target,
+    localStandardVersion: COMPONENT_STANDARD_VERSION,
+    localStandardSourceHash: COMPONENT_STANDARD_SOURCE_HASH,
+    currentStandardVersion: COMPONENT_STANDARD_VERSION,
+    currentStandardSourceHash: COMPONENT_STANDARD_SOURCE_HASH,
+    minPackageVersions: PROMPTFRAME_AUTHORING_STANDARD_RELEASE.minPackageVersions,
+    diagnostic: diagnostic(code, 'warning', message),
+    retryable: true,
+  };
+}
+
+function formatRemoteStandardStaleFailure(remoteSourceHash: string): string {
+  return `PromptFrame component standard is stale: local=${COMPONENT_STANDARD_SOURCE_HASH}, platform=${remoteSourceHash}. Run promptframe upgrade . --apply before upload.`;
 }
 
 function extractRemoteStandardSourceHash(payload: Record<string, unknown>): string | undefined {
@@ -582,6 +653,15 @@ function resolveEndpoint(commandName: string, argv: string[]): string {
     );
   }
   return normalizeEndpoint(endpoint);
+}
+
+function resolveOptionalEndpoint(argv: string[]): string | undefined {
+  const config = readConfig(argv);
+  const endpoint = valueAfter(argv, '--endpoint')
+    ?? stringValue(process.env.PROMPTFRAME_API_BASE)
+    ?? stringValue(process.env.REMOTION_MEDIA_API_BASE)
+    ?? stringValue(config.endpoint);
+  return endpoint ? normalizeEndpoint(endpoint) : undefined;
 }
 
 function buildContextHeaders(argv: string[]): Record<string, string> {
@@ -1119,6 +1199,7 @@ Commands:
   package <dir> --out <zip>        Validate and package a component source zip
   upload <dir|zip>                 Upload component source package to PromptFrame
     --target <target>              marketplace_authoring or project_private_generation
+    --target marketplace --strict  Alias for strict external marketplace authoring
   status <buildId>                 Fetch component build status
   reindex <buildId>                Rebuild component search/evidence indexes
   probe <buildId> --level <level>  Rerun component layout/security probe

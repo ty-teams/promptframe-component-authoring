@@ -359,6 +359,126 @@ test('upload blocks stale remote standard source hash before package upload tran
   }
 });
 
+test('check reports offline degraded freshness when no platform endpoint is configured', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-check-offline-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+
+    const check = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'check',
+      componentDir,
+      '--target',
+      'project_private_generation',
+      '--json',
+    ], {
+      env: {
+        ...process.env,
+        PROMPTFRAME_API_BASE: '',
+        REMOTION_MEDIA_API_BASE: '',
+        PROMPTFRAME_CONFIG: path.join(dir, 'missing-config.json'),
+      },
+    })).stdout);
+    assert.equal(check.command, 'check');
+    assert.equal(check.freshness.status, 'warning');
+    assert.equal(check.freshness.diagnostic.code, 'standard.freshness.offline_degraded');
+    assert.equal(check.freshness.retryable, true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('check blocks stale remote standard source hash when endpoint is configured', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-check-sourcehash-'));
+  const calls = [];
+  const server = await createServer(async (req, res) => {
+    calls.push(req.url);
+    if (req.url === '/components/standard') {
+      writeJson(res, {
+        success: true,
+        sourceVersion: 'component-standard.v0.1.0',
+        sourceHash: `sha256:${'8'.repeat(64)}`,
+      });
+      return;
+    }
+    writeJson(res, { success: false, error: `unexpected path: ${req.url}` }, 404);
+  });
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'check',
+        componentDir,
+        '--endpoint',
+        server.url,
+        '--target',
+        'marketplace_authoring',
+        '--json',
+      ]),
+      (error) => {
+        assert.equal(error.code, 1);
+        const payload = JSON.parse(error.stderr);
+        assert.equal(payload.command, 'check');
+        assert.equal(payload.diagnostic.code, 'standard.freshness.upload_blocking');
+        return true;
+      },
+    );
+    assert.deepEqual(calls, ['/components/standard']);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('upload accepts marketplace strict target alias before platform transport', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-upload-strict-alias-'));
+  const calls = [];
+  const server = await createServer(async (req, res) => {
+    const body = await readRequestBody(req);
+    calls.push({ method: req.method, url: req.url, target: req.headers['x-promptframe-upload-target'], body });
+    if (req.url === '/components/standard') {
+      writeJson(res, {
+        success: true,
+        sourceVersion: 'component-standard.v0.1.0',
+        sourceHash: 'sha256:8c1e01c36155b4b646981064d24df9bd8cda501fd9cd9da93e5b62f40db22d52',
+      });
+      return;
+    }
+    if (req.url === '/components/marketplace/upload') {
+      writeJson(res, { success: true, jobId: 'build-strict', status: 'queued' });
+      return;
+    }
+    writeJson(res, { success: false, error: `unexpected path: ${req.url}` }, 404);
+  });
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    const upload = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'upload',
+      componentDir,
+      '--endpoint',
+      server.url,
+      '--target',
+      'marketplace',
+      '--strict',
+      '--json',
+    ])).stdout);
+    assert.equal(upload.command, 'upload');
+    assert.equal(upload.uploadTarget, 'marketplace_authoring');
+    assert.equal(upload.jobId, 'build-strict');
+    assert.deepEqual(calls.map((call) => call.url), ['/components/standard', '/components/marketplace/upload']);
+    assert.equal(calls[1].target, 'marketplace_authoring');
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('package validates a component folder and writes a platform zip artifact', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-package-'));
   try {
@@ -615,7 +735,8 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
     assert.equal(check.command, 'check');
     assert.equal(check.diagnostic.code, 'check.completed');
     assert.equal(check.freshness.target, 'project_private_generation');
-    assert.equal(check.freshness.status, 'current');
+    assert.equal(check.freshness.status, 'warning');
+    assert.equal(check.freshness.diagnostic.code, 'standard.freshness.offline_degraded');
     assert.deepEqual(check.checkedRuleIds, [
       'manifest.identity.version',
       'manifest.component_type.supported',
