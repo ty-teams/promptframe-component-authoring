@@ -384,6 +384,7 @@ async function uploadComponent(argv: string[]): Promise<void> {
     ? packageZipForUpload(target, uploadTarget)
     : packageDirectoryForUpload(target, uploadTarget, valueAfter(argv, '--out'));
   const endpoint = resolveEndpoint('upload', argv);
+  await assertRemoteStandardFreshness(endpoint, argv);
   const file = readFileSync(artifact.out);
   const form = new FormData();
   form.set('file', new Blob([new Uint8Array(file)], { type: 'application/zip' }), basename(artifact.out));
@@ -434,6 +435,29 @@ function assertAuthoringZipPackageFreshness(path: string, target: AuthoringUploa
   const diagnostics = computePackageFreshnessDiagnostics(packageJson, target);
   if (diagnostics.length === 0) return;
   fail(formatPackageFreshnessFailure(diagnostics, target), diagnostics[0]!.code);
+}
+
+async function assertRemoteStandardFreshness(endpoint: string, argv: string[]): Promise<void> {
+  const payload = await fetchJson(`${endpoint}/components/standard`, {
+    headers: buildContextHeaders(argv),
+  }, 'standard.freshness.fetch_failed');
+  const remoteSourceHash = extractRemoteStandardSourceHash(payload);
+  if (!remoteSourceHash) {
+    fail('PromptFrame standard endpoint did not return a sourceHash.', 'standard.freshness.remote_invalid');
+  }
+  if (remoteSourceHash !== COMPONENT_STANDARD_SOURCE_HASH) {
+    fail(
+      `PromptFrame component standard is stale: local=${COMPONENT_STANDARD_SOURCE_HASH}, platform=${remoteSourceHash}. Run promptframe upgrade . --apply before upload.`,
+      'standard.freshness.upload_blocking',
+    );
+  }
+}
+
+function extractRemoteStandardSourceHash(payload: Record<string, unknown>): string | undefined {
+  return stringValue(payload.sourceHash)
+    ?? stringValue(payload.standardSourceHash)
+    ?? stringValue(asRecord(payload.standard)?.sourceHash)
+    ?? stringValue(asRecord(payload.authoringStandardRelease)?.standardSourceHash);
 }
 
 async function showStatus(argv: string[]): Promise<void> {

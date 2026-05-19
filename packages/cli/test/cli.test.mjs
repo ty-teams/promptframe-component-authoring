@@ -86,6 +86,15 @@ test('upload, probe, and reindex call platform transport paths with stable JSON'
   const server = await createServer(async (req, res) => {
     const body = await readRequestBody(req);
     calls.push({ method: req.method, url: req.url, body });
+    if (req.url === '/components/standard') {
+      assert.equal(req.method, 'GET');
+      writeJson(res, {
+        success: true,
+        sourceVersion: 'component-standard.v0.1.0',
+        sourceHash: 'sha256:8c1e01c36155b4b646981064d24df9bd8cda501fd9cd9da93e5b62f40db22d52',
+      });
+      return;
+    }
     if (req.url === '/components/marketplace/upload') {
       assert.equal(req.method, 'POST');
       assert.equal(req.headers['x-promptframe-upload-target'], 'project_private_generation');
@@ -153,6 +162,7 @@ test('upload, probe, and reindex call platform transport paths with stable JSON'
     assert.equal(reindex.success, true);
     assert.equal(reindex.diagnostic.code, 'reindex.completed');
     assert.deepEqual(calls.map((call) => call.url), [
+      '/components/standard',
       '/components/marketplace/upload',
       '/components/marketplace/builds/build-uploaded/probes/run',
       '/components/marketplace/builds/build-uploaded/evidence/reindex',
@@ -293,6 +303,56 @@ test('upload blocks stale marketplace authoring packages inside zip before netwo
       },
     );
     assert.equal(calls, 0);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('upload blocks stale remote standard source hash before package upload transport', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-upload-sourcehash-'));
+  const calls = [];
+  const server = await createServer(async (req, res) => {
+    calls.push(req.url);
+    if (req.url === '/components/standard') {
+      writeJson(res, {
+        success: true,
+        sourceVersion: 'component-standard.v0.1.0',
+        sourceHash: `sha256:${'9'.repeat(64)}`,
+      });
+      return;
+    }
+    if (req.url === '/components/marketplace/upload') {
+      writeJson(res, { success: true, buildId: 'should-not-upload', status: 'queued' });
+      return;
+    }
+    writeJson(res, { success: false, error: `unexpected path: ${req.url}` }, 404);
+  });
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'upload',
+        componentDir,
+        '--endpoint',
+        server.url,
+        '--target',
+        'marketplace_authoring',
+        '--json',
+      ]),
+      (error) => {
+        assert.equal(error.code, 1);
+        const payload = JSON.parse(error.stderr);
+        assert.equal(payload.command, 'upload');
+        assert.equal(payload.diagnostic.code, 'standard.freshness.upload_blocking');
+        assert.equal(payload.retryable, false);
+        return true;
+      },
+    );
+    assert.deepEqual(calls, ['/components/standard']);
   } finally {
     await server.close();
     await rm(dir, { recursive: true, force: true });
