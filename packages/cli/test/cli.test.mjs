@@ -173,6 +173,62 @@ test('upload, probe, and reindex call platform transport paths with stable JSON'
   }
 });
 
+test('remote commands forward optional dev auth headers without defaulting production auth', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-auth-headers-'));
+  const calls = [];
+  const server = await createServer(async (req, res) => {
+    const body = await readRequestBody(req);
+    calls.push({
+      method: req.method,
+      url: req.url,
+      roles: req.headers['x-auth-roles'],
+      permissions: req.headers['x-auth-permissions'],
+      body,
+    });
+    if (req.url === '/components/standard') {
+      writeJson(res, {
+        success: true,
+        sourceVersion: 'component-standard.v0.1.0',
+        sourceHash: 'sha256:8c1e01c36155b4b646981064d24df9bd8cda501fd9cd9da93e5b62f40db22d52',
+      });
+      return;
+    }
+    if (req.url === '/components/marketplace/upload') {
+      writeJson(res, { success: true, jobId: 'build-auth', status: 'queued' });
+      return;
+    }
+    writeJson(res, { success: false, error: `unexpected path: ${req.url}` }, 404);
+  });
+  try {
+    const zipPath = path.join(dir, 'component.zip');
+    await writeFile(zipPath, 'fake component zip');
+    const upload = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'upload',
+      zipPath,
+      '--endpoint',
+      server.url,
+      '--target',
+      'project_private_generation',
+      '--auth-roles',
+      'tenant_admin,marketplace_admin',
+      '--auth-permissions',
+      'component:marketplace:write,component:marketplace:review',
+      '--json',
+    ])).stdout);
+
+    assert.equal(upload.jobId, 'build-auth');
+    assert.deepEqual(calls.map((call) => call.url), ['/components/standard', '/components/marketplace/upload']);
+    for (const call of calls) {
+      assert.equal(call.roles, 'tenant_admin,marketplace_admin');
+      assert.equal(call.permissions, 'component:marketplace:write,component:marketplace:review');
+    }
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('upload rejects unknown public authoring targets before network transport', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-upload-target-'));
   try {

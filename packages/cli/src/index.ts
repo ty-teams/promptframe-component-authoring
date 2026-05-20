@@ -695,6 +695,8 @@ function buildContextHeaders(argv: string[]): Record<string, string> {
     'x-user-id': valueAfter(argv, '--user-id') ?? stringValue(config.userId),
     'x-project-id': valueAfter(argv, '--project-id') ?? stringValue(config.projectId),
     'x-session-id': valueAfter(argv, '--session-id') ?? stringValue(config.sessionId),
+    'x-auth-roles': valueAfter(argv, '--auth-roles') ?? stringValue(process.env.PROMPTFRAME_AUTH_ROLES) ?? stringValue(config.authRoles),
+    'x-auth-permissions': valueAfter(argv, '--auth-permissions') ?? stringValue(process.env.PROMPTFRAME_AUTH_PERMISSIONS) ?? stringValue(config.authPermissions),
   });
 }
 
@@ -1253,6 +1255,8 @@ Commands:
 Endpoint resolution:
   --endpoint, PROMPTFRAME_API_BASE, REMOTION_MEDIA_API_BASE, then local config.
   The public CLI embeds no production/private endpoint defaults.
+Auth context:
+  --auth-roles / --auth-permissions or PROMPTFRAME_AUTH_ROLES / PROMPTFRAME_AUTH_PERMISSIONS for dev-header auth.
 `);
 }
 
