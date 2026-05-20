@@ -116,6 +116,7 @@ component/
 - Props must be JSON serializable and described by schema.
 - `src/preview-props.json` must render a meaningful bounded preview without asking the user for extra input.
 - `promptframe dev .` uses the template's Vite shell and Remotion Player to render `src/preview-props.json`.
+- The local preview shell may export saved preview cases into `.promptframe/local-previews/` for author regression only; these files are not source-package evidence and do not replace `src/preview-props.json`.
 - `promptframe preview . --json` only verifies the local Remotion preview envelope from `src/preview-props.json`; it does not replace platform iframe preview, probes, or render evidence.
 - Animation must be frame-driven with Remotion hooks and helpers.
 - Do not use CSS transitions/keyframes, timers, `Date.now()`, or `Math.random()`.

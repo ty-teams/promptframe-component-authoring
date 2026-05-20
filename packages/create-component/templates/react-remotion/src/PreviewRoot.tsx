@@ -13,6 +13,22 @@ const preview = previewEnvelope as {
   props?: unknown;
 };
 
+type PreviewSize = {
+  label: string;
+  width: number;
+  height: number;
+};
+
+type PreviewCase = {
+  name: string;
+  width: number;
+  height: number;
+  fps: number;
+  durationFrames: number;
+  props: ComponentProps;
+  generatedAt: string;
+};
+
 const initialPropsParse = propsSchema.safeParse(preview.props ?? {});
 const initialProps: ComponentProps = initialPropsParse.success
   ? initialPropsParse.data
@@ -24,9 +40,13 @@ const previewAspectPresets = [
   { label: '1:1', width: 960, height: 960 },
 ] as const;
 
-const initialSize =
-  previewAspectPresets.find(({ width, height }) => width === preview.width && height === preview.height) ??
-  { label: 'Custom', width: preview.width, height: preview.height };
+const matchedInitialSize = previewAspectPresets.find(
+  ({ width, height }) => width === preview.width && height === preview.height,
+);
+const initialSize: PreviewSize = matchedInitialSize
+  ? { ...matchedInitialSize }
+  : { label: 'Custom', width: preview.width, height: preview.height };
+const defaultPreviewCaseName = 'local-preview-case';
 
 const root = document.getElementById('root');
 
@@ -49,9 +69,58 @@ function coerceControlValue(currentValue: unknown, rawValue: string): unknown {
   return rawValue;
 }
 
+function normalizePreviewCaseName(name: string): string {
+  const trimmed = name.trim();
+  return trimmed.length > 0 ? trimmed : defaultPreviewCaseName;
+}
+
+function slugifyPreviewCaseName(name: string): string {
+  const slug = normalizePreviewCaseName(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug.length > 0 ? slug : defaultPreviewCaseName;
+}
+
+function buildPreviewCase({
+  name,
+  inputProps,
+  previewSize,
+}: {
+  name: string;
+  inputProps: ComponentProps;
+  previewSize: PreviewSize;
+}): PreviewCase {
+  return {
+    name: normalizePreviewCaseName(name),
+    width: previewSize.width,
+    height: previewSize.height,
+    fps: preview.fps,
+    durationFrames: preview.durationFrames,
+    props: inputProps,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+function downloadPreviewCase(previewCase: PreviewCase): string {
+  const fileName = `${slugifyPreviewCaseName(previewCase.name)}.json`;
+  const blob = new Blob([JSON.stringify(previewCase, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+
+  return fileName;
+}
+
 function PreviewApp() {
   const [inputProps, setInputProps] = useState<ComponentProps>(initialProps);
   const [previewSize, setPreviewSize] = useState(initialSize);
+  const [previewCaseName, setPreviewCaseName] = useState(defaultPreviewCaseName);
+  const [exportStatus, setExportStatus] = useState('');
 
   const updateInputProp = (key: string, rawValue: string) => {
     setInputProps((current) => {
@@ -63,6 +132,12 @@ function PreviewApp() {
       const parsed = propsSchema.safeParse(nextCandidate);
       return parsed.success ? parsed.data : current;
     });
+  };
+
+  const exportPreviewCase = () => {
+    const previewCase = buildPreviewCase({ name: previewCaseName, inputProps, previewSize });
+    const fileName = downloadPreviewCase(previewCase);
+    setExportStatus(`Exported ${fileName}. Save it under .promptframe/local-previews/.`);
   };
 
   return (
@@ -140,6 +215,56 @@ function PreviewApp() {
                 {preset.label}
               </button>
             ))}
+          </div>
+          <div
+            style={{
+              marginTop: 16,
+              borderTop: '1px solid #e2e8f0',
+              paddingTop: 16,
+              display: 'grid',
+              gap: 10,
+            }}
+          >
+            <label style={{ display: 'grid', gap: 6, fontSize: 13 }}>
+              <span style={{ color: '#334155', fontWeight: 700 }}>Preview case name</span>
+              <input
+                data-promptframe-preview-case-name
+                type="text"
+                value={previewCaseName}
+                onChange={(event) => setPreviewCaseName(event.currentTarget.value)}
+                style={{
+                  width: '100%',
+                  minWidth: 0,
+                  boxSizing: 'border-box',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 6,
+                  padding: '8px 10px',
+                  font: 'inherit',
+                }}
+              />
+            </label>
+            <button
+              data-promptframe-preview-case-export
+              type="button"
+              onClick={exportPreviewCase}
+              style={{
+                border: '1px solid #111827',
+                borderRadius: 6,
+                background: '#111827',
+                color: '#fff',
+                font: 'inherit',
+                fontWeight: 700,
+                padding: '9px 12px',
+                cursor: 'pointer',
+              }}
+            >
+              Export case
+            </button>
+            {exportStatus ? (
+              <p aria-live="polite" style={{ margin: 0, color: '#475569', fontSize: 12 }}>
+                {exportStatus}
+              </p>
+            ) : null}
           </div>
         </section>
 

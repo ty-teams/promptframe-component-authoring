@@ -106,6 +106,30 @@ test('public templates expose schema-derived local controls and aspect presets',
   }
 });
 
+test('public templates expose saved local preview case export controls', async () => {
+  for (const docPath of ['README.md', 'skills/component-authoring/SKILL.md']) {
+    const text = await readFile(path.join(repoRoot, docPath), 'utf8');
+    assert.match(text, /\.promptframe\/local-previews/, docPath);
+  }
+
+  for (const templateRoot of [
+    'templates/react-remotion',
+    'packages/create-component/templates/react-remotion',
+  ]) {
+    const previewRoot = await readFile(path.join(repoRoot, templateRoot, 'src/PreviewRoot.tsx'), 'utf8');
+    const readme = await readFile(path.join(repoRoot, templateRoot, 'README.md'), 'utf8');
+
+    assert.match(previewRoot, /buildPreviewCase/, templateRoot);
+    assert.match(previewRoot, /exportPreviewCase/, templateRoot);
+    assert.match(previewRoot, /data-promptframe-preview-case-export/, templateRoot);
+    assert.match(previewRoot, /generatedAt/, templateRoot);
+    assert.match(previewRoot, /durationFrames/, templateRoot);
+    assert.match(previewRoot, /inputProps/, templateRoot);
+    assert.match(readme, /\.promptframe\/local-previews/, templateRoot);
+    assert.match(readme, /导出|保存/, templateRoot);
+  }
+});
+
 test('public authoring docs describe the AI-first authoring boundary', async () => {
   for (const docPath of [
     'skills/component-authoring/SKILL.md',
