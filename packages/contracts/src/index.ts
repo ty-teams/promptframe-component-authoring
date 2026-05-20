@@ -315,6 +315,209 @@ export const promptFrameStyleIntentSchema = z.object({
 }).strict();
 export type PromptFrameStyleIntent = z.infer<typeof promptFrameStyleIntentSchema>;
 
+export const PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE = {
+  id: 'component.style.unknown_custom_style_prop',
+  stage: 'schema',
+  severity: 'warning',
+  message: 'Root-level private style props are not part of the public PromptFrame style contract.',
+  repairHint: 'Move visual style controls under styleIntent and consume @promptframe/component-kit/style helpers instead of custom color/theme/style props.',
+} as const;
+
+export const PROMPTFRAME_STYLE_INTENT_ROOT_PROP_NAME = 'styleIntent' as const;
+
+export const PROMPTFRAME_PRIVATE_STYLE_ROOT_PROP_NAMES = [
+  'accentColor',
+  'backgroundColor',
+  'brandColor',
+  'borderColor',
+  'color',
+  'fontFamily',
+  'foregroundColor',
+  'primaryColor',
+  'secondaryColor',
+  'style',
+  'styles',
+  'surfaceColor',
+  'textColor',
+  'theme',
+  'themeName',
+] as const;
+
+export interface PromptFrameUnknownCustomStylePropFinding {
+  ruleId: typeof PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.id;
+  propName: string;
+  severity: typeof PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.severity;
+  message: string;
+  repairHint: typeof PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.repairHint;
+}
+
+export function detectPromptFrameUnknownCustomStyleProps(schemaSourceText: string): PromptFrameUnknownCustomStylePropFinding[] {
+  const privateProps = new Set<string>(PROMPTFRAME_PRIVATE_STYLE_ROOT_PROP_NAMES);
+  return extractPromptFrameRootPropKeys(schemaSourceText)
+    .filter((propName) => privateProps.has(propName))
+    .sort((left, right) => left.localeCompare(right))
+    .map((propName) => ({
+      ruleId: PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.id,
+      propName,
+      severity: PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.severity,
+      message: `${PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.message} prop=${propName}.`,
+      repairHint: PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.repairHint,
+    }));
+}
+
+export function extractPromptFrameRootPropKeys(schemaSourceText: string): string[] {
+  const body = extractPromptFrameRootZodObjectBody(schemaSourceText);
+  if (!body) return [];
+  return splitTopLevelObjectEntries(body)
+    .map((entry) => entry.trim())
+    .map(extractObjectEntryKey)
+    .filter((key): key is string => typeof key === 'string' && key.length > 0)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function extractPromptFrameRootZodObjectBody(source: string): string | null {
+  const preferred = [
+    /\bpropsSchema\s*=\s*z\.object\s*\(/,
+    /\bschema\s*=\s*z\.object\s*\(/,
+  ];
+  const match = preferred
+    .map((pattern) => pattern.exec(source))
+    .find((item): item is RegExpExecArray => item !== null)
+    ?? /\bz\.object\s*\(/.exec(source);
+  if (!match) return null;
+  const openParenIndex = source.indexOf('(', match.index);
+  const openBraceIndex = firstNonWhitespaceIndex(source, openParenIndex + 1);
+  if (openBraceIndex < 0 || source[openBraceIndex] !== '{') return null;
+  const closeBraceIndex = findMatchingBrace(source, openBraceIndex);
+  return closeBraceIndex > openBraceIndex
+    ? source.slice(openBraceIndex + 1, closeBraceIndex)
+    : null;
+}
+
+function firstNonWhitespaceIndex(source: string, start: number): number {
+  for (let index = start; index < source.length; index += 1) {
+    if (!/\s/.test(source[index]!)) return index;
+  }
+  return -1;
+}
+
+function splitTopLevelObjectEntries(body: string): string[] {
+  const entries: string[] = [];
+  let start = 0;
+  let curlyDepth = 0;
+  let parenDepth = 0;
+  let squareDepth = 0;
+  let stringQuote: '"' | "'" | '`' | null = null;
+  let lineComment = false;
+  let blockComment = false;
+
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body[index]!;
+    const next = body[index + 1];
+    if (lineComment) {
+      if (char === '\n') lineComment = false;
+      continue;
+    }
+    if (blockComment) {
+      if (char === '*' && next === '/') {
+        blockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (stringQuote) {
+      if (char === '\\') {
+        index += 1;
+        continue;
+      }
+      if (char === stringQuote) stringQuote = null;
+      continue;
+    }
+    if (char === '/' && next === '/') {
+      lineComment = true;
+      index += 1;
+      continue;
+    }
+    if (char === '/' && next === '*') {
+      blockComment = true;
+      index += 1;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      stringQuote = char;
+      continue;
+    }
+    if (char === '{') curlyDepth += 1;
+    else if (char === '}') curlyDepth = Math.max(0, curlyDepth - 1);
+    else if (char === '(') parenDepth += 1;
+    else if (char === ')') parenDepth = Math.max(0, parenDepth - 1);
+    else if (char === '[') squareDepth += 1;
+    else if (char === ']') squareDepth = Math.max(0, squareDepth - 1);
+    else if (char === ',' && curlyDepth === 0 && parenDepth === 0 && squareDepth === 0) {
+      entries.push(body.slice(start, index));
+      start = index + 1;
+    }
+  }
+  entries.push(body.slice(start));
+  return entries;
+}
+
+function extractObjectEntryKey(entry: string): string | null {
+  const match = /^(?:['"]([^'"]+)['"]|([A-Za-z_$][\w$-]*))\s*:/.exec(entry);
+  return match?.[1] ?? match?.[2] ?? null;
+}
+
+function findMatchingBrace(source: string, openBraceIndex: number): number {
+  let depth = 0;
+  let stringQuote: '"' | "'" | '`' | null = null;
+  let lineComment = false;
+  let blockComment = false;
+
+  for (let index = openBraceIndex; index < source.length; index += 1) {
+    const char = source[index]!;
+    const next = source[index + 1];
+    if (lineComment) {
+      if (char === '\n') lineComment = false;
+      continue;
+    }
+    if (blockComment) {
+      if (char === '*' && next === '/') {
+        blockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (stringQuote) {
+      if (char === '\\') {
+        index += 1;
+        continue;
+      }
+      if (char === stringQuote) stringQuote = null;
+      continue;
+    }
+    if (char === '/' && next === '/') {
+      lineComment = true;
+      index += 1;
+      continue;
+    }
+    if (char === '/' && next === '*') {
+      blockComment = true;
+      index += 1;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      stringQuote = char;
+      continue;
+    }
+    if (char === '{') depth += 1;
+    if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+}
+
 export const authoringUploadTargetSchema = z.enum([
   'marketplace_authoring',
   'project_private_generation',
@@ -514,6 +717,7 @@ export const publicPolicyRuleIdSchema = z.enum([
   'package.no_parent_imports',
   'package.no_path_traversal',
   'evidence.schema_source_hash_present',
+  'component.style.unknown_custom_style_prop',
 ]);
 export type PublicPolicyRuleId = z.infer<typeof publicPolicyRuleIdSchema>;
 

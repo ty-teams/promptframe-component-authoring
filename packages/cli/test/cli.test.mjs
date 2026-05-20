@@ -478,6 +478,65 @@ test('check reports local reusability diagnostics for low-reuse marketplace auth
   }
 });
 
+test('validate and check report unknown private style props as authoring diagnostics', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-style-props-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(componentDir, 'src/schema.ts'), [
+      "import { z } from 'zod';",
+      'export const propsSchema = z.object({',
+      '  title: z.string(),',
+      '  theme: z.string().optional(),',
+      '  foregroundColor: z.string().optional(),',
+      '  styleIntent: z.object({',
+      '    accentColor: z.string().optional(),',
+      '  }).optional(),',
+      '});',
+      'export type ComponentProps = z.infer<typeof propsSchema>;',
+    ].join('\n'));
+
+    const validate = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'validate',
+      componentDir,
+      '--json',
+    ])).stdout);
+    assert.equal(validate.command, 'validate');
+    assert.ok(validate.checkedRuleIds.includes('component.style.unknown_custom_style_prop'));
+    assert.deepEqual(
+      validate.diagnostics
+        .filter((item) => item.code === 'component.style.unknown_custom_style_prop')
+        .map((item) => item.propName)
+        .sort(),
+      ['foregroundColor', 'theme'],
+    );
+
+    const check = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'check',
+      componentDir,
+      '--target',
+      'project_private_generation',
+      '--json',
+    ], {
+      env: {
+        ...process.env,
+        PROMPTFRAME_API_BASE: '',
+        REMOTION_MEDIA_API_BASE: '',
+        PROMPTFRAME_CONFIG: path.join(dir, 'missing-config.json'),
+      },
+    })).stdout);
+    assert.ok(check.diagnostics.some((item) => (
+      item.code === 'component.style.unknown_custom_style_prop'
+      && item.severity === 'warning'
+      && item.message.includes('theme')
+    )));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('check blocks stale remote standard source hash when endpoint is configured', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-check-sourcehash-'));
   const calls = [];
@@ -970,6 +1029,7 @@ test('local standard, doctor, and validate expose stable JSON diagnostics', asyn
       'security.forbidden.browser_apis',
       'security.no_raw_remote_url_import',
       'package.no_parent_imports',
+      'component.style.unknown_custom_style_prop',
     ]);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -1003,6 +1063,7 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
       'security.forbidden.browser_apis',
       'security.no_raw_remote_url_import',
       'package.no_parent_imports',
+      'component.style.unknown_custom_style_prop',
     ]);
 
     await writeFile(path.join(componentDir, 'package.json'), JSON.stringify({

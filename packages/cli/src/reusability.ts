@@ -1,6 +1,7 @@
 import {
   COMPONENT_REUSABILITY_CONTRACT_VERSION,
   componentReusabilityScoreSchema,
+  extractPromptFrameRootPropKeys,
   type AuthoringUploadTarget,
   type ComponentManifest,
   type ComponentReusabilityScore,
@@ -159,17 +160,7 @@ function reusabilitySignal(
 }
 
 function inferSchemaPropKeys(schemaSourceText: string): string[] {
-  const zodObjectMatch = schemaSourceText.match(/z\.object\s*\(\s*\{([\s\S]*?)\}\s*\)/);
-  const objectBody = zodObjectMatch?.[1]
-    ?? schemaSourceText.match(/export\s+const\s+\w+\s*=\s*\{([\s\S]*?)\}\s*;?/)?.[1]
-    ?? '';
-  const keys = new Set<string>();
-  const propertyRegex = /(?:^|[\s,{])(['"]?[A-Za-z_$][\w$-]*['"]?)\s*:/g;
-  let match: RegExpExecArray | null;
-  while ((match = propertyRegex.exec(objectBody)) !== null) {
-    keys.add(match[1]!.replace(/^['"]|['"]$/g, ''));
-  }
-  return [...keys].filter((key) => key.length > 0).sort();
+  return extractPromptFrameRootPropKeys(schemaSourceText);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {

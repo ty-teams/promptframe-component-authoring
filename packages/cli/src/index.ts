@@ -22,6 +22,7 @@ import {
   PROMPTFRAME_PUBLIC_SECURITY_POLICY,
   PROMPTFRAME_PUBLIC_STANDARD_POLICY,
   PROMPTFRAME_CONTRACTS_VERSION,
+  detectPromptFrameUnknownCustomStyleProps,
   authoringUploadTargetSchema,
   parseComponentManifest,
   type ComponentManifest,
@@ -61,6 +62,7 @@ const VALIDATE_CHECKED_RULE_IDS: PublicPolicyRuleId[] = [
   'security.forbidden.browser_apis',
   'security.no_raw_remote_url_import',
   'package.no_parent_imports',
+  'component.style.unknown_custom_style_prop',
 ];
 
 class PromptFrameCliError extends Error {
@@ -155,6 +157,7 @@ function doctor(argv: string[]): void {
 function validate(argv: string[]): void {
   const dir = resolve(firstPositionalArg(argv) ?? '.');
   const manifest = validateComponentDirectory(dir);
+  const diagnostics = stylePropDiagnostics(dir);
   const output = {
     command: 'validate',
     dir,
@@ -166,6 +169,7 @@ function validate(argv: string[]): void {
       componentType: manifest.componentType ?? manifest.layer,
     },
     checkedRuleIds: VALIDATE_CHECKED_RULE_IDS,
+    diagnostics,
     diagnostic: diagnostic('validate.completed', 'info', 'Component manifest and public source boundaries validated.'),
   };
   if (hasFlag(argv, '--json')) {
@@ -173,6 +177,7 @@ function validate(argv: string[]): void {
     return;
   }
   console.log(`validate passed: ${dir}`);
+  printDiagnostics(diagnostics);
 }
 
 async function check(argv: string[]): Promise<void> {
@@ -182,7 +187,10 @@ async function check(argv: string[]): Promise<void> {
   assertAuthoringPackageFreshness(dir, target);
   const freshness = await resolveSoftRemoteStandardFreshness(argv, target, 'check');
   const localReusability = evaluateDirectoryReusability(dir, manifest, target);
-  const diagnostics = reusabilityDiagnostics(localReusability);
+  const diagnostics = [
+    ...reusabilityDiagnostics(localReusability),
+    ...stylePropDiagnostics(dir),
+  ];
   const output = {
     command: 'check',
     dir,
@@ -420,7 +428,12 @@ async function uploadComponent(argv: string[]): Promise<void> {
           localReusability = reusability;
         },
       );
-  const localDiagnostics = localReusability ? reusabilityDiagnostics(localReusability) : undefined;
+  const localDiagnostics = localReusability
+    ? [
+        ...reusabilityDiagnostics(localReusability),
+        ...stylePropDiagnostics(target),
+      ]
+    : undefined;
   const endpoint = resolveEndpoint('upload', argv);
   await assertRemoteStandardFreshness(endpoint, argv);
   const file = readFileSync(artifact.out);
@@ -775,6 +788,17 @@ function evaluateDirectoryReusability(
     schemaSourceText: readIfExists(join(dir, manifest.entry.propsSchemaPath)),
     previewProps: readPreviewProps(dir),
   });
+}
+
+function stylePropDiagnostics(dir: string): Array<LocalReusabilityDiagnostic & { propName: string }> {
+  return detectPromptFrameUnknownCustomStyleProps(readIfExists(join(dir, 'src/schema.ts')))
+    .map((finding) => ({
+      code: finding.ruleId,
+      severity: finding.severity,
+      message: finding.message,
+      repairHint: finding.repairHint,
+      propName: finding.propName,
+    }));
 }
 
 function parsePort(value: string): number {
