@@ -12,6 +12,7 @@ export const COMPONENT_SECURITY_POLICY_VERSION = 'component-security-policy.v0.1
 export const PROMPTFRAME_STYLE_CONTRACT_VERSION = 'promptframe-style.v0.1.0' as const;
 export const AUTHORING_STANDARD_RELEASE_VERSION = 'authoring-standard-release.v0.1.0' as const;
 export const COMPONENT_REUSABILITY_CONTRACT_VERSION = 'component-reusability.v0.1.0' as const;
+export const COMPONENT_DEPENDENCY_POLICY_VERSION = 'component-dependency-policy.v0.1.0' as const;
 
 export const PROMPTFRAME_PUBLIC_STANDARD_POLICY = {
   policyVersion: COMPONENT_STANDARD_POLICY_VERSION,
@@ -230,6 +231,178 @@ export const PROMPTFRAME_PUBLIC_SECURITY_POLICY = {
     },
   ],
 } as const;
+
+export const PROMPTFRAME_PUBLIC_DEPENDENCY_POLICY = {
+  policyVersion: COMPONENT_DEPENDENCY_POLICY_VERSION,
+  lanes: [
+    'platform_core',
+    'reviewed_visual',
+    'requested_dependency',
+    'native_or_scripted',
+    'unknown_unlocked',
+  ],
+  catalog: {
+    platformCore: [
+      '@promptframe/cli',
+      '@promptframe/component-kit',
+      '@promptframe/contracts',
+      'react',
+      'react-dom',
+      'remotion',
+      'zod',
+    ],
+    reviewedVisual: [
+      'lucide-react',
+      'three',
+    ],
+  },
+  forbiddenLifecycleScripts: ['preinstall', 'install', 'postinstall', 'prepare'],
+  nativeOrPrebuildPackageSignals: [
+    'node-gyp',
+    'node-pre-gyp',
+    'prebuild',
+    'prebuild-install',
+    'node-addon-api',
+    'nan',
+  ],
+  forbiddenVersionSpecifiers: [
+    'latest',
+    '*',
+    'workspace:',
+    'file:',
+    'link:',
+    'git+',
+    'http:',
+    'https:',
+  ],
+  sandboxInstall: {
+    required: true,
+    requiredFlags: ['--ignore-scripts', '--frozen-lockfile'],
+    runInMainService: false,
+  },
+} as const;
+
+export type PromptFrameDependencyLane =
+  | 'platform_core'
+  | 'reviewed_visual'
+  | 'requested_dependency'
+  | 'native_or_scripted'
+  | 'unknown_unlocked';
+
+export type PromptFrameDependencyPolicyStatus = 'allow' | 'manual_review' | 'reject';
+
+export interface EvaluatePromptFrameDependencyPolicyInput {
+  packageJson: unknown;
+  lockfilePresent: boolean;
+  catalog?: {
+    platformCore: readonly string[];
+    reviewedVisual: readonly string[];
+  };
+}
+
+export interface PromptFrameDependencyPolicyReceipt {
+  policyVersion: typeof COMPONENT_DEPENDENCY_POLICY_VERSION;
+  status: PromptFrameDependencyPolicyStatus;
+  lane: PromptFrameDependencyLane;
+  quarantine: boolean;
+  publicSearchableAllowed: boolean;
+  dependencies: Array<{
+    name: string;
+    version: string;
+    dependencySet: string;
+    lane: PromptFrameDependencyLane;
+  }>;
+  sandboxInstall: {
+    required: true;
+    requiredFlags: ['--ignore-scripts', '--frozen-lockfile'];
+    runInMainService: false;
+  };
+  diagnostics: ComponentDiagnostic[];
+}
+
+export function evaluatePromptFrameDependencyPolicy(
+  input: EvaluatePromptFrameDependencyPolicyInput,
+): PromptFrameDependencyPolicyReceipt {
+  const catalog = input.catalog ?? PROMPTFRAME_PUBLIC_DEPENDENCY_POLICY.catalog;
+  const packageJson = asRecord(input.packageJson);
+  const scripts = asStringRecord(packageJson.scripts);
+  const dependencies = collectDependencyRows(packageJson).map((dependency) => ({
+    ...dependency,
+    lane: dependencyLane(dependency.name, catalog),
+  }));
+  const diagnostics: ComponentDiagnostic[] = [];
+
+  for (const scriptName of Object.keys(scripts)) {
+    if ((PROMPTFRAME_PUBLIC_DEPENDENCY_POLICY.forbiddenLifecycleScripts as readonly string[]).includes(scriptName)) {
+      diagnostics.push(dependencyDiagnostic(
+        'dependency.install.script_forbidden',
+        `package.json scripts.${scriptName} is forbidden for PromptFrame component packages.`,
+        'Remove install lifecycle scripts. Platform installs always use --ignore-scripts inside a sandbox worker.',
+      ));
+    }
+  }
+
+  if (Object.values(scripts).some((script) => /(?:^|\s)(node-gyp|prebuild-install|node-pre-gyp|cmake-js)(?:\s|$)/i.test(script))) {
+    diagnostics.push(dependencyDiagnostic(
+      'dependency.install.native_forbidden',
+      'package.json scripts contain native build or prebuild indicators.',
+      'Remove native addon / prebuild flows; marketplace components must stay browser-renderable and auditable.',
+    ));
+  }
+
+  for (const dependency of dependencies) {
+    if ((PROMPTFRAME_PUBLIC_DEPENDENCY_POLICY.nativeOrPrebuildPackageSignals as readonly string[]).includes(dependency.name)) {
+      diagnostics.push(dependencyDiagnostic(
+        'dependency.install.native_forbidden',
+        `Dependency ${dependency.name} is treated as native/prebuild and is forbidden.`,
+        'Remove native addon / prebuild dependencies or request manual platform security review.',
+      ));
+    }
+    if (isForbiddenVersionSpecifier(dependency.version)) {
+      diagnostics.push(dependencyDiagnostic(
+        'dependency.install.unlocked_version',
+        `Dependency ${dependency.name}@${dependency.version} is not acceptable for PromptFrame component packages.`,
+        'Use registry semver ranges backed by a lockfile; latest, wildcard, workspace/file/link/git/http specs are forbidden.',
+      ));
+    }
+  }
+
+  if (!input.lockfilePresent && dependencies.length > 0) {
+    diagnostics.push(dependencyDiagnostic(
+      'dependency.install.lockfile_required',
+      'Component dependency install requires a package manager lockfile.',
+      'Commit pnpm-lock.yaml / package-lock.json / yarn.lock / bun.lock and use frozen lockfile installs.',
+    ));
+  }
+
+  for (const dependency of dependencies) {
+    if (dependency.lane === 'requested_dependency') {
+      diagnostics.push(dependencyDiagnostic(
+        'dependency.catalog.unknown_dependency',
+        `Dependency ${dependency.name} is not in the reviewed PromptFrame dependency catalog.`,
+        'Unknown dependencies enter manual_review / quarantine and cannot become public searchable until reviewed.',
+        'warning',
+      ));
+    }
+  }
+
+  const lane = aggregateDependencyLane(dependencies.map((dependency) => dependency.lane), diagnostics);
+  const status = dependencyPolicyStatus(diagnostics);
+  return {
+    policyVersion: COMPONENT_DEPENDENCY_POLICY_VERSION,
+    status,
+    lane,
+    quarantine: status === 'manual_review',
+    publicSearchableAllowed: status === 'allow',
+    dependencies,
+    sandboxInstall: {
+      required: true,
+      requiredFlags: ['--ignore-scripts', '--frozen-lockfile'],
+      runInMainService: false,
+    },
+    diagnostics,
+  };
+}
 
 export const sha256Schema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 export const nonEmptyStringSchema = z.string().trim().min(1);
@@ -832,4 +1005,86 @@ export function parseComponentManifest(input: unknown): ComponentManifest {
 
 export function parseComponentRef(input: unknown): ComponentRef {
   return componentRefSchema.parse(input);
+}
+
+function collectDependencyRows(packageJson: Record<string, unknown>): Array<{
+  name: string;
+  version: string;
+  dependencySet: string;
+}> {
+  const result = new Map<string, { name: string; version: string; dependencySet: string }>();
+  for (const dependencySet of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
+    const dependencies = asStringRecord(packageJson[dependencySet]);
+    for (const [name, version] of Object.entries(dependencies)) {
+      result.set(name, { name, version, dependencySet });
+    }
+  }
+  return [...result.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function dependencyLane(
+  name: string,
+  catalog: { platformCore: readonly string[]; reviewedVisual: readonly string[] },
+): PromptFrameDependencyLane {
+  if (catalog.platformCore.includes(name)) return 'platform_core';
+  if (catalog.reviewedVisual.includes(name)) return 'reviewed_visual';
+  return 'requested_dependency';
+}
+
+function isForbiddenVersionSpecifier(version: string): boolean {
+  const normalized = version.trim().toLowerCase();
+  if (PROMPTFRAME_PUBLIC_DEPENDENCY_POLICY.forbiddenVersionSpecifiers.some((prefix) => normalized.startsWith(prefix))) {
+    return true;
+  }
+  return normalized === '' || normalized === '*' || normalized === 'latest';
+}
+
+function aggregateDependencyLane(
+  lanes: PromptFrameDependencyLane[],
+  diagnostics: ComponentDiagnostic[],
+): PromptFrameDependencyLane {
+  if (diagnostics.some((diagnostic) => diagnostic.code === 'dependency.install.script_forbidden'
+    || diagnostic.code === 'dependency.install.native_forbidden')) {
+    return 'native_or_scripted';
+  }
+  if (diagnostics.some((diagnostic) => diagnostic.code === 'dependency.install.unlocked_version'
+    || diagnostic.code === 'dependency.install.lockfile_required')) {
+    return 'unknown_unlocked';
+  }
+  if (lanes.includes('requested_dependency')) return 'requested_dependency';
+  if (lanes.includes('reviewed_visual')) return 'reviewed_visual';
+  return 'platform_core';
+}
+
+function dependencyPolicyStatus(diagnostics: ComponentDiagnostic[]): PromptFrameDependencyPolicyStatus {
+  if (diagnostics.some((diagnostic) => diagnostic.severity === 'error')) return 'reject';
+  if (diagnostics.some((diagnostic) => diagnostic.severity === 'warning')) return 'manual_review';
+  return 'allow';
+}
+
+function dependencyDiagnostic(
+  code: string,
+  message: string,
+  repairHint: string,
+  severity: ComponentDiagnostic['severity'] = 'error',
+): ComponentDiagnostic {
+  return {
+    code,
+    severity,
+    stage: 'package',
+    message,
+    repairHint,
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function asStringRecord(value: unknown): Record<string, string> {
+  const record = asRecord(value);
+  return Object.fromEntries(
+    Object.entries(record).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+  );
 }

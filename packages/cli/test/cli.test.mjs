@@ -773,6 +773,92 @@ test('validate and package ignore package manager lockfiles', async () => {
   }
 });
 
+test('validate blocks install scripts before package or upload transport', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-dependency-install-script-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(componentDir, 'package.json'), JSON.stringify({
+      name: 'fixture-component',
+      version: '0.1.0',
+      scripts: {
+        postinstall: 'node scripts/install.js',
+      },
+      dependencies: {
+        react: '^19.1.0',
+        '@promptframe/contracts': '^0.1.7',
+        '@promptframe/component-kit': '^0.1.7',
+      },
+      devDependencies: {
+        '@promptframe/cli': '^0.1.19',
+      },
+    }, null, 2));
+    await writeFile(path.join(componentDir, 'pnpm-lock.yaml'), 'lockfileVersion: "9.0"\n');
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'validate',
+        componentDir,
+        '--json',
+      ]),
+      (error) => {
+        assert.equal(error.code, 1);
+        const payload = JSON.parse(error.stderr);
+        assert.equal(payload.command, 'validate');
+        assert.equal(payload.diagnostic.code, 'dependency.install.script_forbidden');
+        assert.equal(payload.retryable, false);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('check reports dependency quarantine without marking it public searchable', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-dependency-quarantine-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(componentDir, 'package.json'), JSON.stringify({
+      name: 'fixture-component',
+      version: '0.1.0',
+      dependencies: {
+        react: '^19.1.0',
+        '@unknown/visual-engine': '1.2.3',
+        '@promptframe/contracts': '^0.1.7',
+        '@promptframe/component-kit': '^0.1.7',
+      },
+      devDependencies: {
+        '@promptframe/cli': '^0.1.19',
+      },
+    }, null, 2));
+    await writeFile(path.join(componentDir, 'pnpm-lock.yaml'), 'lockfileVersion: "9.0"\n');
+
+    const payload = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'check',
+      componentDir,
+      '--json',
+    ], {
+      env: {
+        ...process.env,
+        PROMPTFRAME_API_BASE: '',
+        REMOTION_MEDIA_API_BASE: '',
+      },
+    })).stdout);
+
+    assert.equal(payload.command, 'check');
+    assert.equal(payload.dependencyPolicy.status, 'manual_review');
+    assert.equal(payload.dependencyPolicy.quarantine, true);
+    assert.equal(payload.dependencyPolicy.publicSearchableAllowed, false);
+    assert.ok(payload.diagnostics.some((item) => item.code === 'dependency.catalog.unknown_dependency'));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('preview exposes a local Remotion preview envelope without a platform endpoint', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-preview-'));
   try {
@@ -1370,6 +1456,7 @@ async function writeFixtureComponent(componentDir) {
         '@promptframe/cli': '^0.1.10',
       },
     }),
+    'pnpm-lock.yaml': 'lockfileVersion: "9.0"\n',
     'manifest.json': JSON.stringify({
       schemaVersion: 'component-manifest.v0.1.0',
       standardVersion: 'component-standard.v0.1.0',

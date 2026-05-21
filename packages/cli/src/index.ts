@@ -22,13 +22,17 @@ import {
   PROMPTFRAME_PUBLIC_SECURITY_POLICY,
   PROMPTFRAME_PUBLIC_STANDARD_POLICY,
   PROMPTFRAME_CONTRACTS_VERSION,
+  PROMPTFRAME_PUBLIC_DEPENDENCY_POLICY,
   detectPromptFrameUnknownCustomStyleProps,
+  evaluatePromptFrameDependencyPolicy,
   authoringUploadTargetSchema,
   parseComponentManifest,
   type ComponentManifest,
+  type ComponentDiagnostic,
   type AuthoringStandardFreshnessDecision,
   type AuthoringUploadTarget,
   type PublicPolicyRuleId,
+  type PromptFrameDependencyPolicyReceipt,
 } from '@promptframe/contracts';
 import {
   applyPackageChanges,
@@ -128,6 +132,8 @@ function standard(): void {
     supportedComponentTypes: PROMPTFRAME_AUTHORING_STANDARD_RELEASE.supportedComponentTypes,
     standardPolicyVersion: PROMPTFRAME_PUBLIC_STANDARD_POLICY.policyVersion,
     securityPolicyVersion: PROMPTFRAME_PUBLIC_SECURITY_POLICY.policyVersion,
+    dependencyPolicyVersion: PROMPTFRAME_PUBLIC_DEPENDENCY_POLICY.policyVersion,
+    dependencyPolicy: PROMPTFRAME_PUBLIC_DEPENDENCY_POLICY,
     previewLimits: PROMPTFRAME_PUBLIC_STANDARD_POLICY.previewLimits,
     authoringStandardRelease: PROMPTFRAME_AUTHORING_STANDARD_RELEASE,
     freshness: buildFreshnessDecision(
@@ -157,7 +163,11 @@ function doctor(argv: string[]): void {
 function validate(argv: string[]): void {
   const dir = resolve(firstPositionalArg(argv) ?? '.');
   const manifest = validateComponentDirectory(dir);
-  const diagnostics = stylePropDiagnostics(dir);
+  const dependencyPolicy = evaluateDirectoryDependencyPolicy(dir);
+  const diagnostics = [
+    ...stylePropDiagnostics(dir),
+    ...dependencyPolicy.diagnostics,
+  ];
   const output = {
     command: 'validate',
     dir,
@@ -169,6 +179,7 @@ function validate(argv: string[]): void {
       componentType: manifest.componentType ?? manifest.layer,
     },
     checkedRuleIds: VALIDATE_CHECKED_RULE_IDS,
+    dependencyPolicy,
     diagnostics,
     diagnostic: diagnostic('validate.completed', 'info', 'Component manifest and public source boundaries validated.'),
   };
@@ -187,9 +198,11 @@ async function check(argv: string[]): Promise<void> {
   assertAuthoringPackageFreshness(dir, target);
   const freshness = await resolveSoftRemoteStandardFreshness(argv, target, 'check');
   const localReusability = evaluateDirectoryReusability(dir, manifest, target);
+  const dependencyPolicy = evaluateDirectoryDependencyPolicy(dir);
   const diagnostics = [
     ...reusabilityDiagnostics(localReusability),
     ...stylePropDiagnostics(dir),
+    ...dependencyPolicy.diagnostics,
   ];
   const output = {
     command: 'check',
@@ -198,6 +211,7 @@ async function check(argv: string[]): Promise<void> {
     checkedRuleIds: VALIDATE_CHECKED_RULE_IDS,
     freshness,
     localReusability,
+    dependencyPolicy,
     diagnostics,
     diagnostic: diagnostic('check.completed', 'info', 'Component authoring checks completed.'),
   };
@@ -341,6 +355,7 @@ function packageComponent(argv: string[]): void {
 
 function validateComponentDirectory(dir: string): ComponentManifest {
   assertRequiredFiles(dir);
+  assertDependencyPolicyAccepted(evaluateDirectoryDependencyPolicy(dir));
   const manifestPath = join(dir, 'manifest.json');
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
   const parsed = parseComponentManifest(normalizeLegacyManifest(manifest));
@@ -370,6 +385,33 @@ function readPackageManifest(path: string): ComponentPackageJson {
   } catch {
     fail('package.json must be valid JSON before running upgrade.', 'upgrade.package_json.invalid');
   }
+}
+
+function evaluateDirectoryDependencyPolicy(dir: string): PromptFrameDependencyPolicyReceipt {
+  return evaluatePromptFrameDependencyPolicy({
+    packageJson: readPackageManifest(join(dir, 'package.json')),
+    lockfilePresent: hasPackageManagerLockfile(dir),
+  });
+}
+
+function hasPackageManagerLockfile(dir: string): boolean {
+  return [
+    'pnpm-lock.yaml',
+    'package-lock.json',
+    'npm-shrinkwrap.json',
+    'yarn.lock',
+    'bun.lock',
+    'bun.lockb',
+  ].some((fileName) => existsSync(join(dir, fileName)));
+}
+
+function assertDependencyPolicyAccepted(receipt: PromptFrameDependencyPolicyReceipt): void {
+  if (receipt.status !== 'reject') return;
+  const first = receipt.diagnostics[0];
+  fail(
+    first?.message ?? 'PromptFrame dependency policy rejected this component package.',
+    first?.code ?? 'dependency.policy.rejected',
+  );
 }
 
 function packageDirectory(componentDir: string, outArg?: string): { out: string; sizeBytes: number; sha256: string } {
@@ -1167,7 +1209,7 @@ function diagnostic(
   return { code, severity, message };
 }
 
-function printDiagnostics(diagnostics: LocalReusabilityDiagnostic[]): void {
+function printDiagnostics(diagnostics: Array<LocalReusabilityDiagnostic | ComponentDiagnostic>): void {
   for (const item of diagnostics) {
     console.log(`${item.severity.toUpperCase()} ${item.code}: ${item.message}`);
     if (item.repairHint) console.log(`Hint: ${item.repairHint}`);
