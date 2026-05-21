@@ -5,7 +5,7 @@ This repository is safe to publish only if it stays limited to component authori
 ## Allowed
 
 - Public TypeScript contracts for component manifests, component references, diagnostics, layout capability, and authoring metadata.
-- Public helper code for building Remotion components.
+- Public helper code for building PromptFrame-compatible video components.
 - CLI code for authoring, validation, packaging, upload/status calls, and probe requests.
 - Component templates, examples, README files, and public authoring skills.
 - Public npm and GitHub Actions release configuration using OIDC / Trusted Publishing.

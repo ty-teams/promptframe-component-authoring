@@ -1,10 +1,10 @@
 # 组件市场时序 SSOT 规则
 
-> 本文件是 PromptFrame 组件作者的公开时序规则，说明组件市场场景下如何保持确定性 Remotion 动画和时长自适应。
+> 本文件是 PromptFrame 组件作者的公开时序规则，说明组件市场场景下如何保持确定性 frame-driven 动画和时长自适应。
 
 ## 一句话结论
 
-组件市场组件必须和内置 Remotion 组件共用同一套时序心智：
+组件市场组件必须和平台内置视频组件共用同一套时序心智：
 
 - `designedDurationRange` 是组件舒服播放的设计区间。
 - `durationFrames` 是本次使用场景给它的实际时长。
@@ -57,7 +57,7 @@
 
 这样 npm 包是可靠且轻量的；不建议让市场组件依赖平台内部 renderer，那会把内部实现、体积和破坏性升级都带给组件作者。
 
-在 `component-kit` 落地前，组件市场 skill 必须明文引用项目级时序规则，并由模板 README 告诉组件作者：先按 manifest 的 `designedDurationRange` 和 Remotion 帧驱动写确定性动画，不要引入 CSS 动画、计时器或真实时间。
+在 `component-kit` 落地前，组件市场 skill 必须明文引用项目级时序规则，并由模板 README 告诉组件作者：先按 manifest 的 `designedDurationRange` 和 frame-driven 方式写确定性动画，不要引入 CSS 动画、计时器或真实时间。
 
 ## 上传验收应检查什么
 

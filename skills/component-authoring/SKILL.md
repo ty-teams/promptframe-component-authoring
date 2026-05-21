@@ -1,6 +1,6 @@
 ---
 name: component-authoring
-description: Build, validate, package, upload, and debug PromptFrame marketplace/private Remotion components. Use this skill for external CodingAI and Director coding mode when authoring user components.
+description: Build, validate, package, upload, and debug PromptFrame marketplace/private video components. Use this skill for external CodingAI and Director coding mode when authoring user components.
 runtime: developer
 visibility: public
 audience: coding-ai
@@ -20,7 +20,7 @@ The CodingAI must not read PromptFrame internal platform source, agent board, RE
 
 ## Read First
 
-- [rules/timing-ssot.md](rules/timing-ssot.md): deterministic Remotion timing and duration adaptation.
+- [rules/timing-ssot.md](rules/timing-ssot.md): deterministic frame timing and duration adaptation.
 - [rules/search-metadata.md](rules/search-metadata.md): how metadata, schema, source evidence, visual evidence, and feedback affect component search.
 - [rules/schema-recipes.md](rules/schema-recipes.md): schema patterns for metrics, comparisons, funnels, and deltas.
 
@@ -30,7 +30,7 @@ Use:
 
 - React
 - TypeScript
-- Remotion
+- Platform-compatible frame-driven video runtime
 - Zod props schema
 - `@promptframe/component-kit`
 - `@promptframe/contracts`
@@ -62,9 +62,9 @@ npx promptframe upload . --endpoint <promptframe-api-base>
 npx promptframe status <buildId> --endpoint <promptframe-api-base>
 ```
 
-Do not guess private service addresses. If no endpoint is provided, finish local Remotion Player preview, validation, and local preview envelope checks, then report the missing endpoint.
+Do not guess private service addresses. If no endpoint is provided, finish local video preview, validation, and local preview envelope checks, then report the missing endpoint.
 
-Automation can add `--json` to `standard`, `doctor`, `validate`, `check`, `upgrade`, `preview`, `upload`, `status`, `reindex`, and `probe`. Use `dev --dry-run --json` to inspect the Remotion Player dev command without starting a long-running server. Use `upgrade --dry-run --json` to inspect package floor changes before editing. Read `diagnostic.code`, `checkedRuleIds`, `failureReason`, and `retryable` instead of scraping prose logs.
+Automation can add `--json` to `standard`, `doctor`, `validate`, `check`, `upgrade`, `preview`, `upload`, `status`, `reindex`, and `probe`. Use `dev --dry-run --json` to inspect the local preview command without starting a long-running server. Use `upgrade --dry-run --json` to inspect package floor changes before editing. Read `diagnostic.code`, `checkedRuleIds`, `failureReason`, and `retryable` instead of scraping prose logs.
 
 ## Component Types
 
@@ -115,12 +115,12 @@ component/
 
 - Props must be JSON serializable and described by schema.
 - `src/preview-props.json` must render a meaningful bounded preview without asking the user for extra input.
-- `promptframe dev .` uses the template's Vite shell and Remotion Player to render `src/preview-props.json`.
+- `promptframe dev .` uses the template's Vite shell to render `src/preview-props.json`.
 - The local preview shell may generate bounded preview cases from `@promptframe/component-kit/preview`, apply only cases that pass `propsSchema.safeParse`, and export saved preview cases into `.promptframe/local-previews/` for author regression only; these files are not source-package evidence and do not replace `src/preview-props.json`.
-- `promptframe preview . --json` only verifies the local Remotion preview envelope from `src/preview-props.json`; it does not replace platform iframe preview, probes, or render evidence.
-- Animation must be frame-driven with Remotion hooks and helpers.
+- `promptframe preview . --json` only verifies the local preview envelope from `src/preview-props.json`; it does not replace platform iframe preview, probes, or render evidence.
+- Animation must be frame-driven with the platform-compatible hooks and helpers exposed by the template.
 - Do not use CSS transitions/keyframes, timers, `Date.now()`, or `Math.random()`.
-- Use Remotion media primitives rather than browser-native media tags.
+- Use the template's media primitives rather than browser-native media tags.
 - Do not import files outside the component directory.
 - Do not access browser storage, cookies, clipboard, camera, microphone, filesystem, process env, or child processes.
 - Do not use raw `fetch`, XHR, WebSocket, Beacon, or remote script imports unless the platform provides an explicit mediated API and allowlist.
@@ -130,7 +130,7 @@ component/
 When `promptframe validate --json` or platform admission returns one of these diagnostics, fix source code rather than editing metadata or search text:
 
 - `doctor.required_files.missing`: restore `manifest.json`, `package.json`, `src/Component.tsx`, `src/schema.ts`, `src/index.ts`, and `src/preview-props.json`.
-- `component_standard.source.no_math_random`: replace `Math.random()` with props, frame-derived values, or Remotion `random(seed)`.
+- `component_standard.source.no_math_random`: replace `Math.random()` with props, frame-derived values, or deterministic seeded helpers.
 - `code.eval`, `code.new_function`, `code.string_timer`: remove dynamic string execution; component logic must be deterministic TypeScript/React code.
 - `network.raw_fetch`: remove raw `fetch`, XHR, WebSocket, EventSource, or Beacon calls unless the platform provides a mediated allowlisted API.
 - `prompt.injection_string`: remove comments, README text, or strings that ask the platform to ignore rules, rank the component first, auto-approve, or change admission behavior.

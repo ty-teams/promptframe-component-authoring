@@ -14,7 +14,7 @@
     "name": "Local User"
   },
   "description": "__DESCRIPTION__",
-  "tags": ["custom", "marketplace", "remotion"],
+  "tags": ["custom", "marketplace", "video"],
   "designedDurationRange": {
     "min": 90,
     "max": 180

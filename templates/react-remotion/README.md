@@ -1,6 +1,6 @@
 # __DISPLAY_NAME__
 
-平台标准 Remotion 组件市场组件。
+PromptFrame 标准视频组件模板。
 
 ## AI-first 作者边界
 
@@ -34,7 +34,7 @@ npx promptframe status <buildId> --endpoint <promptframe-api-base>
 
 ## 必需文件
 
-- `src/Component.tsx`：确定性的 Remotion 组件。
+- `src/Component.tsx`：确定性的 frame-driven React 组件。
 - `src/schema.ts`：Zod props schema（参数 schema）和默认 props。
 - `src/preview-props.json`：有边界的默认预览参数。
 - `manifest.json`：组件身份、版本、分类、审核状态和 hash 信息。
@@ -60,7 +60,7 @@ npx promptframe status <buildId> --endpoint <promptframe-api-base>
 
 动态数据组件可以参考 PromptFrame authoring skill 的 `rules/schema-recipes.md`，里面有增长指标、对比指标、漏斗阶段和正负 delta 的推荐 schema 写法。
 
-本地 Remotion Player 预览、校验和 preview envelope 检查通过后，使用 `@promptframe/cli` 上传。
+本地视频预览、校验和 preview envelope 检查通过后，使用 `@promptframe/cli` 上传。
 
 ## 安全策略
 
@@ -74,7 +74,7 @@ npx promptframe status <buildId> --endpoint <promptframe-api-base>
 
 ## 上传与状态
 
-本地 `promptframe dev .` 会启动 Vite 预览壳，并在浏览器里用 Remotion Player 渲染 `src/preview-props.json`。`preview` envelope 检查读取同一个文件，确认 Remotion 预览尺寸、帧率、时长和 props 边界。它们不运行自定义 runtime，也不能替代平台 iframe preview / probe / render evidence。
+本地 `promptframe dev .` 会启动 Vite 预览壳，并在浏览器里渲染 `src/preview-props.json`。`preview` envelope 检查读取同一个文件，确认预览尺寸、帧率、时长和 props 边界。它们不运行自定义 runtime，也不能替代平台 iframe preview / probe / render evidence。
 
 预览壳右侧可以临时调整 props、切换画幅，并点击 `Export case` 导出当前本地预览 JSON。它还会通过 `@promptframe/component-kit/preview` 自动生成一组 bounded preview cases，包括 16:9、9:16、1:1 和基于默认 props 的文本/数字/布尔边界样本；这些样本仍会经过 `propsSchema.safeParse`，不会绕过 schema。建议把导出的文件保存到 `.promptframe/local-previews/<name>.json`，用于作者本地回归；然后运行 `promptframe preview . --write-local-report --json` 生成 `.promptframe/local-previews/preview-report.json`，记录 canonical preview 与本地 saved cases 的 hash。该目录只作为本地草稿，不进入上传 source package，平台验收仍以 `src/preview-props.json`、schema 和服务端 admission 结果为准。
 
