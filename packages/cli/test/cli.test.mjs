@@ -786,11 +786,11 @@ test('validate blocks install scripts before package or upload transport', async
       },
       dependencies: {
         react: '^19.1.0',
-        '@promptframe/contracts': '^0.1.7',
+        '@promptframe/contracts': '^0.1.8',
         '@promptframe/component-kit': '^0.1.7',
       },
       devDependencies: {
-        '@promptframe/cli': '^0.1.19',
+        '@promptframe/cli': '^0.1.20',
       },
     }, null, 2));
     await writeFile(path.join(componentDir, 'pnpm-lock.yaml'), 'lockfileVersion: "9.0"\n');
@@ -827,11 +827,11 @@ test('check reports dependency quarantine without marking it public searchable',
       dependencies: {
         react: '^19.1.0',
         '@unknown/visual-engine': '1.2.3',
-        '@promptframe/contracts': '^0.1.7',
+        '@promptframe/contracts': '^0.1.8',
         '@promptframe/component-kit': '^0.1.7',
       },
       devDependencies: {
-        '@promptframe/cli': '^0.1.19',
+        '@promptframe/cli': '^0.1.20',
       },
     }, null, 2));
     await writeFile(path.join(componentDir, 'pnpm-lock.yaml'), 'lockfileVersion: "9.0"\n');

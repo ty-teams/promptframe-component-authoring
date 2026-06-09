@@ -15,7 +15,7 @@ test('dependency policy allows reviewed dependencies when a lockfile exists', ()
         three: '^0.177.0',
       },
       devDependencies: {
-        '@promptframe/cli': '^0.1.19',
+        '@promptframe/cli': '^0.1.20',
       },
     },
     lockfilePresent: true,
