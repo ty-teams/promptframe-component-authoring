@@ -3,6 +3,7 @@
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -97,6 +98,15 @@ async function run(name: string, argv: string[]): Promise<void> {
       break;
     case 'dev':
       await dev(argv);
+      break;
+    case 'login':
+      await login(argv);
+      break;
+    case 'whoami':
+      await whoami(argv);
+      break;
+    case 'logout':
+      await logout(argv);
       break;
     case 'package':
       packageComponent(argv);
@@ -485,7 +495,7 @@ async function uploadComponent(argv: string[]): Promise<void> {
     method: 'POST',
     body: form,
     headers: {
-      ...buildContextHeaders(argv),
+      ...buildRemoteHeaders(endpoint, argv),
       'x-promptframe-upload-target': uploadTarget,
     },
   }, 'upload.http.failed');
@@ -542,7 +552,7 @@ function assertAuthoringZipPackageFreshness(path: string, target: AuthoringUploa
 
 async function assertRemoteStandardFreshness(endpoint: string, argv: string[]): Promise<void> {
   const payload = await fetchJson(`${endpoint}/components/standard`, {
-    headers: buildContextHeaders(argv),
+    headers: buildRemoteHeaders(endpoint, argv),
   }, 'standard.freshness.fetch_failed');
   const remoteSourceHash = extractRemoteStandardSourceHash(payload);
   if (!remoteSourceHash) {
@@ -569,7 +579,7 @@ async function resolveSoftRemoteStandardFreshness(
   let payload: Record<string, unknown>;
   try {
     payload = await fetchJson(`${endpoint}/components/standard`, {
-      headers: buildContextHeaders(argv),
+      headers: buildRemoteHeaders(endpoint, argv, { requireAuth: false }),
     }, 'standard.freshness.fetch_failed');
   } catch {
     return buildFreshnessWarningDecision(
@@ -628,7 +638,7 @@ async function showStatus(argv: string[]): Promise<void> {
   const buildId = requiredArg(argv[0], 'status requires a build id', 'status.build_id.missing');
   const endpoint = resolveEndpoint('status', argv);
   const payload = await fetchJson(`${endpoint}/components/marketplace/builds/${encodeURIComponent(buildId)}`, {
-    headers: buildContextHeaders(argv),
+    headers: buildRemoteHeaders(endpoint, argv),
   }, 'status.http.failed');
   const output = {
     ...payload,
@@ -654,7 +664,7 @@ async function reindexEvidence(argv: string[]): Promise<void> {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      ...buildContextHeaders(argv),
+      ...buildRemoteHeaders(endpoint, argv),
     },
     body: JSON.stringify(body),
   }, 'reindex.http.failed');
@@ -681,7 +691,7 @@ async function runProbe(argv: string[]): Promise<void> {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      ...buildContextHeaders(argv),
+      ...buildRemoteHeaders(endpoint, argv),
     },
     body: JSON.stringify({ level }),
   }, 'probe.http.failed');
@@ -701,6 +711,113 @@ async function runProbe(argv: string[]): Promise<void> {
     const diagnosticItem = asRecord(item);
     console.log(`${stringValue(diagnosticItem?.severity)?.toUpperCase() ?? 'INFO'} ${stringValue(diagnosticItem?.code) ?? 'unknown'}: ${stringValue(diagnosticItem?.message) ?? ''}`);
   }
+}
+
+async function login(argv: string[]): Promise<void> {
+  const endpoint = resolveEndpoint('login', argv);
+  const tokenSecret = valueAfter(argv, '--token')
+    ?? process.env.PROMPTFRAME_CLI_TOKEN
+    ?? process.env.PROMPTFRAME_CI_TOKEN;
+  if (!tokenSecret) {
+    fail(
+      'login currently requires --token, PROMPTFRAME_CLI_TOKEN, or PROMPTFRAME_CI_TOKEN. Browser device login is not wired by this CLI release yet.',
+      'cli.auth.login_required',
+      2,
+    );
+  }
+  const whoamiPayload = await fetchJson(`${endpoint}/api/cli/auth/whoami`, {
+    headers: {
+      authorization: `Bearer ${tokenSecret}`,
+    },
+  }, 'login.http.failed');
+  const credential = buildStoredCredential(endpoint, tokenSecret, whoamiPayload);
+  const current = readConfig(argv);
+  writeConfig(argv, {
+    ...current,
+    endpoint,
+    tenantId: credential.tenantId,
+    projectId: credential.projectId,
+    credential,
+  });
+  const output = {
+    command: 'login',
+    endpoint,
+    credential: redactCredential(credential),
+    storage: fileCredentialWarning(),
+    diagnostic: diagnostic('login.completed', 'info', 'PromptFrame CLI credential stored locally.'),
+  };
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
+  console.log(`Logged in to ${endpoint}.`);
+  if (credential.displayIdentifier) console.log(`User: ${credential.displayIdentifier}`);
+  console.log('Credential stored in local PromptFrame config with file permissions restricted to the current OS user.');
+}
+
+async function whoami(argv: string[]): Promise<void> {
+  const endpoint = resolveEndpoint('whoami', argv);
+  const tokenSecret = resolveBearerToken(endpoint, argv);
+  if (!tokenSecret) {
+    fail(
+      'No PromptFrame CLI credential found for this endpoint. Run promptframe login --endpoint <url> or provide PROMPTFRAME_CI_TOKEN.',
+      'cli.auth.login_required',
+      2,
+    );
+  }
+  const payload = await fetchJson(`${endpoint}/api/cli/auth/whoami`, {
+    headers: {
+      authorization: `Bearer ${tokenSecret}`,
+    },
+  }, 'whoami.http.failed');
+  const output = {
+    ...payload,
+    command: 'whoami',
+    endpoint,
+    diagnostic: diagnostic('whoami.completed', 'info', 'PromptFrame CLI identity fetched.'),
+  };
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
+  const principal = asRecord(payload.principal);
+  console.log(`Endpoint: ${endpoint}`);
+  console.log(`Token: ${stringValue(payload.tokenKind) ?? 'unknown'} ${stringValue(payload.tokenId) ?? ''}`.trim());
+  console.log(`Tenant: ${stringValue(principal?.tenantId) ?? 'unknown'}`);
+  console.log(`Project: ${stringValue(principal?.projectId) ?? '<none>'}`);
+  console.log(`User: ${stringValue(principal?.displayIdentifier) ?? stringValue(principal?.email) ?? stringValue(principal?.userId) ?? 'unknown'}`);
+}
+
+async function logout(argv: string[]): Promise<void> {
+  const endpoint = resolveEndpoint('logout', argv);
+  const tokenSecret = resolveBearerToken(endpoint, argv);
+  if (!tokenSecret) {
+    fail(
+      'No PromptFrame CLI credential found for this endpoint. Nothing was revoked.',
+      'cli.auth.login_required',
+      2,
+    );
+  }
+  const payload = await fetchJson(`${endpoint}/api/cli/auth/logout`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${tokenSecret}`,
+    },
+  }, 'logout.http.failed');
+  const clearedLocalCredential = clearStoredCredential(endpoint, tokenSecret, argv);
+  const output = {
+    ...payload,
+    command: 'logout',
+    endpoint,
+    clearedLocalCredential,
+    diagnostic: diagnostic('logout.completed', 'info', 'PromptFrame CLI credential revoked.'),
+  };
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
+  console.log(`Logged out from ${endpoint}.`);
+  console.log(clearedLocalCredential ? 'Local credential cleared.' : 'No matching local credential was stored.');
 }
 
 function configure(argv: string[]): void {
@@ -769,6 +886,128 @@ function buildContextHeaders(argv: string[]): Record<string, string> {
   });
 }
 
+function buildRemoteHeaders(
+  endpoint: string,
+  argv: string[],
+  options: { requireAuth?: boolean } = {},
+): Record<string, string> {
+  const bearerToken = resolveBearerToken(endpoint, argv);
+  if (bearerToken) {
+    return {
+      authorization: `Bearer ${bearerToken}`,
+    };
+  }
+  const contextHeaders = buildContextHeaders(argv);
+  const hasDevHeaders = Object.keys(contextHeaders).some((name) => [
+    'x-tenant-id',
+    'x-user-id',
+    'x-auth-roles',
+    'x-auth-permissions',
+  ].includes(name));
+  if (isFormalEndpoint(endpoint) && hasDevHeaders) {
+    fail(
+      'Formal PromptFrame endpoints do not accept dev identity headers. Use promptframe login or a scoped CI token.',
+      'cli.auth.dev_header_formal_endpoint_forbidden',
+    );
+  }
+  if (isFormalEndpoint(endpoint) && options.requireAuth !== false) {
+    fail(
+      'No PromptFrame CLI credential found for this endpoint. Run promptframe login --endpoint <url> or provide PROMPTFRAME_CI_TOKEN.',
+      'cli.auth.login_required',
+      2,
+    );
+  }
+  return contextHeaders;
+}
+
+function resolveBearerToken(endpoint: string, argv: string[]): string | undefined {
+  const explicit = valueAfter(argv, '--token')
+    ?? process.env.PROMPTFRAME_CI_TOKEN
+    ?? process.env.PROMPTFRAME_CLI_TOKEN
+    ?? process.env.PROMPTFRAME_AUTH_TOKEN;
+  if (explicit) return explicit;
+  const credential = asRecord(readConfig(argv).credential);
+  if (!credential) return undefined;
+  if (normalizeEndpoint(stringValue(credential.endpoint) ?? '') !== normalizeEndpoint(endpoint)) return undefined;
+  const expiresAt = stringValue(credential.expiresAt);
+  if (expiresAt && Date.parse(expiresAt) <= Date.now()) {
+    fail('Stored PromptFrame CLI credential is expired. Run promptframe login again.', 'cli.auth.token_expired', 2);
+  }
+  return stringValue(credential.tokenSecret);
+}
+
+function buildStoredCredential(
+  endpoint: string,
+  tokenSecret: string,
+  whoamiPayload: Record<string, unknown>,
+): Record<string, string> {
+  const principal = asRecord(whoamiPayload.principal);
+  return compactRecord({
+    contractVersion: stringValue(whoamiPayload.contractVersion) ?? 'cli-auth.v0.1.0',
+    endpoint,
+    tokenId: stringValue(whoamiPayload.tokenId),
+    tokenKind: stringValue(whoamiPayload.tokenKind) ?? 'human',
+    displayIdentifier: stringValue(principal?.displayIdentifier) ?? stringValue(principal?.email),
+    tenantId: stringValue(principal?.tenantId),
+    projectId: stringValue(principal?.projectId),
+    expiresAt: stringValue(whoamiPayload.expiresAt),
+    tokenSecret,
+  });
+}
+
+function redactCredential(credential: Record<string, unknown>): Record<string, string> {
+  return compactRecord({
+    contractVersion: stringValue(credential.contractVersion),
+    endpoint: stringValue(credential.endpoint),
+    tokenId: stringValue(credential.tokenId),
+    tokenKind: stringValue(credential.tokenKind),
+    displayIdentifier: stringValue(credential.displayIdentifier),
+    tenantId: stringValue(credential.tenantId),
+    projectId: stringValue(credential.projectId),
+    expiresAt: stringValue(credential.expiresAt),
+  });
+}
+
+function clearStoredCredential(endpoint: string, tokenSecret: string, argv: string[]): boolean {
+  const current = readConfig(argv);
+  const credential = asRecord(current.credential);
+  if (
+    !credential
+    || normalizeEndpoint(stringValue(credential.endpoint) ?? '') !== normalizeEndpoint(endpoint)
+    || stringValue(credential.tokenSecret) !== tokenSecret
+  ) {
+    return false;
+  }
+  const { credential: _credential, ...rest } = current;
+  writeConfig(argv, rest);
+  return true;
+}
+
+function isFormalEndpoint(endpoint: string): boolean {
+  try {
+    const hostname = new URL(endpoint).hostname.toLowerCase();
+    return ![
+      'localhost',
+      '127.0.0.1',
+      '::1',
+      '0.0.0.0',
+    ].includes(hostname);
+  } catch {
+    return true;
+  }
+}
+
+function fileCredentialWarning(): Record<string, unknown> {
+  return {
+    type: 'file',
+    diagnostic: diagnostic(
+      'cli.auth.file_credential_warning',
+      'warning',
+      'Credential is stored in the local PromptFrame config file with 0600 permissions. Prefer OS keychain support when available.',
+    ),
+  };
+}
+
 function readConfig(argv: string[]): Record<string, unknown> {
   const path = resolveConfigPath(argv);
   if (!existsSync(path)) return {};
@@ -783,6 +1022,7 @@ function writeConfig(argv: string[], config: Record<string, unknown>): void {
   const path = resolveConfigPath(argv);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+  chmodSync(path, 0o600);
 }
 
 function resolveConfigPath(argv: string[]): string {
@@ -1192,12 +1432,16 @@ function normalizeEndpoint(endpoint: string): string {
 }
 
 function redactConfig(config: Record<string, unknown>): Record<string, unknown> {
+  const credential = asRecord(config.credential);
   return compactRecord({
     endpoint: config.endpoint,
     tenantId: config.tenantId,
     userId: config.userId,
     projectId: config.projectId,
     sessionId: config.sessionId,
+    credentialTokenId: credential?.tokenId,
+    credentialTokenKind: credential?.tokenKind,
+    credentialExpiresAt: credential?.expiresAt,
   });
 }
 
@@ -1309,13 +1553,18 @@ Commands:
   status <buildId>                 Fetch component build status
   reindex <buildId>                Rebuild component search/evidence indexes
   probe <buildId> --level <level>  Rerun component layout/security probe
+  login --endpoint <url> --token <token>
+                                     Verify and store a PromptFrame CLI token
+  whoami                            Show the current PromptFrame CLI identity
+  logout                            Revoke the current CLI token and clear local config
   configure --endpoint <url>       Write local CLI endpoint/context config
 
 Endpoint resolution:
   --endpoint, PROMPTFRAME_API_BASE, REMOTION_MEDIA_API_BASE, then local config.
   The public CLI embeds no production/private endpoint defaults.
 Auth context:
-  --auth-roles / --auth-permissions or PROMPTFRAME_AUTH_ROLES / PROMPTFRAME_AUTH_PERMISSIONS for dev-header auth.
+  promptframe login, PROMPTFRAME_CI_TOKEN, or PROMPTFRAME_CLI_TOKEN for formal endpoints.
+  --auth-roles / --auth-permissions are local/dev-only smoke helpers.
 `);
 }
 

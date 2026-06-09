@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -225,6 +225,280 @@ test('remote commands forward optional dev auth headers without defaulting produ
     }
   } finally {
     await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('login verifies a bearer token, stores a 0600 local credential, and never prints the token secret', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-login-token-'));
+  const calls = [];
+  const server = await createServer(async (req, res) => {
+    calls.push({
+      method: req.method,
+      url: req.url,
+      authorization: req.headers.authorization,
+    });
+    if (req.url === '/api/cli/auth/whoami') {
+      assert.equal(req.method, 'GET');
+      assert.equal(req.headers.authorization, 'Bearer pf_human_secret_once');
+      writeJson(res, {
+        contractVersion: 'cli-auth.v0.1.0',
+        endpoint: server.url,
+        tokenId: 'cli_token_human',
+        tokenKind: 'human',
+        principal: {
+          tenantId: 'tenant-a',
+          userId: 'user-a',
+          projectId: 'project-a',
+          displayIdentifier: 'user@example.com',
+          permissions: ['component:marketplace:read'],
+        },
+        scopes: ['component.status.read'],
+        expiresAt: '2026-06-10T00:00:00.000Z',
+        revoked: false,
+      });
+      return;
+    }
+    writeJson(res, { success: false, error: `unexpected path: ${req.url}` }, 404);
+  });
+  try {
+    const configPath = path.join(dir, 'promptframe-config.json');
+    const { stdout } = await execFileAsync('node', [
+      cliPath,
+      'login',
+      '--endpoint',
+      server.url,
+      '--token',
+      'pf_human_secret_once',
+      '--config',
+      configPath,
+      '--json',
+    ]);
+    assert.doesNotMatch(stdout, /pf_human_secret_once/);
+    const payload = JSON.parse(stdout);
+    assert.equal(payload.command, 'login');
+    assert.equal(payload.diagnostic.code, 'login.completed');
+    assert.equal(payload.credential.tokenId, 'cli_token_human');
+    assert.equal(payload.credential.displayIdentifier, 'user@example.com');
+    assert.equal(payload.credential.tokenSecret, undefined);
+    assert.equal(payload.storage.diagnostic.code, 'cli.auth.file_credential_warning');
+    assert.deepEqual(calls.map((call) => call.url), ['/api/cli/auth/whoami']);
+
+    const saved = JSON.parse(await readFile(configPath, 'utf8'));
+    assert.equal(saved.endpoint, server.url);
+    assert.equal(saved.credential.tokenSecret, 'pf_human_secret_once');
+    assert.equal(saved.credential.endpoint, server.url);
+    assert.equal((await stat(configPath)).mode & 0o777, 0o600);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('whoami uses the stored matching endpoint credential as a bearer token', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-whoami-token-'));
+  const calls = [];
+  const server = await createServer(async (req, res) => {
+    calls.push({
+      method: req.method,
+      url: req.url,
+      authorization: req.headers.authorization,
+      tenantId: req.headers['x-tenant-id'],
+      userId: req.headers['x-user-id'],
+      roles: req.headers['x-auth-roles'],
+    });
+    if (req.url === '/api/cli/auth/whoami') {
+      assert.equal(req.method, 'GET');
+      assert.equal(req.headers.authorization, 'Bearer pf_stored_secret');
+      writeJson(res, {
+        contractVersion: 'cli-auth.v0.1.0',
+        endpoint: server.url,
+        tokenId: 'cli_token_stored',
+        tokenKind: 'human',
+        principal: {
+          tenantId: 'tenant-a',
+          userId: 'user-a',
+          projectId: 'project-a',
+          permissions: ['component:marketplace:read'],
+        },
+        scopes: ['component.status.read'],
+        expiresAt: '2026-06-10T00:00:00.000Z',
+        revoked: false,
+      });
+      return;
+    }
+    writeJson(res, { success: false, error: `unexpected path: ${req.url}` }, 404);
+  });
+  try {
+    const configPath = path.join(dir, 'promptframe-config.json');
+    await writeFile(configPath, JSON.stringify({
+      endpoint: server.url,
+      credential: {
+        contractVersion: 'cli-auth.v0.1.0',
+        endpoint: server.url,
+        tokenId: 'cli_token_stored',
+        tokenKind: 'human',
+        displayIdentifier: 'user@example.com',
+        tenantId: 'tenant-a',
+        projectId: 'project-a',
+        expiresAt: '2026-06-10T00:00:00.000Z',
+        tokenSecret: 'pf_stored_secret',
+      },
+    }, null, 2));
+
+    const payload = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'whoami',
+      '--config',
+      configPath,
+      '--json',
+    ])).stdout);
+
+    assert.equal(payload.command, 'whoami');
+    assert.equal(payload.tokenId, 'cli_token_stored');
+    assert.equal(payload.principal.tenantId, 'tenant-a');
+    assert.equal(payload.diagnostic.code, 'whoami.completed');
+    assert.equal(payload.tokenSecret, undefined);
+    assert.deepEqual(calls, [{
+      method: 'GET',
+      url: '/api/cli/auth/whoami',
+      authorization: 'Bearer pf_stored_secret',
+      tenantId: undefined,
+      userId: undefined,
+      roles: undefined,
+    }]);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('logout revokes the current bearer token and clears the stored credential', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-logout-token-'));
+  const calls = [];
+  const server = await createServer(async (req, res) => {
+    calls.push({
+      method: req.method,
+      url: req.url,
+      authorization: req.headers.authorization,
+    });
+    if (req.url === '/api/cli/auth/logout') {
+      assert.equal(req.method, 'POST');
+      assert.equal(req.headers.authorization, 'Bearer pf_logout_secret');
+      writeJson(res, {
+        success: true,
+        token: {
+          tokenId: 'cli_token_logout',
+          revokedAt: '2026-06-09T00:00:00.000Z',
+        },
+      });
+      return;
+    }
+    writeJson(res, { success: false, error: `unexpected path: ${req.url}` }, 404);
+  });
+  try {
+    const configPath = path.join(dir, 'promptframe-config.json');
+    await writeFile(configPath, JSON.stringify({
+      endpoint: server.url,
+      credential: {
+        contractVersion: 'cli-auth.v0.1.0',
+        endpoint: server.url,
+        tokenId: 'cli_token_logout',
+        tokenKind: 'human',
+        tenantId: 'tenant-a',
+        projectId: 'project-a',
+        expiresAt: '2026-06-10T00:00:00.000Z',
+        tokenSecret: 'pf_logout_secret',
+      },
+    }, null, 2));
+
+    const payload = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'logout',
+      '--config',
+      configPath,
+      '--json',
+    ])).stdout);
+
+    assert.equal(payload.command, 'logout');
+    assert.equal(payload.diagnostic.code, 'logout.completed');
+    assert.equal(payload.clearedLocalCredential, true);
+    assert.equal(payload.token.tokenId, 'cli_token_logout');
+    assert.doesNotMatch(JSON.stringify(payload), /pf_logout_secret/);
+    assert.deepEqual(calls.map((call) => call.url), ['/api/cli/auth/logout']);
+    const saved = JSON.parse(await readFile(configPath, 'utf8'));
+    assert.equal(saved.endpoint, server.url);
+    assert.equal(saved.credential, undefined);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('whoami without a bearer credential emits a stable login-required diagnostic', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-whoami-missing-token-'));
+  try {
+    const configPath = path.join(dir, 'promptframe-config.json');
+    await writeFile(configPath, JSON.stringify({
+      endpoint: 'https://promptframe.example/api-proxy',
+    }, null, 2));
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'whoami',
+        '--config',
+        configPath,
+        '--json',
+      ], {
+        env: {
+          ...process.env,
+          PROMPTFRAME_CI_TOKEN: '',
+          PROMPTFRAME_CLI_TOKEN: '',
+        },
+      }),
+      (error) => {
+        assert.equal(error.code, 2);
+        const payload = JSON.parse(error.stderr);
+        assert.equal(payload.command, 'whoami');
+        assert.equal(payload.diagnostic.code, 'cli.auth.login_required');
+        assert.equal(payload.retryable, false);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('formal endpoints reject dev-header auth before remote transport', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-formal-dev-header-'));
+  try {
+    const configPath = path.join(dir, 'promptframe-config.json');
+    await writeFile(configPath, JSON.stringify({
+      endpoint: 'https://promptframe.example/api-proxy',
+    }, null, 2));
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'status',
+        'build-123',
+        '--config',
+        configPath,
+        '--auth-roles',
+        'tenant_admin',
+        '--json',
+      ]),
+      (error) => {
+        assert.equal(error.code, 1);
+        const payload = JSON.parse(error.stderr);
+        assert.equal(payload.command, 'status');
+        assert.equal(payload.diagnostic.code, 'cli.auth.dev_header_formal_endpoint_forbidden');
+        return true;
+      },
+    );
+  } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
