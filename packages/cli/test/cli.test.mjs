@@ -503,6 +503,41 @@ test('formal endpoints reject dev-header auth before remote transport', async ()
   }
 });
 
+test('setup-ci writes a GitHub workflow without embedding endpoint or token secrets', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-setup-ci-'));
+  try {
+    const payload = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'setup-ci',
+      dir,
+      '--provider',
+      'github',
+      '--json',
+    ])).stdout);
+
+    assert.equal(payload.command, 'setup-ci');
+    assert.equal(payload.provider, 'github');
+    assert.equal(payload.diagnostic.code, 'setup_ci.github.completed');
+    assert.equal(payload.workflowPath, path.join(dir, '.github/workflows/promptframe-component.yml'));
+    assert.deepEqual(payload.requiredSecrets, ['PROMPTFRAME_CI_TOKEN']);
+    assert.deepEqual(payload.requiredVariables, ['PROMPTFRAME_API_BASE']);
+
+    const workflow = await readFile(payload.workflowPath, 'utf8');
+    assert.match(workflow, /pull_request:/);
+    assert.match(workflow, /branches: \[main\]/);
+    assert.match(workflow, /\$\{\{ secrets\.PROMPTFRAME_CI_TOKEN \}\}/);
+    assert.match(workflow, /\$\{\{ vars\.PROMPTFRAME_API_BASE \}\}/);
+    assert.match(workflow, /promptframe check \. --json/);
+    assert.match(workflow, /promptframe upload \. --endpoint "\$PROMPTFRAME_API_BASE" --json/);
+    assert.match(workflow, /GITHUB_STEP_SUMMARY/);
+    assert.match(workflow, /::warning title=/);
+    assert.doesNotMatch(workflow, /pf_(?:ci|human|cli)_[A-Za-z0-9_-]+/);
+    assert.doesNotMatch(workflow, /promptframe-beta|tail0fae3a|100\.\d+\.\d+\.\d+/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('upload rejects unknown public authoring targets before network transport', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-upload-target-'));
   try {

@@ -32,6 +32,23 @@ test('public templates expose PromptFrame CLI lifecycle scripts', async () => {
   }
 });
 
+test('public templates include GitHub CI workflow skeleton without private endpoint defaults', async () => {
+  for (const workflowPath of [
+    'templates/react-remotion/.github/workflows/promptframe-component.yml',
+    'packages/create-component/templates/react-remotion/.github/workflows/promptframe-component.yml',
+  ]) {
+    const workflow = await readFile(path.join(repoRoot, workflowPath), 'utf8');
+    assert.match(workflow, /pull_request:/, workflowPath);
+    assert.match(workflow, /branches: \[main\]/, workflowPath);
+    assert.match(workflow, /\$\{\{ secrets\.PROMPTFRAME_CI_TOKEN \}\}/, workflowPath);
+    assert.match(workflow, /\$\{\{ vars\.PROMPTFRAME_API_BASE \}\}/, workflowPath);
+    assert.match(workflow, /promptframe check \. --json/, workflowPath);
+    assert.match(workflow, /promptframe upload \. --endpoint "\$PROMPTFRAME_API_BASE" --json/, workflowPath);
+    assert.doesNotMatch(workflow, /pf_(?:ci|human|cli)_[A-Za-z0-9_-]+/, workflowPath);
+    assert.doesNotMatch(workflow, /promptframe-beta|tail0fae3a|100\.\d+\.\d+\.\d+/, workflowPath);
+  }
+});
+
 test('public authoring docs use buildId for platform build status commands', async () => {
   for (const docPath of [
     'skills/component-authoring/SKILL.md',

@@ -95,6 +95,21 @@ npx promptframe upload . --endpoint <promptframe-api-base>
 
 如果平台入口不可用，先保留本地校验结果和错误输出，不要把服务地址写进源码、manifest 或组件 README。
 
+## GitHub CI
+
+模板已包含 `.github/workflows/promptframe-component.yml`。PR 会运行 `promptframe check . --json` 并把诊断写成 GitHub annotations / summary；`main` 和 release tag push 才会运行 `promptframe upload .`。
+
+在 GitHub repository settings 中配置：
+
+- Secret: `PROMPTFRAME_CI_TOKEN`
+- Variable: `PROMPTFRAME_API_BASE`
+
+不要把 token 或私有平台域名写进 workflow、README、源码或 issue。需要重新生成 workflow 时可运行：
+
+```bash
+npx promptframe setup-ci --provider github --force
+```
+
 查看构建验收状态：
 
 ```bash

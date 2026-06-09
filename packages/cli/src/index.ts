@@ -108,6 +108,9 @@ async function run(name: string, argv: string[]): Promise<void> {
     case 'logout':
       await logout(argv);
       break;
+    case 'setup-ci':
+      setupCi(argv);
+      break;
     case 'package':
       packageComponent(argv);
       break;
@@ -849,6 +852,161 @@ function configure(argv: string[]): void {
   });
 }
 
+function setupCi(argv: string[]): void {
+  const provider = valueAfter(argv, '--provider') ?? 'github';
+  if (provider !== 'github') {
+    fail(`Unsupported CI provider: ${provider}.`, 'setup_ci.provider.unsupported', 2);
+  }
+  const targetDir = resolve(setupCiTargetDir(argv));
+  const workflowPath = join(targetDir, '.github', 'workflows', 'promptframe-component.yml');
+  if (existsSync(workflowPath) && !hasFlag(argv, '--force')) {
+    fail(
+      `PromptFrame GitHub workflow already exists at ${workflowPath}. Use --force to overwrite.`,
+      'setup_ci.workflow.exists',
+    );
+  }
+  mkdirSync(dirname(workflowPath), { recursive: true });
+  writeFileSync(workflowPath, promptFrameGithubWorkflow(), 'utf8');
+  const output = {
+    success: true,
+    command: 'setup-ci',
+    provider,
+    workflowPath,
+    requiredSecrets: ['PROMPTFRAME_CI_TOKEN'],
+    requiredVariables: ['PROMPTFRAME_API_BASE'],
+    pullRequestMode: 'check_only',
+    pushMode: 'upload',
+    diagnostic: diagnostic('setup_ci.github.completed', 'info', 'PromptFrame GitHub Actions workflow written.'),
+  };
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
+  console.log(`Wrote PromptFrame GitHub workflow: ${workflowPath}`);
+  console.log('Add repository secret PROMPTFRAME_CI_TOKEN and variable PROMPTFRAME_API_BASE before enabling upload on main/release.');
+}
+
+function setupCiTargetDir(argv: string[]): string {
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg.startsWith('--')) {
+      if (!arg.includes('=') && ['--provider', '--config'].includes(arg)) index += 1;
+      continue;
+    }
+    return arg;
+  }
+  return '.';
+}
+
+function promptFrameGithubWorkflow(): string {
+  const apiBaseVariable = '$' + '{{ vars.PROMPTFRAME_API_BASE }}';
+  const ciTokenSecret = '$' + '{{ secrets.PROMPTFRAME_CI_TOKEN }}';
+  return `name: PromptFrame Component
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+      - 'component-*'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: PromptFrame check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm install
+      - name: Validate component package
+        env:
+          PROMPTFRAME_API_BASE: ${apiBaseVariable}
+        run: |
+          set +e
+          npx promptframe check . --json > promptframe-check.json
+          CHECK_EXIT=$?
+          set -e
+          node <<'NODE'
+          const fs = require('node:fs');
+          const payload = JSON.parse(fs.readFileSync('promptframe-check.json', 'utf8'));
+          const diagnostics = Array.isArray(payload.diagnostics) ? payload.diagnostics : [];
+          for (const item of diagnostics) {
+            const code = String(item.code || 'promptframe.diagnostic');
+            const message = String(item.message || code).replace(/\\r?\\n/g, ' ');
+            if (item.severity === 'error') {
+              console.log(\`::error title=\${code}::\${message}\`);
+            } else {
+              console.log(\`::warning title=\${code}::\${message}\`);
+            }
+          }
+          const summary = process.env.GITHUB_STEP_SUMMARY;
+          if (summary) {
+            fs.appendFileSync(summary, [
+              '### PromptFrame check',
+              '',
+              \`- Diagnostic: \\\`\${payload.diagnostic?.code || 'unknown'}\\\`\`,
+              \`- Freshness: \\\`\${payload.freshness?.status || 'unknown'}\\\`\`,
+              \`- Diagnostics: \\\`\${diagnostics.length}\\\`\`,
+              '',
+            ].join('\\n'));
+          }
+          NODE
+          exit "$CHECK_EXIT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: promptframe-check-report
+          path: promptframe-check.json
+
+  upload:
+    name: PromptFrame upload
+    if: github.event_name == 'push'
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm install
+      - name: Upload component to PromptFrame
+        env:
+          PROMPTFRAME_API_BASE: ${apiBaseVariable}
+          PROMPTFRAME_CI_TOKEN: ${ciTokenSecret}
+        run: |
+          set -euo pipefail
+          npx promptframe upload . --endpoint "$PROMPTFRAME_API_BASE" --json | tee promptframe-upload.json
+          node <<'NODE'
+          const fs = require('node:fs');
+          const payload = JSON.parse(fs.readFileSync('promptframe-upload.json', 'utf8'));
+          const summary = process.env.GITHUB_STEP_SUMMARY;
+          if (summary) {
+            fs.appendFileSync(summary, [
+              '### PromptFrame upload',
+              '',
+              \`- Diagnostic: \\\`\${payload.diagnostic?.code || 'unknown'}\\\`\`,
+              \`- Build ID: \\\`\${payload.jobId || payload.buildId || 'unknown'}\\\`\`,
+              \`- Status: \\\`\${payload.status || payload.build?.status || 'queued'}\\\`\`,
+              '',
+            ].join('\\n'));
+          }
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: promptframe-upload-report
+          path: promptframe-upload.json
+`;
+}
+
 function resolveEndpoint(commandName: string, argv: string[]): string {
   const config = readConfig(argv);
   const endpoint = valueAfter(argv, '--endpoint')
@@ -1557,6 +1715,7 @@ Commands:
                                      Verify and store a PromptFrame CLI token
   whoami                            Show the current PromptFrame CLI identity
   logout                            Revoke the current CLI token and clear local config
+  setup-ci [dir] --provider github   Write a GitHub Actions workflow skeleton
   configure --endpoint <url>       Write local CLI endpoint/context config
 
 Endpoint resolution:

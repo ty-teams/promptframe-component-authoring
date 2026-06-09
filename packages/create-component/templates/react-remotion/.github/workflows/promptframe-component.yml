@@ -1,0 +1,103 @@
+name: PromptFrame Component
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+      - 'component-*'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: PromptFrame check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm install
+      - name: Validate component package
+        env:
+          PROMPTFRAME_API_BASE: ${{ vars.PROMPTFRAME_API_BASE }}
+        run: |
+          set +e
+          npx promptframe check . --json > promptframe-check.json
+          CHECK_EXIT=$?
+          set -e
+          node <<'NODE'
+          const fs = require('node:fs');
+          const payload = JSON.parse(fs.readFileSync('promptframe-check.json', 'utf8'));
+          const diagnostics = Array.isArray(payload.diagnostics) ? payload.diagnostics : [];
+          for (const item of diagnostics) {
+            const code = String(item.code || 'promptframe.diagnostic');
+            const message = String(item.message || code).replace(/\r?\n/g, ' ');
+            if (item.severity === 'error') {
+              console.log(`::error title=${code}::${message}`);
+            } else {
+              console.log(`::warning title=${code}::${message}`);
+            }
+          }
+          const summary = process.env.GITHUB_STEP_SUMMARY;
+          if (summary) {
+            fs.appendFileSync(summary, [
+              '### PromptFrame check',
+              '',
+              `- Diagnostic: \`${payload.diagnostic?.code || 'unknown'}\``,
+              `- Freshness: \`${payload.freshness?.status || 'unknown'}\``,
+              `- Diagnostics: \`${diagnostics.length}\``,
+              '',
+            ].join('\n'));
+          }
+          NODE
+          exit "$CHECK_EXIT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: promptframe-check-report
+          path: promptframe-check.json
+
+  upload:
+    name: PromptFrame upload
+    if: github.event_name == 'push'
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm install
+      - name: Upload component to PromptFrame
+        env:
+          PROMPTFRAME_API_BASE: ${{ vars.PROMPTFRAME_API_BASE }}
+          PROMPTFRAME_CI_TOKEN: ${{ secrets.PROMPTFRAME_CI_TOKEN }}
+        run: |
+          set -euo pipefail
+          npx promptframe upload . --endpoint "$PROMPTFRAME_API_BASE" --json | tee promptframe-upload.json
+          node <<'NODE'
+          const fs = require('node:fs');
+          const payload = JSON.parse(fs.readFileSync('promptframe-upload.json', 'utf8'));
+          const summary = process.env.GITHUB_STEP_SUMMARY;
+          if (summary) {
+            fs.appendFileSync(summary, [
+              '### PromptFrame upload',
+              '',
+              `- Diagnostic: \`${payload.diagnostic?.code || 'unknown'}\``,
+              `- Build ID: \`${payload.jobId || payload.buildId || 'unknown'}\``,
+              `- Status: \`${payload.status || payload.build?.status || 'queued'}\``,
+              '',
+            ].join('\n'));
+          }
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: promptframe-upload-report
+          path: promptframe-upload.json
