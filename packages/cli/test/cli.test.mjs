@@ -238,7 +238,7 @@ test('login verifies a bearer token, stores a 0600 local credential, and never p
       url: req.url,
       authorization: req.headers.authorization,
     });
-    if (req.url === '/api/cli/auth/whoami') {
+    if (req.url === '/cli/auth/whoami') {
       assert.equal(req.method, 'GET');
       assert.equal(req.headers.authorization, 'Bearer pf_human_secret_once');
       writeJson(res, {
@@ -282,7 +282,7 @@ test('login verifies a bearer token, stores a 0600 local credential, and never p
     assert.equal(payload.credential.displayIdentifier, 'user@example.com');
     assert.equal(payload.credential.tokenSecret, undefined);
     assert.equal(payload.storage.diagnostic.code, 'cli.auth.file_credential_warning');
-    assert.deepEqual(calls.map((call) => call.url), ['/api/cli/auth/whoami']);
+    assert.deepEqual(calls.map((call) => call.url), ['/cli/auth/whoami']);
 
     const saved = JSON.parse(await readFile(configPath, 'utf8'));
     assert.equal(saved.endpoint, server.url);
@@ -307,7 +307,7 @@ test('whoami uses the stored matching endpoint credential as a bearer token', as
       userId: req.headers['x-user-id'],
       roles: req.headers['x-auth-roles'],
     });
-    if (req.url === '/api/cli/auth/whoami') {
+    if (req.url === '/cli/auth/whoami') {
       assert.equal(req.method, 'GET');
       assert.equal(req.headers.authorization, 'Bearer pf_stored_secret');
       writeJson(res, {
@@ -361,7 +361,7 @@ test('whoami uses the stored matching endpoint credential as a bearer token', as
     assert.equal(payload.tokenSecret, undefined);
     assert.deepEqual(calls, [{
       method: 'GET',
-      url: '/api/cli/auth/whoami',
+      url: '/cli/auth/whoami',
       authorization: 'Bearer pf_stored_secret',
       tenantId: undefined,
       userId: undefined,
@@ -382,7 +382,7 @@ test('logout revokes the current bearer token and clears the stored credential',
       url: req.url,
       authorization: req.headers.authorization,
     });
-    if (req.url === '/api/cli/auth/logout') {
+    if (req.url === '/cli/auth/logout') {
       assert.equal(req.method, 'POST');
       assert.equal(req.headers.authorization, 'Bearer pf_logout_secret');
       writeJson(res, {
@@ -425,7 +425,7 @@ test('logout revokes the current bearer token and clears the stored credential',
     assert.equal(payload.clearedLocalCredential, true);
     assert.equal(payload.token.tokenId, 'cli_token_logout');
     assert.doesNotMatch(JSON.stringify(payload), /pf_logout_secret/);
-    assert.deepEqual(calls.map((call) => call.url), ['/api/cli/auth/logout']);
+    assert.deepEqual(calls.map((call) => call.url), ['/cli/auth/logout']);
     const saved = JSON.parse(await readFile(configPath, 'utf8'));
     assert.equal(saved.endpoint, server.url);
     assert.equal(saved.credential, undefined);

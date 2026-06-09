@@ -728,7 +728,7 @@ async function login(argv: string[]): Promise<void> {
       2,
     );
   }
-  const whoamiPayload = await fetchJson(`${endpoint}/api/cli/auth/whoami`, {
+  const whoamiPayload = await fetchJson(`${endpoint}/cli/auth/whoami`, {
     headers: {
       authorization: `Bearer ${tokenSecret}`,
     },
@@ -768,7 +768,7 @@ async function whoami(argv: string[]): Promise<void> {
       2,
     );
   }
-  const payload = await fetchJson(`${endpoint}/api/cli/auth/whoami`, {
+  const payload = await fetchJson(`${endpoint}/cli/auth/whoami`, {
     headers: {
       authorization: `Bearer ${tokenSecret}`,
     },
@@ -801,7 +801,7 @@ async function logout(argv: string[]): Promise<void> {
       2,
     );
   }
-  const payload = await fetchJson(`${endpoint}/api/cli/auth/logout`, {
+  const payload = await fetchJson(`${endpoint}/cli/auth/logout`, {
     method: 'POST',
     headers: {
       authorization: `Bearer ${tokenSecret}`,
