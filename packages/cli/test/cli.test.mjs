@@ -529,6 +529,7 @@ test('setup-ci writes a GitHub workflow without embedding endpoint or token secr
     assert.match(workflow, /\$\{\{ vars\.PROMPTFRAME_API_BASE \}\}/);
     assert.match(workflow, /promptframe check \. --json/);
     assert.match(workflow, /promptframe upload \. --endpoint "\$PROMPTFRAME_API_BASE" --json/);
+    assert.match(workflow, /promptframe status "\$BUILD_ID" --endpoint "\$PROMPTFRAME_API_BASE" --json/);
     assert.match(workflow, /GITHUB_STEP_SUMMARY/);
     assert.match(workflow, /::warning title=/);
     assert.doesNotMatch(workflow, /pf_(?:ci|human|cli)_[A-Za-z0-9_-]+/);

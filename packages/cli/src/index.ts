@@ -984,9 +984,21 @@ jobs:
         run: |
           set -euo pipefail
           npx promptframe upload . --endpoint "$PROMPTFRAME_API_BASE" --json | tee promptframe-upload.json
+          BUILD_ID=$(node <<'NODE'
+          const fs = require('node:fs');
+          const payload = JSON.parse(fs.readFileSync('promptframe-upload.json', 'utf8'));
+          process.stdout.write(String(payload.jobId || payload.buildId || payload.build?.buildId || ''));
+          NODE
+          )
+          if [ -z "$BUILD_ID" ]; then
+            echo "PromptFrame upload response did not include a build id." >&2
+            exit 1
+          fi
+          npx promptframe status "$BUILD_ID" --endpoint "$PROMPTFRAME_API_BASE" --json | tee promptframe-status.json
           node <<'NODE'
           const fs = require('node:fs');
           const payload = JSON.parse(fs.readFileSync('promptframe-upload.json', 'utf8'));
+          const status = JSON.parse(fs.readFileSync('promptframe-status.json', 'utf8'));
           const summary = process.env.GITHUB_STEP_SUMMARY;
           if (summary) {
             fs.appendFileSync(summary, [
@@ -994,7 +1006,7 @@ jobs:
               '',
               \`- Diagnostic: \\\`\${payload.diagnostic?.code || 'unknown'}\\\`\`,
               \`- Build ID: \\\`\${payload.jobId || payload.buildId || 'unknown'}\\\`\`,
-              \`- Status: \\\`\${payload.status || payload.build?.status || 'queued'}\\\`\`,
+              \`- Admission status: \\\`\${status.build?.status || status.status || payload.status || 'queued'}\\\`\`,
               '',
             ].join('\\n'));
           }
@@ -1003,7 +1015,9 @@ jobs:
         if: always()
         with:
           name: promptframe-upload-report
-          path: promptframe-upload.json
+          path: |
+            promptframe-upload.json
+            promptframe-status.json
 `;
 }
 
