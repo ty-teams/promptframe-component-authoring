@@ -1,4 +1,11 @@
 import { z } from 'zod';
+import { createPromptFramePublicSecurityPolicyDigest } from './security-policy-fingerprint.js';
+
+export {
+  COMPONENT_SECURITY_POLICY_DIGEST_VERSION,
+  canonicalizePromptFramePolicy,
+  createPromptFramePublicSecurityPolicyDigest,
+} from './security-policy-fingerprint.js';
 
 export const PROMPTFRAME_CONTRACTS_VERSION = 'promptframe-contracts.v0.1.0' as const;
 export const COMPONENT_MANIFEST_SCHEMA_VERSION = 'component-manifest.v0.1.0' as const;
@@ -352,6 +359,9 @@ export const PROMPTFRAME_PUBLIC_SECURITY_POLICY = {
     },
   ],
 } as const;
+
+export const PROMPTFRAME_PUBLIC_SECURITY_POLICY_DIGEST =
+  createPromptFramePublicSecurityPolicyDigest(PROMPTFRAME_PUBLIC_SECURITY_POLICY);
 
 export const PROMPTFRAME_PUBLIC_DEPENDENCY_POLICY = {
   policyVersion: COMPONENT_DEPENDENCY_POLICY_VERSION,

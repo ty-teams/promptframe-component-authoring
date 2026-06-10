@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { PROMPTFRAME_PUBLIC_SECURITY_POLICY } from '../dist/index.js';
+import {
+  COMPONENT_SECURITY_POLICY_DIGEST_VERSION,
+  PROMPTFRAME_PUBLIC_SECURITY_POLICY,
+  PROMPTFRAME_PUBLIC_SECURITY_POLICY_DIGEST,
+  createPromptFramePublicSecurityPolicyDigest,
+} from '../dist/index.js';
 
 test('public security policy treats prompt injection strings as manual review', () => {
   const rule = PROMPTFRAME_PUBLIC_SECURITY_POLICY.warningApis.find((item) => (
@@ -45,4 +50,31 @@ test('public security policy exposes browser capability rule IDs with author gui
     assert.equal(typeof rule.docsPath, 'string', `${ruleId} docsPath`);
     assert.match(rule.docsPath, /^\/docs\/component-authoring\/security#/);
   }
+});
+
+test('public security policy exposes a stable release-cohort digest', () => {
+  assert.match(
+    PROMPTFRAME_PUBLIC_SECURITY_POLICY_DIGEST,
+    /^component-security-policy-digest\.v0\.1:[a-f0-9]{16}$/,
+  );
+  assert.equal(
+    PROMPTFRAME_PUBLIC_SECURITY_POLICY_DIGEST,
+    createPromptFramePublicSecurityPolicyDigest(PROMPTFRAME_PUBLIC_SECURITY_POLICY),
+  );
+
+  const mutatedPolicy = {
+    ...PROMPTFRAME_PUBLIC_SECURITY_POLICY,
+    forbiddenApis: [
+      {
+        ...PROMPTFRAME_PUBLIC_SECURITY_POLICY.forbiddenApis[0],
+        id: 'code.eval.changed',
+      },
+      ...PROMPTFRAME_PUBLIC_SECURITY_POLICY.forbiddenApis.slice(1),
+    ],
+  };
+  assert.notEqual(
+    createPromptFramePublicSecurityPolicyDigest(mutatedPolicy),
+    PROMPTFRAME_PUBLIC_SECURITY_POLICY_DIGEST,
+  );
+  assert.equal(COMPONENT_SECURITY_POLICY_DIGEST_VERSION, 'component-security-policy-digest.v0.1');
 });
