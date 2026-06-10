@@ -12,9 +12,9 @@ test('public templates use the current PromptFrame authoring package baseline', 
   ]) {
     const packageJson = JSON.parse(await readFile(path.join(repoRoot, templatePackagePath), 'utf8'));
     assert.equal(packageJson.dependencies?.['@promptframe/component-kit'], '^0.1.7', templatePackagePath);
-    assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.5', templatePackagePath);
+    assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.8', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@remotion/player'], '^4.0.0', templatePackagePath);
-    assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.18', templatePackagePath);
+    assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.20', templatePackagePath);
   }
 });
 
