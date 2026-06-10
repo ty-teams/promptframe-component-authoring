@@ -42,13 +42,12 @@ importers:
 
   packages/contracts:
     dependencies:
-      zod:
-        specifier: ^3.24.0
-        version: 3.25.76
-    devDependencies:
       typescript:
         specifier: ~5.7.0
         version: 5.7.3
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
 
   packages/create-component:
     devDependencies:

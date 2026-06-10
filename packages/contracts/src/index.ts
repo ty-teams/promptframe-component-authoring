@@ -126,6 +126,9 @@ export const PROMPTFRAME_PUBLIC_SECURITY_POLICY = {
       id: 'code.string_timer',
       label: 'String timer execution',
       patterns: ['\\bset(?:Timeout|Interval)\\s*\\(\\s*[\'"`]'],
+      astMatchers: {
+        stringTimer: true,
+      },
       action: 'reject',
       category: 'dynamic_code_execution',
       severity: 'high',
@@ -136,6 +139,9 @@ export const PROMPTFRAME_PUBLIC_SECURITY_POLICY = {
       id: 'code.dynamic_import',
       label: 'Dynamic import loading',
       patterns: ['\\bimport\\s*\\('],
+      astMatchers: {
+        dynamicImport: true,
+      },
       action: 'reject',
       category: 'dynamic_code_execution',
       severity: 'high',
@@ -157,6 +163,10 @@ export const PROMPTFRAME_PUBLIC_SECURITY_POLICY = {
       id: 'browser.broadcast_channel',
       label: 'BroadcastChannel cross-context messaging',
       patterns: ['\\bnew\\s+BroadcastChannel\\b|\\bBroadcastChannel\\s*\\('],
+      astMatchers: {
+        globals: ['BroadcastChannel'],
+        memberPaths: ['window.BroadcastChannel', 'globalThis.BroadcastChannel'],
+      },
       action: 'reject',
       category: 'browser_capability',
       severity: 'high',
@@ -190,6 +200,9 @@ export const PROMPTFRAME_PUBLIC_SECURITY_POLICY = {
       id: 'browser.service_worker',
       label: 'Service Worker registration',
       patterns: ['navigator\\.serviceWorker\\b|\\bServiceWorker(?:Registration|Container)?\\b'],
+      astMatchers: {
+        memberPaths: ['navigator.serviceWorker'],
+      },
       action: 'reject',
       category: 'browser_capability',
       severity: 'high',
@@ -201,6 +214,9 @@ export const PROMPTFRAME_PUBLIC_SECURITY_POLICY = {
       id: 'browser.clipboard',
       label: 'Clipboard access',
       patterns: ['navigator\\.clipboard\\b|document\\.execCommand\\s*\\(\\s*[\'"`](?:copy|cut|paste)[\'"`]'],
+      astMatchers: {
+        memberPaths: ['navigator.clipboard', 'document.execCommand'],
+      },
       action: 'reject',
       category: 'browser_capability',
       severity: 'high',
