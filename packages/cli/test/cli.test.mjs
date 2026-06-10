@@ -254,7 +254,7 @@ test('login verifies a bearer token, stores a 0600 local credential, and never p
           permissions: ['component:marketplace:read'],
         },
         scopes: ['component.status.read'],
-        expiresAt: '2026-06-10T00:00:00.000Z',
+        expiresAt: '2099-06-10T00:00:00.000Z',
         revoked: false,
       });
       return;
@@ -295,6 +295,93 @@ test('login verifies a bearer token, stores a 0600 local credential, and never p
   }
 });
 
+test('login completes browser device code flow without printing the token secret', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-login-device-'));
+  const calls = [];
+  const server = await createServer(async (req, res) => {
+    const body = await readRequestBody(req);
+    calls.push({
+      method: req.method,
+      url: req.url,
+      body: body.length > 0 ? JSON.parse(body.toString('utf8')) : undefined,
+    });
+    if (req.url === '/cli/auth/device/start') {
+      assert.equal(req.method, 'POST');
+      writeJson(res, {
+        contractVersion: 'cli-auth.v0.1.0',
+        deviceCode: 'device-123',
+        userCode: 'PF-1234',
+        verificationUri: `${server.url}/cli/device`,
+        verificationUriComplete: `${server.url}/cli/device?user_code=PF-1234`,
+        expiresAt: '2099-06-09T00:10:00.000Z',
+        intervalSeconds: 1,
+      }, 201);
+      return;
+    }
+    if (req.url === '/cli/auth/device/poll') {
+      assert.equal(req.method, 'POST');
+      writeJson(res, {
+        contractVersion: 'cli-auth.v0.1.0',
+        status: 'approved',
+        credential: {
+          contractVersion: 'cli-auth.v0.1.0',
+          endpoint: server.url,
+          tokenId: 'cli_token_device',
+          tokenKind: 'human',
+          displayIdentifier: 'author@example.com',
+          tenantId: 'tenant-a',
+          projectId: 'project-a',
+          expiresAt: '2099-07-09T00:00:00.000Z',
+          tokenSecret: 'pf_cli_secret_from_poll',
+        },
+      });
+      return;
+    }
+    writeJson(res, { success: false, error: `unexpected path: ${req.url}` }, 404);
+  });
+  try {
+    const configPath = path.join(dir, 'promptframe-config.json');
+    const { stdout } = await execFileAsync('node', [
+      cliPath,
+      'login',
+      '--endpoint',
+      server.url,
+      '--config',
+      configPath,
+      '--poll-interval-seconds',
+      '1',
+      '--timeout-seconds',
+      '2',
+      '--json',
+    ], {
+      env: {
+        ...process.env,
+        PROMPTFRAME_CLI_TOKEN: '',
+        PROMPTFRAME_CI_TOKEN: '',
+      },
+    });
+    assert.doesNotMatch(stdout, /pf_cli_secret_from_poll/);
+    const payload = JSON.parse(stdout);
+    assert.equal(payload.command, 'login');
+    assert.equal(payload.credential.tokenId, 'cli_token_device');
+    assert.equal(payload.credential.tokenSecret, undefined);
+    assert.equal(payload.device.userCode, 'PF-1234');
+    assert.deepEqual(calls.map((call) => call.url), [
+      '/cli/auth/device/start',
+      '/cli/auth/device/poll',
+    ]);
+
+    const saved = JSON.parse(await readFile(configPath, 'utf8'));
+    assert.equal(saved.endpoint, server.url);
+    assert.equal(saved.credential.tokenSecret, 'pf_cli_secret_from_poll');
+    assert.equal(saved.credential.endpoint, server.url);
+    assert.equal((await stat(configPath)).mode & 0o777, 0o600);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('whoami uses the stored matching endpoint credential as a bearer token', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-whoami-token-'));
   const calls = [];
@@ -322,7 +409,7 @@ test('whoami uses the stored matching endpoint credential as a bearer token', as
           permissions: ['component:marketplace:read'],
         },
         scopes: ['component.status.read'],
-        expiresAt: '2026-06-10T00:00:00.000Z',
+        expiresAt: '2099-06-10T00:00:00.000Z',
         revoked: false,
       });
       return;
@@ -341,7 +428,7 @@ test('whoami uses the stored matching endpoint credential as a bearer token', as
         displayIdentifier: 'user@example.com',
         tenantId: 'tenant-a',
         projectId: 'project-a',
-        expiresAt: '2026-06-10T00:00:00.000Z',
+        expiresAt: '2099-06-10T00:00:00.000Z',
         tokenSecret: 'pf_stored_secret',
       },
     }, null, 2));
@@ -407,7 +494,7 @@ test('logout revokes the current bearer token and clears the stored credential',
         tokenKind: 'human',
         tenantId: 'tenant-a',
         projectId: 'project-a',
-        expiresAt: '2026-06-10T00:00:00.000Z',
+        expiresAt: '2099-06-10T00:00:00.000Z',
         tokenSecret: 'pf_logout_secret',
       },
     }, null, 2));

@@ -2,6 +2,7 @@
 
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { setTimeout as sleep } from 'node:timers/promises';
 import {
   chmodSync,
   existsSync,
@@ -58,6 +59,8 @@ const command = process.argv[2] ?? 'help';
 const args = process.argv.slice(3);
 
 const REQUIRED_COMPONENT_FILES = PROMPTFRAME_PUBLIC_STANDARD_POLICY.requiredFiles;
+const CLI_AUTH_CONTRACT_VERSION = 'cli-auth.v0.1.0';
+const DEFAULT_CLI_LOGIN_SCOPES = ['component.upload', 'component.status.read'];
 
 const VALIDATE_CHECKED_RULE_IDS: PublicPolicyRuleId[] = [
   'manifest.identity.version',
@@ -722,11 +725,8 @@ async function login(argv: string[]): Promise<void> {
     ?? process.env.PROMPTFRAME_CLI_TOKEN
     ?? process.env.PROMPTFRAME_CI_TOKEN;
   if (!tokenSecret) {
-    fail(
-      'login currently requires --token, PROMPTFRAME_CLI_TOKEN, or PROMPTFRAME_CI_TOKEN. Browser device login is not wired by this CLI release yet.',
-      'cli.auth.login_required',
-      2,
-    );
+    await loginWithDeviceCode(endpoint, argv);
+    return;
   }
   const whoamiPayload = await fetchJson(`${endpoint}/cli/auth/whoami`, {
     headers: {
@@ -756,6 +756,89 @@ async function login(argv: string[]): Promise<void> {
   console.log(`Logged in to ${endpoint}.`);
   if (credential.displayIdentifier) console.log(`User: ${credential.displayIdentifier}`);
   console.log('Credential stored in local PromptFrame config with file permissions restricted to the current OS user.');
+}
+
+async function loginWithDeviceCode(endpoint: string, argv: string[]): Promise<void> {
+  const startPayload = await fetchJson(`${endpoint}/cli/auth/device/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      contractVersion: CLI_AUTH_CONTRACT_VERSION,
+      endpoint,
+      clientName: `PromptFrame CLI on ${os.hostname()}`,
+      requestedScopes: DEFAULT_CLI_LOGIN_SCOPES,
+    }),
+  }, 'login.device_start.failed');
+  const deviceCode = requiredPayloadString(startPayload, 'deviceCode', 'login.device_start.invalid');
+  const device = redactDeviceStart(startPayload);
+  if (!hasFlag(argv, '--json')) {
+    console.log('Open this PromptFrame login URL in your browser:');
+    console.log(`  ${device.verificationUriComplete ?? device.verificationUri}`);
+    if (device.userCode) console.log(`Code: ${device.userCode}`);
+    console.log('Waiting for browser approval...');
+  }
+  const credential = await pollDeviceCredential(endpoint, deviceCode, startPayload, argv);
+  const current = readConfig(argv);
+  writeConfig(argv, {
+    ...current,
+    endpoint,
+    tenantId: credential.tenantId,
+    projectId: credential.projectId,
+    credential,
+  });
+  const output = {
+    command: 'login',
+    endpoint,
+    device,
+    credential: redactCredential(credential),
+    storage: fileCredentialWarning(),
+    diagnostic: diagnostic('login.completed', 'info', 'PromptFrame CLI credential stored locally.'),
+  };
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
+  console.log(`Logged in to ${endpoint}.`);
+  if (credential.displayIdentifier) console.log(`User: ${credential.displayIdentifier}`);
+  console.log('Credential stored in local PromptFrame config with file permissions restricted to the current OS user.');
+}
+
+async function pollDeviceCredential(
+  endpoint: string,
+  deviceCode: string,
+  startPayload: Record<string, unknown>,
+  argv: string[],
+): Promise<Record<string, string>> {
+  const intervalSeconds = parsePositiveSeconds(
+    valueAfter(argv, '--poll-interval-seconds'),
+    '--poll-interval-seconds',
+    parsePositiveSeconds(startPayload.intervalSeconds, 'intervalSeconds', 5),
+  );
+  const timeoutSeconds = parsePositiveSeconds(valueAfter(argv, '--timeout-seconds'), '--timeout-seconds', 600);
+  const deadline = Date.now() + timeoutSeconds * 1000;
+  while (Date.now() <= deadline) {
+    const pollPayload = await fetchJson(`${endpoint}/cli/auth/device/poll`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        contractVersion: CLI_AUTH_CONTRACT_VERSION,
+        deviceCode,
+      }),
+    }, 'login.device_poll.failed');
+    const status = stringValue(pollPayload.status);
+    if (status === 'approved') return buildStoredCredentialFromDevice(endpoint, pollPayload);
+    if (status === 'pending') {
+      await sleep(intervalSeconds * 1000);
+      continue;
+    }
+    const remoteDiagnostic = asRecord(pollPayload.diagnostic);
+    fail(
+      stringValue(remoteDiagnostic?.message) ?? `PromptFrame browser login ended with status ${status ?? 'unknown'}.`,
+      stringValue(remoteDiagnostic?.code) ?? 'cli.auth.device_failed',
+      2,
+    );
+  }
+  fail('PromptFrame browser login timed out before approval.', 'cli.auth.device_timeout', 2);
 }
 
 async function whoami(argv: string[]): Promise<void> {
@@ -1127,6 +1210,31 @@ function buildStoredCredential(
   });
 }
 
+function buildStoredCredentialFromDevice(
+  endpoint: string,
+  payload: Record<string, unknown>,
+): Record<string, string> {
+  const credential = asRecord(payload.credential);
+  if (!credential) {
+    fail('PromptFrame browser login approval did not include a credential.', 'cli.auth.device_credential_missing', 2);
+  }
+  const tokenSecret = stringValue(credential.tokenSecret);
+  if (!tokenSecret) {
+    fail('PromptFrame browser login approval did not include a token secret.', 'cli.auth.device_credential_missing', 2);
+  }
+  return compactRecord({
+    contractVersion: stringValue(credential.contractVersion) ?? CLI_AUTH_CONTRACT_VERSION,
+    endpoint: stringValue(credential.endpoint) ?? endpoint,
+    tokenId: stringValue(credential.tokenId),
+    tokenKind: stringValue(credential.tokenKind) ?? 'human',
+    displayIdentifier: stringValue(credential.displayIdentifier),
+    tenantId: stringValue(credential.tenantId),
+    projectId: stringValue(credential.projectId),
+    expiresAt: stringValue(credential.expiresAt),
+    tokenSecret,
+  });
+}
+
 function redactCredential(credential: Record<string, unknown>): Record<string, string> {
   return compactRecord({
     contractVersion: stringValue(credential.contractVersion),
@@ -1137,6 +1245,16 @@ function redactCredential(credential: Record<string, unknown>): Record<string, s
     tenantId: stringValue(credential.tenantId),
     projectId: stringValue(credential.projectId),
     expiresAt: stringValue(credential.expiresAt),
+  });
+}
+
+function redactDeviceStart(payload: Record<string, unknown>): Record<string, string> {
+  return compactRecord({
+    contractVersion: stringValue(payload.contractVersion) ?? CLI_AUTH_CONTRACT_VERSION,
+    userCode: stringValue(payload.userCode),
+    verificationUri: stringValue(payload.verificationUri),
+    verificationUriComplete: stringValue(payload.verificationUriComplete),
+    expiresAt: stringValue(payload.expiresAt),
   });
 }
 
@@ -1261,6 +1379,15 @@ function parsePort(value: string): number {
     fail(`Invalid dev port: ${value}`, 'dev.port.invalid');
   }
   return port;
+}
+
+function parsePositiveSeconds(value: unknown, flag: string, fallback: number): number {
+  if (value === undefined || value === null || value === '') return fallback;
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    fail(`Invalid ${flag}: ${String(value)}`, 'cli.duration.invalid', 2);
+  }
+  return seconds;
 }
 
 async function runDevServer(dir: string, commandLine: string[]): Promise<void> {
@@ -1698,6 +1825,12 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
+function requiredPayloadString(payload: Record<string, unknown>, key: string, code: string): string {
+  const value = stringValue(payload[key]);
+  if (!value) fail(`PromptFrame response did not include ${key}.`, code, 2);
+  return value;
+}
+
 function printJson(value: unknown): void {
   console.log(JSON.stringify(value, null, 2));
 }
@@ -1725,8 +1858,8 @@ Commands:
   status <buildId>                 Fetch component build status
   reindex <buildId>                Rebuild component search/evidence indexes
   probe <buildId> --level <level>  Rerun component layout/security probe
-  login --endpoint <url> --token <token>
-                                     Verify and store a PromptFrame CLI token
+  login --endpoint <url>             Start browser login code flow and store a CLI token
+    --token <token>                  Verify and store an already issued CLI/CI token
   whoami                            Show the current PromptFrame CLI identity
   logout                            Revoke the current CLI token and clear local config
   setup-ci [dir] --provider github   Write a GitHub Actions workflow skeleton
@@ -1737,6 +1870,7 @@ Endpoint resolution:
   The public CLI embeds no production/private endpoint defaults.
 Auth context:
   promptframe login, PROMPTFRAME_CI_TOKEN, or PROMPTFRAME_CLI_TOKEN for formal endpoints.
+  login without --token prints a one-time browser URL/code and never prints the token secret.
   --auth-roles / --auth-permissions are local/dev-only smoke helpers.
 `);
 }
