@@ -1187,7 +1187,7 @@ test('validate blocks install scripts before package or upload transport', async
         '@promptframe/component-kit': '^0.1.7',
       },
       devDependencies: {
-        '@promptframe/cli': '^0.1.20',
+        '@promptframe/cli': '^0.1.21',
       },
     }, null, 2));
     await writeFile(path.join(componentDir, 'pnpm-lock.yaml'), 'lockfileVersion: "9.0"\n');
@@ -1228,7 +1228,7 @@ test('check reports dependency quarantine without marking it public searchable',
         '@promptframe/component-kit': '^0.1.7',
       },
       devDependencies: {
-        '@promptframe/cli': '^0.1.20',
+        '@promptframe/cli': '^0.1.21',
       },
     }, null, 2));
     await writeFile(path.join(componentDir, 'pnpm-lock.yaml'), 'lockfileVersion: "9.0"\n');

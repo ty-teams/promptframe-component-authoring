@@ -28,7 +28,7 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
-    "@promptframe/cli": "^0.1.20",
+    "@promptframe/cli": "^0.1.21",
     "@eslint/js": "^10.0.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

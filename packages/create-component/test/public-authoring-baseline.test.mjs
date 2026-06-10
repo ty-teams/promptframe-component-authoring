@@ -14,8 +14,13 @@ test('public templates use the current PromptFrame authoring package baseline', 
     assert.equal(packageJson.dependencies?.['@promptframe/component-kit'], '^0.1.7', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.8', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@remotion/player'], '^4.0.0', templatePackagePath);
-    assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.20', templatePackagePath);
+    assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.21', templatePackagePath);
   }
+});
+
+test('create package version is bumped for the next template release', async () => {
+  const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'packages/create-component/package.json'), 'utf8'));
+  assert.equal(packageJson.version, '0.1.12');
 });
 
 test('public templates expose PromptFrame CLI lifecycle scripts', async () => {
