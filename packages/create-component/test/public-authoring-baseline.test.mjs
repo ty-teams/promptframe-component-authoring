@@ -12,15 +12,15 @@ test('public templates use the current PromptFrame authoring package baseline', 
   ]) {
     const packageJson = JSON.parse(await readFile(path.join(repoRoot, templatePackagePath), 'utf8'));
     assert.equal(packageJson.dependencies?.['@promptframe/component-kit'], '^0.1.7', templatePackagePath);
-    assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.8', templatePackagePath);
+    assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.9', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@remotion/player'], '^4.0.0', templatePackagePath);
-    assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.21', templatePackagePath);
+    assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.22', templatePackagePath);
   }
 });
 
 test('create package version is bumped for the next template release', async () => {
   const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'packages/create-component/package.json'), 'utf8'));
-  assert.equal(packageJson.version, '0.1.12');
+  assert.equal(packageJson.version, '0.1.13');
 });
 
 test('public templates expose PromptFrame CLI lifecycle scripts', async () => {
@@ -81,7 +81,7 @@ test('public authoring docs include the local preview command before upload', as
   }
 });
 
-test('public authoring docs distinguish npm registry baseline from source candidates', async () => {
+test('public authoring docs document the current npm registry baseline', async () => {
   for (const docPath of [
     'README.md',
     'packages/cli/README.md',
@@ -89,8 +89,8 @@ test('public authoring docs distinguish npm registry baseline from source candid
     'packages/create-component/templates/react-remotion/README.md',
   ]) {
     const text = await readFile(path.join(repoRoot, docPath), 'utf8');
-    assert.match(text, /Current npm registry baseline remains[\s\S]*@promptframe\/cli@0\.1\.20[\s\S]*create-promptframe-component@0\.1\.11/, docPath);
-    assert.match(text, /source tree prepares[\s\S]*@promptframe\/cli@0\.1\.21[\s\S]*create-promptframe-component@0\.1\.12/, docPath);
+    assert.match(text, /Current npm registry baseline is[\s\S]*@promptframe\/cli@0\.1\.22[\s\S]*create-promptframe-component@0\.1\.13/, docPath);
+    assert.doesNotMatch(text, /source candidate|source tree prepares|until Trusted Publishing completes/, docPath);
   }
 });
 

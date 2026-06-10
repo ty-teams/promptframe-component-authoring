@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@promptframe/component-kit": "^0.1.7",
-    "@promptframe/contracts": "^0.1.8",
+    "@promptframe/contracts": "^0.1.9",
     "@remotion/player": "^4.0.0",
     "@vitejs/plugin-react": "^6.0.1",
     "vite": "^8.0.10",
@@ -28,7 +28,7 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
-    "@promptframe/cli": "^0.1.21",
+    "@promptframe/cli": "^0.1.22",
     "@eslint/js": "^10.0.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
