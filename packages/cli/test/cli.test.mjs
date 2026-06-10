@@ -1813,6 +1813,103 @@ test('validate rejects deterministic security gate violations', async () => {
   }
 });
 
+test('validate rejects high-risk browser capability policy violations with stable rule IDs', async () => {
+  const cases = [
+    {
+      code: 'browser.broadcast_channel',
+      keyword: /BroadcastChannel/i,
+      source: "const channel = new BroadcastChannel('promptframe'); channel.close();",
+    },
+    {
+      code: 'browser.webrtc',
+      keyword: /WebRTC|RTCPeerConnection/i,
+      source: 'const peer = new RTCPeerConnection(); peer.close();',
+    },
+    {
+      code: 'browser.notification',
+      keyword: /Notification/i,
+      source: 'void Notification.requestPermission();',
+    },
+    {
+      code: 'browser.service_worker',
+      keyword: /Service Worker|serviceWorker/i,
+      source: "void navigator.serviceWorker.register('/sw.js');",
+    },
+    {
+      code: 'browser.clipboard',
+      keyword: /clipboard/i,
+      source: "void navigator.clipboard.writeText('secret');",
+    },
+    {
+      code: 'browser.navigator_locks',
+      keyword: /locks/i,
+      source: "void navigator.locks.request('promptframe', async () => undefined);",
+    },
+    {
+      code: 'browser.audio_context',
+      keyword: /AudioContext|AudioWorklet/i,
+      source: 'const ctx = new AudioContext(); void ctx;',
+    },
+    {
+      code: 'browser.css_register_property',
+      keyword: /CSS\.registerProperty|CSS Houdini/i,
+      source: "CSS.registerProperty({ name: '--x', syntax: '<number>', inherits: false, initialValue: '0' });",
+    },
+    {
+      code: 'browser.observer_abuse',
+      keyword: /Observer/i,
+      source: 'new MutationObserver(() => undefined).observe(document.body, { childList: true });',
+    },
+    {
+      code: 'remotion.delay_render',
+      keyword: /delayRender/i,
+      source: 'const handle = delayRender(); void handle;',
+    },
+    {
+      code: 'code.dynamic_import',
+      keyword: /dynamic import/i,
+      source: "void import('./remote-module.js');",
+    },
+  ];
+
+  for (const item of cases) {
+    const dir = await mkdtemp(path.join(os.tmpdir(), `promptframe-cli-${item.code.replace(/\W+/g, '-')}-`));
+    try {
+      const componentDir = path.join(dir, 'component');
+      await writeFixtureComponent(componentDir);
+      await writeFile(path.join(componentDir, 'src/Component.tsx'), [
+        "import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';",
+        'export default function Component() {',
+        '  useCurrentFrame();',
+        '  useVideoConfig();',
+        `  ${item.source}`,
+        '  return <AbsoluteFill style={{ width: "100%", height: "100%" }} />;',
+        '}',
+      ].join('\n'));
+
+      await assert.rejects(
+        execFileAsync('node', [
+          cliPath,
+          'validate',
+          componentDir,
+          '--json',
+        ]),
+        (error) => {
+          assert.equal(error.code, 1);
+          const payload = JSON.parse(error.stderr);
+          assert.equal(payload.success, false);
+          assert.equal(payload.command, 'validate');
+          assert.equal(payload.diagnostic.code, item.code);
+          assert.match(payload.failureReason, item.keyword);
+          return true;
+        },
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+});
+
 async function createServer(handler) {
   const server = http.createServer((req, res) => {
     handler(req, res).catch((error) => {
