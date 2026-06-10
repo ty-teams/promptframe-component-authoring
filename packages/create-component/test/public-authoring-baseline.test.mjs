@@ -96,6 +96,25 @@ test('public skill documents common diagnostics and security rule fixes', async 
   }
 });
 
+test('public skill documents external CLI login and CI automation workflow', async () => {
+  const skill = await readFile(path.join(repoRoot, 'skills/component-authoring/SKILL.md'), 'utf8');
+
+  for (const marker of [
+    'promptframe login --endpoint <promptframe-api-base>',
+    'promptframe setup-ci --provider github',
+    'PROMPTFRAME_CI_TOKEN',
+    'PROMPTFRAME_API_BASE',
+    'GitHub Check annotations',
+    'Action summary',
+    'artifact report',
+    'platform status',
+    'Do not read remotion-media internal REQ/TASK/QA',
+    'third-party components are not browser extensions',
+  ]) {
+    assert.match(skill, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), marker);
+  }
+});
+
 test('public templates include a real Remotion Player dev preview shell', async () => {
   for (const templateRoot of [
     'templates/react-remotion',

@@ -66,6 +66,47 @@ Do not guess private service addresses. If no endpoint is provided, finish local
 
 Automation can add `--json` to `standard`, `doctor`, `validate`, `check`, `upgrade`, `preview`, `upload`, `status`, `reindex`, and `probe`. Use `dev --dry-run --json` to inspect the local preview command without starting a long-running server. Use `upgrade --dry-run --json` to inspect package floor changes before editing. Read `diagnostic.code`, `checkedRuleIds`, `failureReason`, and `retryable` instead of scraping prose logs.
 
+## External Collaboration Workflow
+
+Use this section when the component is authored outside the PromptFrame platform by a human plus an external CodingAI. The public repo and public skill must be enough; do not depend on private platform notes.
+
+### Human first run
+
+```bash
+npm create promptframe-component ./my-component -- --name my-component --display-name "My Component"
+cd my-component
+npm install
+npx promptframe check . --json
+npx promptframe preview .
+npx promptframe login --endpoint <promptframe-api-base>
+npx promptframe upload . --endpoint <promptframe-api-base> --json
+npx promptframe status <buildId> --endpoint <promptframe-api-base> --json
+```
+
+`promptframe login --endpoint <promptframe-api-base>` starts the browser login code flow for a human author. If the platform has issued a scoped token, `promptframe login --endpoint <promptframe-api-base> --token <token>` can verify and store it without printing the token secret.
+
+### GitHub Actions automation
+
+```bash
+npx promptframe setup-ci --provider github
+```
+
+`promptframe setup-ci --provider github` writes `.github/workflows/promptframe-component.yml`. Configure GitHub repository variable `PROMPTFRAME_API_BASE` and repository secret `PROMPTFRAME_CI_TOKEN`. Pull requests run check-only diagnostics; `main` and release-style tag pushes use the CI token to upload and then call `status`.
+
+Do not paste `PROMPTFRAME_CI_TOKEN` into the workflow, README, source, issue, pull request, prompt, or chat. Do not commit private endpoints. The workflow should reference `${{ secrets.PROMPTFRAME_CI_TOKEN }}` and `${{ vars.PROMPTFRAME_API_BASE }}` only.
+
+### CodingAI feedback locations
+
+External CodingAI should read local CLI JSON diagnostics first. In GitHub Actions, read GitHub Check annotations, the Action summary, the artifact report, and then platform status / admission diagnostics. Treat `ruleId`, `diagnostic.code`, `severity`, `failureReason`, and `retryable` as machine-readable feedback; do not scrape prose logs.
+
+### Public information boundary
+
+Do not read remotion-media internal REQ/TASK/QA, agent board, inboxes, deployment scripts, private prompts, private endpoints, Auth0 subjects, cookies, token secrets, or red-team implementation notes. Do not fill in `userId`, `tenantId`, or `projectId` by hand as identity proof; the platform derives identity from browser login or scoped CI token.
+
+### Third-party component capability boundary
+
+third-party components are not browser extensions. They run as deterministic PromptFrame video components and should only use controlled rendering capabilities. If a requested feature needs raw network access, cross-tab messaging, browser storage, clipboard, WebRTC, notifications, service workers, dynamic imports, dangerous HTML injection, or long-running observers, redesign it around props, platform assets, or a platform-mediated API. Static local checks and GitHub PR checks are early feedback; upload admission, preview runtime pruning, and render sandbox remain final gates.
+
 ## Component Types
 
 Public marketplace search is optimized for four component types:

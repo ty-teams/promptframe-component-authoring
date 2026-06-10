@@ -26,6 +26,7 @@ npx promptframe dev .
 npx promptframe check .
 npx promptframe validate .
 npx promptframe preview .
+npx promptframe login --endpoint <promptframe-api-base>
 npx promptframe upload . --endpoint <promptframe-api-base>
 npx promptframe status <buildId> --endpoint <promptframe-api-base>
 ```
@@ -109,6 +110,10 @@ npx promptframe upload . --endpoint <promptframe-api-base>
 ```bash
 npx promptframe setup-ci --provider github --force
 ```
+
+CodingAI 排查失败时优先看 CLI JSON diagnostics、GitHub Check annotations、Action summary、artifact report 和平台 `status` / admission diagnostics。不要读取 `remotion-media` 内部 REQ/TASK/QA、agent board、部署脚本或私有 endpoint；身份由浏览器登录或 `PROMPTFRAME_CI_TOKEN` 代表，不靠手填 `userId` / `tenantId` / `projectId`。
+
+第三方组件不是完整浏览器扩展环境。不要默认使用跨标签通信、Service Worker、WebRTC、Notification、剪贴板、裸网络请求、动态 import、危险 HTML 或长时间 observer；优先改成 props、平台 asset 或受控平台 API。CLI / GitHub PR check 会尽量提前提示，平台 upload admission、preview runtime 和 render sandbox 仍是最终门禁。
 
 查看构建验收状态：
 
