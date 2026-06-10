@@ -22,6 +22,7 @@ import {
   COMPONENT_STANDARD_VERSION,
   PROMPTFRAME_AUTHORING_STANDARD_RELEASE,
   PROMPTFRAME_PUBLIC_SECURITY_POLICY,
+  PROMPTFRAME_PUBLIC_SECURITY_POLICY_DIGEST,
   PROMPTFRAME_PUBLIC_STANDARD_POLICY,
   PROMPTFRAME_CONTRACTS_VERSION,
   PROMPTFRAME_PUBLIC_DEPENDENCY_POLICY,
@@ -36,6 +37,10 @@ import {
   type PublicPolicyRuleId,
   type PromptFrameDependencyPolicyReceipt,
 } from '@promptframe/contracts';
+import {
+  evaluatePromptFrameSecurityPolicySource,
+  type PromptFrameSecurityPolicyFinding,
+} from '@promptframe/contracts/security-evaluator';
 import {
   applyPackageChanges,
   buildFreshnessDecision,
@@ -61,6 +66,7 @@ const args = process.argv.slice(3);
 const REQUIRED_COMPONENT_FILES = PROMPTFRAME_PUBLIC_STANDARD_POLICY.requiredFiles;
 const CLI_AUTH_CONTRACT_VERSION = 'cli-auth.v0.1.0';
 const DEFAULT_CLI_LOGIN_SCOPES = ['component.upload', 'component.status.read'];
+const SECURITY_EVALUATOR_MODE = 'ast';
 
 const VALIDATE_CHECKED_RULE_IDS: PublicPolicyRuleId[] = [
   'manifest.identity.version',
@@ -152,6 +158,8 @@ function standard(): void {
     dependencyPolicy: PROMPTFRAME_PUBLIC_DEPENDENCY_POLICY,
     previewLimits: PROMPTFRAME_PUBLIC_STANDARD_POLICY.previewLimits,
     authoringStandardRelease: PROMPTFRAME_AUTHORING_STANDARD_RELEASE,
+    securityPolicyDigest: PROMPTFRAME_PUBLIC_SECURITY_POLICY_DIGEST,
+    securityEvaluatorMode: SECURITY_EVALUATOR_MODE,
     freshness: buildFreshnessDecision(
       target,
       diagnostic('standard.freshness.current', 'info', 'Local authoring standard matches the current public release.'),
@@ -195,6 +203,9 @@ function validate(argv: string[]): void {
       componentType: manifest.componentType ?? manifest.layer,
     },
     checkedRuleIds: VALIDATE_CHECKED_RULE_IDS,
+    securityPolicyVersion: PROMPTFRAME_PUBLIC_SECURITY_POLICY.policyVersion,
+    securityPolicyDigest: PROMPTFRAME_PUBLIC_SECURITY_POLICY_DIGEST,
+    securityEvaluatorMode: SECURITY_EVALUATOR_MODE,
     dependencyPolicy,
     diagnostics,
     diagnostic: diagnostic('validate.completed', 'info', 'Component manifest and public source boundaries validated.'),
@@ -225,6 +236,9 @@ async function check(argv: string[]): Promise<void> {
     dir,
     manifest: manifestSummary(manifest),
     checkedRuleIds: VALIDATE_CHECKED_RULE_IDS,
+    securityPolicyVersion: PROMPTFRAME_PUBLIC_SECURITY_POLICY.policyVersion,
+    securityPolicyDigest: PROMPTFRAME_PUBLIC_SECURITY_POLICY_DIGEST,
+    securityEvaluatorMode: SECURITY_EVALUATOR_MODE,
     freshness,
     localReusability,
     dependencyPolicy,
@@ -1421,47 +1435,21 @@ function validateSecurityPolicy(dir: string): void {
   for (const entry of collectPackageFiles(dir)) {
     if (!isSecurityScannableFile(entry.name)) continue;
     const source = entry.data.toString('utf8');
-    const finding = firstSecurityFinding(entry.name, source);
+    const finding = firstSecurityFindingFromEvaluator(entry.name, source);
     if (!finding) continue;
-    fail(`${entry.name}: ${finding.label}: ${finding.reason} ${finding.recommendation}`, finding.id);
+    fail(formatSecurityFindingFailure(entry.name, finding), finding.ruleId);
   }
 }
 
-function firstSecurityFinding(file: string, source: string): {
-  id: string;
-  label: string;
-  reason: string;
-  recommendation: string;
-} | undefined {
-  for (const rule of PROMPTFRAME_PUBLIC_SECURITY_POLICY.forbiddenApis) {
-    if (!shouldScanSecurityRule(file, rule.id)) continue;
-    if (matchesAnyPattern(source, rule.patterns)) return rule;
-  }
-  for (const rule of PROMPTFRAME_PUBLIC_SECURITY_POLICY.mediatedApis) {
-    if (!shouldScanSecurityRule(file, rule.id)) continue;
-    if (matchesAnyPattern(source, rule.rawApis.map(apiToSecurityPattern))) return rule;
-  }
-  for (const rule of PROMPTFRAME_PUBLIC_SECURITY_POLICY.warningApis) {
-    if (!shouldScanSecurityRule(file, rule.id)) continue;
-    if (matchesAnyPattern(source, rule.patterns)) return rule;
-  }
-  return undefined;
+function firstSecurityFindingFromEvaluator(file: string, source: string): PromptFrameSecurityPolicyFinding | undefined {
+  const receipt = evaluatePromptFrameSecurityPolicySource({ file, source });
+  return receipt.findings.find((finding) => shouldScanSecurityRule(file, finding.ruleId));
 }
 
-function matchesAnyPattern(source: string, patterns: readonly string[]): boolean {
-  return patterns.some((pattern) => new RegExp(pattern, 'i').test(source));
-}
-
-function apiToSecurityPattern(api: string): string {
-  const escaped = api.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  if (api === 'fetch') return '\\bfetch\\s*\\(';
-  if (api === 'XMLHttpRequest') return '\\bnew\\s+XMLHttpRequest\\b|\\bXMLHttpRequest\\s*\\(';
-  if (api === 'WebSocket') return '\\bnew\\s+WebSocket\\b|\\bWebSocket\\s*\\(';
-  if (api === 'EventSource') return '\\bnew\\s+EventSource\\b|\\bEventSource\\s*\\(';
-  if (api === 'navigator.sendBeacon') return 'navigator\\.sendBeacon\\s*\\(';
-  return api.includes('.')
-    ? `${escaped}\\s*\\(`
-    : `\\b${escaped}\\b`;
+function formatSecurityFindingFailure(file: string, finding: PromptFrameSecurityPolicyFinding): string {
+  const location = finding.line && finding.column ? `:${finding.line}:${finding.column}` : '';
+  const recommendation = finding.recommendation ? ` ${finding.recommendation}` : '';
+  return `${file}${location}: ${finding.message}${recommendation} (${finding.detectionKind} security policy; ${finding.policyDigest})`;
 }
 
 function shouldScanSecurityRule(file: string, ruleId: string): boolean {

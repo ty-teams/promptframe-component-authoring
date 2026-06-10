@@ -64,7 +64,9 @@ npx promptframe status <buildId> --endpoint <promptframe-api-base>
 
 Do not guess private service addresses. If no endpoint is provided, finish local video preview, validation, and local preview envelope checks, then report the missing endpoint.
 
-Automation can add `--json` to `standard`, `doctor`, `validate`, `check`, `upgrade`, `preview`, `upload`, `status`, `reindex`, and `probe`. Use `dev --dry-run --json` to inspect the local preview command without starting a long-running server. Use `upgrade --dry-run --json` to inspect package floor changes before editing. Read `diagnostic.code`, `checkedRuleIds`, `failureReason`, and `retryable` instead of scraping prose logs.
+Automation can add `--json` to `standard`, `doctor`, `validate`, `check`, `upgrade`, `preview`, `upload`, `status`, `reindex`, and `probe`. Use `dev --dry-run --json` to inspect the local preview command without starting a long-running server. Use `upgrade --dry-run --json` to inspect package floor changes before editing. Read `diagnostic.code`, `checkedRuleIds`, `securityPolicyDigest`, `securityEvaluatorMode`, `failureReason`, and `retryable` instead of scraping prose logs.
+
+`validate` / `check` use the public security policy from `@promptframe/contracts`; current source candidates evaluate JS / TS / TSX through the contracts AST-aware evaluator. Treat `securityEvaluatorMode: "ast"` and the `securityPolicyDigest` as the public rule-cohort identity. If validation reports a browser or dynamic-code rule such as `browser.broadcast_channel`, `code.dynamic_import`, or `code.string_timer`, remove the capability instead of hiding it behind aliases.
 
 ## External Collaboration Workflow
 

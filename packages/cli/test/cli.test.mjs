@@ -1475,6 +1475,8 @@ test('local standard, doctor, and validate expose stable JSON diagnostics', asyn
     assert.equal(standard.freshness.status, 'current');
     assert.equal(standard.freshness.target, 'marketplace_authoring');
     assert.equal(standard.freshness.currentStandardSourceHash, standard.authoringStandardRelease.standardSourceHash);
+    assert.equal(standard.securityEvaluatorMode, 'ast');
+    assert.match(standard.securityPolicyDigest, /^component-security-policy-digest\.v0\.1:/);
 
     const doctor = JSON.parse((await execFileAsync('node', [
       cliPath,
@@ -1504,6 +1506,8 @@ test('local standard, doctor, and validate expose stable JSON diagnostics', asyn
     assert.equal(validate.diagnostic.code, 'validate.completed');
     assert.equal(validate.manifest.id, '@demo/fixture-component');
     assert.equal(validate.manifest.componentType, 'scene_template');
+    assert.equal(validate.securityEvaluatorMode, 'ast');
+    assert.equal(validate.securityPolicyDigest, standard.securityPolicyDigest);
     assert.deepEqual(validate.checkedRuleIds, [
       'manifest.identity.version',
       'manifest.component_type.supported',
@@ -1538,6 +1542,8 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
     assert.equal(check.freshness.target, 'project_private_generation');
     assert.equal(check.freshness.status, 'warning');
     assert.equal(check.freshness.diagnostic.code, 'standard.freshness.offline_degraded');
+    assert.equal(check.securityEvaluatorMode, 'ast');
+    assert.match(check.securityPolicyDigest, /^component-security-policy-digest\.v0\.1:/);
     assert.deepEqual(check.checkedRuleIds, [
       'manifest.identity.version',
       'manifest.component_type.supported',
@@ -1907,6 +1913,77 @@ test('validate rejects high-risk browser capability policy violations with stabl
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  }
+});
+
+test('validate uses AST-aware security policy for alias browser capability violations', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-security-policy-ast-alias-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(componentDir, 'src/Component.tsx'), [
+      "import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';",
+      'const BC = BroadcastChannel;',
+      'export default function Component() {',
+      '  useCurrentFrame();',
+      '  useVideoConfig();',
+      "  const channel = new BC('promptframe');",
+      '  channel.close();',
+      '  return <AbsoluteFill style={{ width: "100%", height: "100%" }} />;',
+      '}',
+    ].join('\n'));
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'validate',
+        componentDir,
+        '--json',
+      ]),
+      (error) => {
+        assert.equal(error.code, 1);
+        const payload = JSON.parse(error.stderr);
+        assert.equal(payload.success, false);
+        assert.equal(payload.command, 'validate');
+        assert.equal(payload.diagnostic.code, 'browser.broadcast_channel');
+        assert.match(payload.failureReason, /BroadcastChannel/i);
+        assert.match(payload.failureReason, /ast/i);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('validate does not reject browser capability names in source comments and strings', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-security-policy-ast-false-positive-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(componentDir, 'src/Component.tsx'), [
+      "import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';",
+      '// Do not use BroadcastChannel in marketplace components.',
+      'export default function Component() {',
+      '  useCurrentFrame();',
+      '  useVideoConfig();',
+      "  const label = 'BroadcastChannel is blocked by PromptFrame policy';",
+      '  return <AbsoluteFill style={{ width: "100%", height: "100%" }}>{label}</AbsoluteFill>;',
+      '}',
+    ].join('\n'));
+
+    const validate = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'validate',
+      componentDir,
+      '--json',
+    ])).stdout);
+    assert.equal(validate.command, 'validate');
+    assert.equal(validate.diagnostic.code, 'validate.completed');
+    assert.equal(validate.securityEvaluatorMode, 'ast');
+    assert.match(validate.securityPolicyDigest, /^component-security-policy-digest\.v0\.1:/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });
 
