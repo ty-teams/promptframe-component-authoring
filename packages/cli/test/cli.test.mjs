@@ -6,6 +6,10 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
+import {
+  PROMPTFRAME_PUBLIC_SECURITY_POLICY,
+  PROMPTFRAME_PUBLIC_SECURITY_POLICY_DIGEST,
+} from '@promptframe/contracts';
 
 const execFileAsync = promisify(execFile);
 const cliPath = path.resolve('dist/index.js');
@@ -98,6 +102,9 @@ test('upload, probe, and reindex call platform transport paths with stable JSON'
     if (req.url === '/components/marketplace/upload') {
       assert.equal(req.method, 'POST');
       assert.equal(req.headers['x-promptframe-upload-target'], 'project_private_generation');
+      assert.equal(req.headers['x-promptframe-security-policy-version'], PROMPTFRAME_PUBLIC_SECURITY_POLICY.policyVersion);
+      assert.equal(req.headers['x-promptframe-security-policy-digest'], PROMPTFRAME_PUBLIC_SECURITY_POLICY_DIGEST);
+      assert.equal(req.headers['x-promptframe-security-evaluator-mode'], 'ast');
       assert.match(body.toString('latin1'), /fake component zip/);
       writeJson(res, { success: true, jobId: 'build-uploaded', status: 'queued' });
       return;

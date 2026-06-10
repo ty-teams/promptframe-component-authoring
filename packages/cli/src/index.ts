@@ -516,6 +516,7 @@ async function uploadComponent(argv: string[]): Promise<void> {
     body: form,
     headers: {
       ...buildRemoteHeaders(endpoint, argv),
+      ...buildSecurityPolicyHeaders(),
       'x-promptframe-upload-target': uploadTarget,
     },
   }, 'upload.http.failed');
@@ -1187,6 +1188,14 @@ function buildRemoteHeaders(
     );
   }
   return contextHeaders;
+}
+
+function buildSecurityPolicyHeaders(): Record<string, string> {
+  return {
+    'x-promptframe-security-policy-version': PROMPTFRAME_PUBLIC_SECURITY_POLICY.policyVersion,
+    'x-promptframe-security-policy-digest': PROMPTFRAME_PUBLIC_SECURITY_POLICY_DIGEST,
+    'x-promptframe-security-evaluator-mode': SECURITY_EVALUATOR_MODE,
+  };
 }
 
 function resolveBearerToken(endpoint: string, argv: string[]): string | undefined {
