@@ -81,6 +81,19 @@ test('public authoring docs include the local preview command before upload', as
   }
 });
 
+test('public authoring docs distinguish npm registry baseline from source candidates', async () => {
+  for (const docPath of [
+    'README.md',
+    'packages/cli/README.md',
+    'templates/react-remotion/README.md',
+    'packages/create-component/templates/react-remotion/README.md',
+  ]) {
+    const text = await readFile(path.join(repoRoot, docPath), 'utf8');
+    assert.match(text, /Current npm registry baseline remains[\s\S]*@promptframe\/cli@0\.1\.20[\s\S]*create-promptframe-component@0\.1\.11/, docPath);
+    assert.match(text, /source tree prepares[\s\S]*@promptframe\/cli@0\.1\.21[\s\S]*create-promptframe-component@0\.1\.12/, docPath);
+  }
+});
+
 test('public skill documents common diagnostics and security rule fixes', async () => {
   const skill = await readFile(path.join(repoRoot, 'skills/component-authoring/SKILL.md'), 'utf8');
   assert.match(skill, /Common Diagnostics/);

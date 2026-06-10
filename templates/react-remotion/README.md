@@ -10,6 +10,8 @@ PromptFrame 标准视频组件模板。
 
 CodingAI 不能读取 PromptFrame 平台源码、内部协作看板、REQ/TASK/QA、内部协作收件箱、secret、内部部署脚本或私有 endpoint 默认值。
 
+版本事实：Current npm registry baseline remains `@promptframe/cli@0.1.20` and `create-promptframe-component@0.1.11` until Trusted Publishing completes. The source tree prepares `@promptframe/cli@0.1.21` and `create-promptframe-component@0.1.12`; 发布前不要把 source candidate 当成外部用户已经能从 npm 拿到的能力。
+
 ## 本地开发
 
 ```bash
