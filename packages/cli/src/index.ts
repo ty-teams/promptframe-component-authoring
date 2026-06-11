@@ -67,6 +67,17 @@ const REQUIRED_COMPONENT_FILES = PROMPTFRAME_PUBLIC_STANDARD_POLICY.requiredFile
 const CLI_AUTH_CONTRACT_VERSION = 'cli-auth.v0.1.0';
 const DEFAULT_CLI_LOGIN_SCOPES = ['component.upload', 'component.status.read'];
 const SECURITY_EVALUATOR_MODE = 'ast';
+const LOCKFILE_EVIDENCE_SCHEMA_VERSION = 'promptframe.lockfile-evidence.v0.1.0';
+const LOCKFILE_EVIDENCE_FILE_NAME = 'promptframe-lockfile-evidence.json';
+const PACKAGE_MANAGER_LOCKFILE_NAMES = [
+  'package-lock.json',
+  'npm-shrinkwrap.json',
+  'pnpm-lock.yaml',
+  'yarn.lock',
+  'bun.lock',
+  'bun.lockb',
+] as const;
+const PACKAGE_MANAGER_LOCKFILE_NAME_SET = new Set<string>(PACKAGE_MANAGER_LOCKFILE_NAMES);
 
 const VALIDATE_CHECKED_RULE_IDS: PublicPolicyRuleId[] = [
   'manifest.identity.version',
@@ -1593,6 +1604,7 @@ function collectPackageFiles(root: string): Array<{ name: string; data: Buffer }
       if (entry.isDirectory()) {
         walk(full);
       } else if (entry.isFile()) {
+        if (entry.name === LOCKFILE_EVIDENCE_FILE_NAME) continue;
         if (isPackageManagerLockfile(entry.name)) continue;
         files.push({
           name: relative(root, full).replace(/\\/g, '/'),
@@ -1602,18 +1614,46 @@ function collectPackageFiles(root: string): Array<{ name: string; data: Buffer }
     }
   }
   walk(root);
+  const evidence = buildLockfileEvidenceFile(root);
+  if (evidence) files.push(evidence);
   return files.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+function buildLockfileEvidenceFile(root: string): { name: string; data: Buffer } | undefined {
+  const lockfiles = collectRootPackageManagerLockfiles(root);
+  if (lockfiles.length === 0) return undefined;
+  const packageJson = readFileSync(join(root, 'package.json'));
+  const receipt = {
+    schemaVersion: LOCKFILE_EVIDENCE_SCHEMA_VERSION,
+    packageJsonSha256: sha256Buffer(packageJson),
+    lockfiles: lockfiles.map((lockfile) => ({
+      fileName: lockfile.name,
+      sizeBytes: lockfile.data.byteLength,
+      sha256: sha256Buffer(lockfile.data),
+    })),
+  };
+  return {
+    name: LOCKFILE_EVIDENCE_FILE_NAME,
+    data: Buffer.from(`${JSON.stringify(receipt)}\n`, 'utf8'),
+  };
+}
+
+function collectRootPackageManagerLockfiles(root: string): Array<{ name: string; data: Buffer }> {
+  const lockfiles: Array<{ name: string; data: Buffer }> = [];
+  for (const name of PACKAGE_MANAGER_LOCKFILE_NAMES) {
+    const full = join(root, name);
+    if (!existsSync(full)) continue;
+    lockfiles.push({ name, data: readFileSync(full) });
+  }
+  return lockfiles;
+}
+
+function sha256Buffer(data: Buffer): string {
+  return `sha256:${createHash('sha256').update(data).digest('hex')}`;
+}
+
 function isPackageManagerLockfile(fileName: string): boolean {
-  return [
-    'package-lock.json',
-    'npm-shrinkwrap.json',
-    'pnpm-lock.yaml',
-    'yarn.lock',
-    'bun.lock',
-    'bun.lockb',
-  ].includes(fileName);
+  return PACKAGE_MANAGER_LOCKFILE_NAME_SET.has(fileName);
 }
 
 function buildStoredZip(files: Array<{ name: string; data: Buffer }>): Buffer {

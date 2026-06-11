@@ -1125,7 +1125,7 @@ test('package excludes local preview cases from .promptframe while keeping canon
   }
 });
 
-test('validate and package ignore package manager lockfiles', async () => {
+test('package excludes raw package manager lockfiles but includes sanitized lockfile evidence', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-package-lockfiles-'));
   try {
     const componentDir = path.join(dir, 'component');
@@ -1168,10 +1168,19 @@ test('validate and package ignore package manager lockfiles', async () => {
       '--out',
       out,
     ]);
-    const zipText = (await readFile(out)).toString('latin1');
-    assert.doesNotMatch(zipText, /package-lock\.json/);
-    assert.doesNotMatch(zipText, /pnpm-lock\.yaml/);
+    const zip = await readFile(out);
+    const zipText = zip.toString('latin1');
+    const names = zipEntryNames(zip);
+    assert.equal(names.includes('package-lock.json'), false);
+    assert.equal(names.includes('pnpm-lock.yaml'), false);
+    assert.equal(names.includes('promptframe-lockfile-evidence.json'), true);
+    assert.match(zipText, /"schemaVersion":"promptframe\.lockfile-evidence\.v0\.1\.0"/);
+    assert.match(zipText, /"fileName":"package-lock\.json"/);
+    assert.match(zipText, /"fileName":"pnpm-lock\.yaml"/);
+    assert.match(zipText, /"sha256":"sha256:[a-f0-9]{64}"/);
     assert.doesNotMatch(zipText, /registry\.npmjs\.org/);
+    assert.doesNotMatch(zipText, /resolution: \{integrity:/);
+    assert.doesNotMatch(zipText, /lockfileVersion: "9\.0"/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -2019,6 +2028,28 @@ async function readRequestBody(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(Buffer.from(chunk));
   return Buffer.concat(chunks);
+}
+
+function zipEntryNames(zip) {
+  const names = [];
+  let offset = 0;
+  while (offset + 30 <= zip.length) {
+    const signature = zip.readUInt32LE(offset);
+    if (signature === 0x02014b50 || signature === 0x06054b50) break;
+    if (signature !== 0x04034b50) {
+      offset += 1;
+      continue;
+    }
+    const compressedSize = zip.readUInt32LE(offset + 18);
+    const nameLength = zip.readUInt16LE(offset + 26);
+    const extraLength = zip.readUInt16LE(offset + 28);
+    const nameStart = offset + 30;
+    const dataStart = nameStart + nameLength + extraLength;
+    const dataEnd = dataStart + compressedSize;
+    names.push(zip.subarray(nameStart, nameStart + nameLength).toString('utf8').replace(/\\/g, '/'));
+    offset = dataEnd;
+  }
+  return names;
 }
 
 async function writeFixtureComponent(componentDir) {
