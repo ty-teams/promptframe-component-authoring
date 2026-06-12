@@ -17,8 +17,8 @@ Key public exports:
 
 `PROMPTFRAME_PUBLIC_SECURITY_POLICY` is the public author-facing rule catalog used by CLI diagnostics. It intentionally describes the behavior an external component author must avoid, not PromptFrame platform internals.
 
-High-risk browser/runtime capabilities are rejected locally when they are statically visible, including BroadcastChannel, WebRTC / RTCPeerConnection, Notification, Service Worker, clipboard access, navigator.locks, AudioContext / AudioWorklet, CSS.registerProperty, DOM Observer APIs, Remotion delayRender, and dynamic import.
+High-risk browser/runtime capabilities are rejected locally when they are statically visible, including BroadcastChannel, WebRTC / RTCPeerConnection, Notification, Service Worker, clipboard access, navigator.locks, AudioContext / AudioWorklet, CSS.registerProperty, DOM Observer APIs, Remotion delayRender, and dynamic import. Fps hardcoded timing is warning-first under `runtime.deterministic.fps_hardcoded_timing`; it reports timing literals in Remotion contexts while allowing local validation to proceed.
 
-Each public rule exposes a stable `id`, severity, category, action, pattern set, optional AST matcher metadata, human reason, recommendation, and documentation path so local CLI output, GitHub annotations, and platform admission can refer to the same author-facing diagnostic family.
+Each public rule exposes a stable `id`, severity, category, action, pattern set, optional AST matcher metadata, human reason, recommendation, optional `repairHint`, and documentation path so local CLI output, GitHub annotations, and platform admission can refer to the same author-facing diagnostic family.
 
 The security evaluator subpath parses JS / TS / TSX source with the TypeScript compiler API, so comments, strings, and harmless local identifiers do not trigger the same diagnostics as real browser capability access. Regex patterns remain as compatibility and metadata fallback, not the preferred source-code admission path.

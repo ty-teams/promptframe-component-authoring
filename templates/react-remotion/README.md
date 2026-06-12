@@ -77,6 +77,7 @@ npx promptframe status <buildId> --endpoint <promptframe-api-base>
 安全规则来自平台标准 API。CLI 本地 `promptframe validate . --json` / `promptframe check . --json` 和服务端准入会使用同一套公开 ruleId 口径；机器读取时看 `checkedRuleIds`、`diagnostic.code`、`failureReason` 和 `retryable`。依赖版本过旧时先跑 `promptframe upgrade . --dry-run --json` 查看需要更新的 PromptFrame 包。
 
 - 不要使用 `eval`、`new Function`、字符串定时器、`node:fs`、`child_process`、`process.env`。
+- `runtime.deterministic.fps_hardcoded_timing` 是 warning-first（先警告）规则；看到它时把硬编码帧数改成 `secondsToFrames(seconds, fps)` 或 `createDurationTimeline()` / `timeline.at()`。
 - 不要直接使用 `fetch()` / XHR / WebSocket / Beacon。
 - 即使使用 `componentRuntime.fetchJson()`，也必须等待平台提供白名单配置；未配置时会进入 `manual_review`。
 - 不要读取 `localStorage` / `sessionStorage` / cookie。当前可能只是 warning，但不建议保留。

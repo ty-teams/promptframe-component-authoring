@@ -24,6 +24,7 @@ export interface PromptFrameSecurityPolicyFinding {
   column?: number;
   evidence?: string;
   recommendation?: string;
+  repairHint?: string;
   detectionKind: PromptFrameSecurityPolicyDetectionKind;
   confidence: PromptFrameSecurityPolicyConfidence;
   trace?: string[];
@@ -48,6 +49,7 @@ interface AstMatchers {
   memberPaths?: readonly string[];
   dynamicImport?: boolean;
   stringTimer?: boolean;
+  fpsHardcodedTiming?: boolean;
 }
 
 interface PublicSecurityRule {
@@ -57,6 +59,7 @@ interface PublicSecurityRule {
   severity?: string;
   reason: string;
   recommendation?: string;
+  repairHint?: string;
   action?: PromptFrameSecurityPolicyAction;
   defaultAction?: PromptFrameSecurityPolicyAction;
   patterns?: readonly string[];
@@ -162,6 +165,11 @@ function matchAstRule(
     if ((name === 'setTimeout' || name === 'setInterval') && isStringLikeExpression(node.arguments[0])) {
       return { node, confidence: 'high', trace: [`stringTimer:${name}`] };
     }
+  }
+
+  if (matcher.fpsHardcodedTiming) {
+    const match = matchFpsHardcodedTiming(node, sourceFile);
+    if (match) return match;
   }
 
   const globals = new Set(matcher.globals ?? []);
@@ -301,11 +309,126 @@ function buildFinding(input: {
     column: location.character + 1,
     evidence: input.evidence,
     recommendation: input.rule.recommendation,
+    repairHint: input.rule.repairHint ?? input.rule.recommendation,
     detectionKind: input.detectionKind,
     confidence: input.confidence,
     trace: input.trace,
   };
 }
+
+function matchFpsHardcodedTiming(
+  node: ts.Node,
+  sourceFile: ts.SourceFile,
+): { node: ts.Node; confidence: PromptFrameSecurityPolicyConfidence; trace: string[] } | undefined {
+  if (ts.isJsxAttribute(node)) {
+    const name = jsxAttributeName(node.name);
+    if (name && isTimingPropertyName(name) && jsxAttributeHasHardcodedTimingNumber(node)) {
+      return { node, confidence: 'medium', trace: [`fpsHardcodedTiming:jsx:${name}`] };
+    }
+  }
+
+  if (ts.isPropertyAssignment(node)) {
+    const name = propertyNameText(node.name);
+    if (name && isTimingPropertyName(name) && expressionHasHardcodedTimingNumber(node.initializer)) {
+      return { node, confidence: 'medium', trace: [`fpsHardcodedTiming:property:${name}`] };
+    }
+  }
+
+  if (ts.isCallExpression(node)) {
+    const name = callExpressionName(node.expression, sourceFile);
+    if (name === 'interpolate' && arrayLiteralHasHardcodedTimingNumber(node.arguments[1])) {
+      return { node, confidence: 'medium', trace: ['fpsHardcodedTiming:interpolate:inputRange'] };
+    }
+  }
+
+  if (ts.isBinaryExpression(node) && isTimingBinaryOperator(node.operatorToken.kind)) {
+    if (
+      (isFrameLikeExpression(node.left, sourceFile) && expressionHasHardcodedTimingNumber(node.right))
+      || (isFrameLikeExpression(node.right, sourceFile) && expressionHasHardcodedTimingNumber(node.left))
+    ) {
+      return { node, confidence: 'medium', trace: [`fpsHardcodedTiming:frameMath:${ts.tokenToString(node.operatorToken.kind) ?? 'operator'}`] };
+    }
+  }
+
+  return undefined;
+}
+
+function isTimingPropertyName(name: string): boolean {
+  return name === 'from'
+    || name === 'durationInFrames'
+    || name === 'durationFrames'
+    || name === 'delayFrames'
+    || name === 'fps';
+}
+
+function propertyNameText(name: ts.PropertyName): string | undefined {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) return name.text;
+  return undefined;
+}
+
+function jsxAttributeName(name: ts.JsxAttributeName): string | undefined {
+  if (ts.isIdentifier(name)) return name.text;
+  return undefined;
+}
+
+function jsxAttributeHasHardcodedTimingNumber(node: ts.JsxAttribute): boolean {
+  const initializer = node.initializer;
+  if (!initializer) return false;
+  if (ts.isStringLiteral(initializer)) return isHardcodedTimingText(initializer.text);
+  if (ts.isJsxExpression(initializer) && initializer.expression) {
+    return expressionHasHardcodedTimingNumber(initializer.expression);
+  }
+  return false;
+}
+
+function arrayLiteralHasHardcodedTimingNumber(node: ts.Node | undefined): boolean {
+  if (!node || !ts.isArrayLiteralExpression(node)) return false;
+  return node.elements.some((element) => expressionHasHardcodedTimingNumber(element));
+}
+
+function expressionHasHardcodedTimingNumber(node: ts.Node | undefined): boolean {
+  if (!node) return false;
+  if (ts.isNumericLiteral(node)) return isHardcodedTimingText(node.text);
+  if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.PlusToken) {
+    return expressionHasHardcodedTimingNumber(node.operand);
+  }
+  return false;
+}
+
+function isHardcodedTimingText(text: string): boolean {
+  const value = Number(text);
+  return Number.isInteger(value) && value > 0 && HARDCODED_TIMING_FRAME_COUNTS.has(value);
+}
+
+function callExpressionName(expression: ts.Expression, sourceFile: ts.SourceFile): string | undefined {
+  const path = memberPath(expression, sourceFile);
+  if (!path) return expressionName(expression, sourceFile);
+  const parts = path.split('.');
+  return parts[parts.length - 1];
+}
+
+function isFrameLikeExpression(node: ts.Expression, sourceFile: ts.SourceFile): boolean {
+  const name = expressionName(node, sourceFile) ?? memberPath(node, sourceFile).split('.').pop();
+  return name === 'frame' || name === 'currentFrame';
+}
+
+function isTimingBinaryOperator(kind: ts.SyntaxKind): boolean {
+  return kind === ts.SyntaxKind.LessThanToken
+    || kind === ts.SyntaxKind.LessThanEqualsToken
+    || kind === ts.SyntaxKind.GreaterThanToken
+    || kind === ts.SyntaxKind.GreaterThanEqualsToken
+    || kind === ts.SyntaxKind.EqualsEqualsToken
+    || kind === ts.SyntaxKind.EqualsEqualsEqualsToken
+    || kind === ts.SyntaxKind.ExclamationEqualsToken
+    || kind === ts.SyntaxKind.ExclamationEqualsEqualsToken
+    || kind === ts.SyntaxKind.PlusToken
+    || kind === ts.SyntaxKind.MinusToken
+    || kind === ts.SyntaxKind.AsteriskToken
+    || kind === ts.SyntaxKind.SlashToken
+    || kind === ts.SyntaxKind.PercentToken;
+}
+
+const HARDCODED_TIMING_FRAME_COUNTS = new Set([15, 24, 25, 30, 48, 50, 60, 90, 120]);
 
 function collectPublicSecurityRules(policy: typeof PROMPTFRAME_PUBLIC_SECURITY_POLICY): PublicSecurityRule[] {
   return [

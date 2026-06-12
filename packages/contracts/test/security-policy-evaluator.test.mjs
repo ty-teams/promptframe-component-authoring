@@ -73,3 +73,44 @@ test('AST evaluator returns digest and source location metadata', () => {
   assert.equal(finding.column, 1);
   assert.ok(finding.evidence?.includes('BroadcastChannel'));
 });
+
+test('AST evaluator warns on fps hardcoded timing in Remotion timing contexts', () => {
+  const source = `
+    import { Sequence, interpolate, spring, useCurrentFrame } from 'remotion';
+    export default function Component() {
+      const frame = useCurrentFrame();
+      const opacity = interpolate(frame, [0, 15, 30], [0, 1, 0]);
+      const progress = spring({ frame, fps: 30 });
+      return <Sequence from={30} durationInFrames={60}><div style={{ opacity }}>{progress}</div></Sequence>;
+    }
+  `;
+
+  const findings = evaluatePromptFrameSecurityPolicySource({
+    file: 'src/Component.tsx',
+    source,
+  }).findings.filter((finding) => finding.ruleId === 'runtime.deterministic.fps_hardcoded_timing');
+
+  assert.ok(findings.length >= 3, `expected fps timing findings, got ${findings.length}`);
+  assert.ok(findings.every((finding) => finding.action === 'warn'));
+  assert.ok(findings.every((finding) => finding.severity === 'medium'));
+  assert.ok(findings.every((finding) => finding.repairHint?.includes('secondsToFrames')));
+  assert.ok(findings.some((finding) => finding.trace?.some((item) => item.includes('interpolate'))));
+  assert.ok(findings.some((finding) => finding.trace?.some((item) => item.includes('jsx'))));
+  assert.ok(findings.some((finding) => finding.trace?.some((item) => item.includes('fps'))));
+});
+
+test('AST evaluator does not warn on visual constants or fps-aware helpers', () => {
+  const source = `
+    import { Sequence, useVideoConfig } from 'remotion';
+    import { secondsToFrames } from '@promptframe/component-kit/timing';
+    export default function Component() {
+      const { fps } = useVideoConfig();
+      const duration = secondsToFrames(1, fps);
+      const cardWidth = 30;
+      const indexes = [0, 1, 2, 3];
+      return <Sequence durationInFrames={duration}><div style={{ width: cardWidth, height: 60 }} /></Sequence>;
+    }
+  `;
+
+  assert.deepEqual(ruleIdsFor(source), []);
+});

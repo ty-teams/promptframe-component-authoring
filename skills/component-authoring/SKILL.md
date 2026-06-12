@@ -180,6 +180,7 @@ When `promptframe validate --json` or platform admission returns one of these di
 - `doctor.required_files.missing`: restore `manifest.json`, `package.json`, `src/Component.tsx`, `src/schema.ts`, `src/index.ts`, and `src/preview-props.json`.
 - `component_standard.source.no_math_random`: replace `Math.random()` with props, frame-derived values, or deterministic seeded helpers.
 - `code.eval`, `code.new_function`, `code.string_timer`: remove dynamic string execution; component logic must be deterministic TypeScript/React code.
+- `runtime.deterministic.fps_hardcoded_timing`: warning-first; replace hardcoded frame counts in timing contexts with `secondsToFrames(seconds, fps)` or `createDurationTimeline()` / `timeline.at()`.
 - `network.raw_fetch`: remove raw `fetch`, XHR, WebSocket, EventSource, or Beacon calls unless the platform provides a mediated allowlisted API.
 - `prompt.injection_string`: remove comments, README text, or strings that ask the platform to ignore rules, rank the component first, auto-approve, or change admission behavior.
 - `network.remote_url`: move hardcoded remote assets into platform asset intake or props; do not bake remote URLs into component source.

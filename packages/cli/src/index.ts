@@ -84,6 +84,7 @@ const VALIDATE_CHECKED_RULE_IDS: PublicPolicyRuleId[] = [
   'manifest.component_type.supported',
   'evidence.schema_source_hash_present',
   'runtime.deterministic.remotion',
+  'runtime.deterministic.fps_hardcoded_timing',
   'security.forbidden.browser_apis',
   'security.no_raw_remote_url_import',
   'package.no_parent_imports',
@@ -201,6 +202,7 @@ function validate(argv: string[]): void {
   const dependencyPolicy = evaluateDirectoryDependencyPolicy(dir);
   const diagnostics = [
     ...stylePropDiagnostics(dir),
+    ...securityPolicyWarningDiagnostics(dir),
     ...dependencyPolicy.diagnostics,
   ];
   const output = {
@@ -240,6 +242,7 @@ async function check(argv: string[]): Promise<void> {
   const diagnostics = [
     ...reusabilityDiagnostics(localReusability),
     ...stylePropDiagnostics(dir),
+    ...securityPolicyWarningDiagnostics(dir),
     ...dependencyPolicy.diagnostics,
   ];
   const output = {
@@ -1455,15 +1458,45 @@ function validateSecurityPolicy(dir: string): void {
   for (const entry of collectPackageFiles(dir)) {
     if (!isSecurityScannableFile(entry.name)) continue;
     const source = entry.data.toString('utf8');
-    const finding = firstSecurityFindingFromEvaluator(entry.name, source);
+    const finding = firstBlockingSecurityFindingFromEvaluator(entry.name, source);
     if (!finding) continue;
     fail(formatSecurityFindingFailure(entry.name, finding), finding.ruleId);
   }
 }
 
-function firstSecurityFindingFromEvaluator(file: string, source: string): PromptFrameSecurityPolicyFinding | undefined {
+function firstBlockingSecurityFindingFromEvaluator(file: string, source: string): PromptFrameSecurityPolicyFinding | undefined {
   const receipt = evaluatePromptFrameSecurityPolicySource({ file, source });
-  return receipt.findings.find((finding) => shouldScanSecurityRule(file, finding.ruleId));
+  return receipt.findings.find((finding) => (
+    shouldScanSecurityRule(file, finding.ruleId) && finding.action !== 'warn'
+  ));
+}
+
+function securityPolicyWarningDiagnostics(dir: string): ComponentDiagnostic[] {
+  const diagnostics: ComponentDiagnostic[] = [];
+  for (const entry of collectPackageFiles(dir)) {
+    if (!isSecurityScannableFile(entry.name)) continue;
+    const source = entry.data.toString('utf8');
+    const receipt = evaluatePromptFrameSecurityPolicySource({ file: entry.name, source });
+    for (const finding of receipt.findings) {
+      if (finding.action !== 'warn' || !shouldScanSecurityRule(entry.name, finding.ruleId)) continue;
+      diagnostics.push(securityPolicyWarningDiagnostic(entry.name, finding));
+    }
+  }
+  return diagnostics;
+}
+
+function securityPolicyWarningDiagnostic(
+  file: string,
+  finding: PromptFrameSecurityPolicyFinding,
+): ComponentDiagnostic {
+  const location = finding.line && finding.column ? `:${finding.line}:${finding.column}` : '';
+  return {
+    code: finding.ruleId,
+    severity: 'warning',
+    stage: 'validate',
+    message: `${file}${location}: ${finding.message}`,
+    repairHint: finding.repairHint ?? finding.recommendation,
+  };
 }
 
 function formatSecurityFindingFailure(file: string, finding: PromptFrameSecurityPolicyFinding): string {

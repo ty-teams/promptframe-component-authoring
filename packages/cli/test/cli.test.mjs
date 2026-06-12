@@ -1529,6 +1529,7 @@ test('local standard, doctor, and validate expose stable JSON diagnostics', asyn
       'manifest.component_type.supported',
       'evidence.schema_source_hash_present',
       'runtime.deterministic.remotion',
+      'runtime.deterministic.fps_hardcoded_timing',
       'security.forbidden.browser_apis',
       'security.no_raw_remote_url_import',
       'package.no_parent_imports',
@@ -1565,6 +1566,7 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
       'manifest.component_type.supported',
       'evidence.schema_source_hash_present',
       'runtime.deterministic.remotion',
+      'runtime.deterministic.fps_hardcoded_timing',
       'security.forbidden.browser_apis',
       'security.no_raw_remote_url_import',
       'package.no_parent_imports',
@@ -1967,6 +1969,42 @@ test('validate uses AST-aware security policy for alias browser capability viola
         return true;
       },
     );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('validate reports fps hardcoded timing as warning diagnostics without blocking', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-fps-hardcoded-timing-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(componentDir, 'src/Component.tsx'), [
+      "import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';",
+      'export default function Component() {',
+      '  const frame = useCurrentFrame();',
+      '  useVideoConfig();',
+      '  const opacity = interpolate(frame, [0, 15, 30], [0, 1, 0]);',
+      '  const progress = spring({ frame, fps: 30 });',
+      '  return <AbsoluteFill style={{ width: "100%", height: "100%", opacity }}>{progress}</AbsoluteFill>;',
+      '}',
+    ].join('\n'));
+
+    const validate = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'validate',
+      componentDir,
+      '--json',
+    ])).stdout);
+
+    assert.equal(validate.command, 'validate');
+    assert.equal(validate.diagnostic.code, 'validate.completed');
+    assert.ok(validate.checkedRuleIds.includes('runtime.deterministic.fps_hardcoded_timing'));
+    const diagnostics = validate.diagnostics.filter((item) => item.code === 'runtime.deterministic.fps_hardcoded_timing');
+    assert.ok(diagnostics.length >= 2, `expected fps diagnostics, got ${diagnostics.length}`);
+    assert.ok(diagnostics.every((item) => item.severity === 'warning'));
+    assert.ok(diagnostics.every((item) => item.stage === 'validate'));
+    assert.ok(diagnostics.every((item) => /secondsToFrames|createDurationTimeline/.test(item.repairHint ?? '')));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

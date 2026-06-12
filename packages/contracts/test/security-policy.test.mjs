@@ -29,6 +29,7 @@ test('public security policy exposes browser capability rule IDs with author gui
     'browser.observer_abuse',
     'remotion.delay_render',
     'code.dynamic_import',
+    'runtime.deterministic.fps_hardcoded_timing',
   ];
   const rules = [
     ...PROMPTFRAME_PUBLIC_SECURITY_POLICY.forbiddenApis,
@@ -50,6 +51,18 @@ test('public security policy exposes browser capability rule IDs with author gui
     assert.equal(typeof rule.docsPath, 'string', `${ruleId} docsPath`);
     assert.match(rule.docsPath, /^\/docs\/component-authoring\/security#/);
   }
+});
+
+test('public security policy exposes fps hardcoded timing as warning-first guidance', () => {
+  const rule = PROMPTFRAME_PUBLIC_SECURITY_POLICY.warningApis.find((item) => (
+    item.id === 'runtime.deterministic.fps_hardcoded_timing'
+  ));
+
+  assert.equal(rule?.action, 'warn');
+  assert.equal(rule?.severity, 'medium');
+  assert.equal(rule?.category, 'remotion_lifecycle');
+  assert.match(rule?.recommendation ?? '', /secondsToFrames|createDurationTimeline/);
+  assert.match(rule?.repairHint ?? '', /secondsToFrames/);
 });
 
 test('public security policy exposes a stable release-cohort digest', () => {

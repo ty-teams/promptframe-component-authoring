@@ -411,6 +411,21 @@ export const PROMPTFRAME_PUBLIC_SECURITY_POLICY = {
       reason: 'Remote assets must go through platform asset management and authorization.',
       recommendation: 'Do not hardcode remote URLs in component source.',
     },
+    {
+      id: 'runtime.deterministic.fps_hardcoded_timing',
+      label: 'Hardcoded frame timing',
+      patterns: [],
+      astMatchers: {
+        fpsHardcodedTiming: true,
+      },
+      action: 'warn',
+      category: 'remotion_lifecycle',
+      severity: 'medium',
+      reason: 'Hardcoded frame counts can drift when a component is previewed or rendered at a different fps.',
+      recommendation: 'Use useVideoConfig().fps with secondsToFrames(seconds, fps), createDurationTimeline(), or timeline.at() from @promptframe/component-kit/timing.',
+      repairHint: 'Replace hardcoded frame counts with secondsToFrames(seconds, fps) or createDurationTimeline()/timeline.at() from @promptframe/component-kit/timing.',
+      docsPath: '/docs/component-authoring/security#runtime-deterministic-fps-hardcoded-timing',
+    },
   ],
 } as const;
 
@@ -1067,6 +1082,7 @@ export const publicPolicyRuleIdSchema = z.enum([
   'manifest.component_type.supported',
   'schema.props.explicit',
   'runtime.deterministic.remotion',
+  'runtime.deterministic.fps_hardcoded_timing',
   'runtime.no_global_scripts',
   'security.forbidden.browser_apis',
   'security.no_raw_remote_url_import',

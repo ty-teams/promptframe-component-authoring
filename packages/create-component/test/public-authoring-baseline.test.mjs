@@ -246,7 +246,7 @@ test('public docs document npx quickstart, pnpm workspace install and Remotion l
   }
 });
 
-test('public authoring docs document fps-aware timing and the planned AST rule boundary', async () => {
+test('public authoring docs document fps-aware timing and the AST rule boundary', async () => {
   const timingRule = await readFile(path.join(repoRoot, 'skills/component-authoring/rules/timing-ssot.md'), 'utf8');
   const skill = await readFile(path.join(repoRoot, 'skills/component-authoring/SKILL.md'), 'utf8');
   const componentKitReadme = await readFile(path.join(repoRoot, 'packages/component-kit/README.md'), 'utf8');
@@ -258,6 +258,7 @@ test('public authoring docs document fps-aware timing and the planned AST rule b
   }
 
   assert.match(timingRule, /runtime\.deterministic\.fps_hardcoded_timing/);
+  assert.match(timingRule, /warning.*diagnostics|diagnostics.*warning/i);
   assert.match(timingRule, /interpolate\(frame, \[30, 60\]/);
   assert.match(timingRule, /spring\(\{[\s\S]*fps: 30/);
   assert.match(timingRule, /timeline\.at\(|secondsToFrames\(/);
