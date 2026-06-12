@@ -71,3 +71,29 @@ test('createPreviewCaseMatrix de-duplicates invalid or repeated cases', () => {
   assert.ok(cases.some((previewCase) => previewCase.id === 'default'));
   assert.ok(cases.every((previewCase) => previewCase.props.count === 1));
 });
+
+test('createPreviewCaseMatrix can add fps-adaptive timing variants without changing source preview policy', () => {
+  const cases = createPreviewCaseMatrix({
+    basePreview: {
+      durationFrames: 90,
+      fps: 30,
+      width: 1280,
+      height: 720,
+    },
+    baseProps: {
+      title: 'Fps check',
+    },
+    fpsPresets: [30, 60],
+  });
+
+  const defaultCase = cases.find((previewCase) => previewCase.id === 'default');
+  const fps60Case = cases.find((previewCase) => previewCase.id === 'fps-60');
+
+  assert.ok(defaultCase);
+  assert.equal(defaultCase.fps, 30);
+  assert.equal(defaultCase.durationFrames, 90);
+  assert.ok(fps60Case);
+  assert.equal(fps60Case.fps, 60);
+  assert.equal(fps60Case.durationFrames, 180);
+  assert.deepEqual(fps60Case.props, defaultCase.props);
+});

@@ -8,6 +8,7 @@
 
 - `designedDurationRange` 是组件舒服播放的设计区间。
 - `durationFrames` 是本次使用场景给它的实际时长。
+- `fps` 是本次渲染的一秒多少帧；所有秒数、延迟、交错和弹簧 fps 都必须从 `fps` 或 timeline helper 推导，不能把 30fps 下的帧数写死。
 - 时间不足时快进压缩，时间富裕时播完后 hold。
 - 禁止因为组件想播更久，就让引擎层静默延长 Scene。
 
@@ -57,7 +58,46 @@
 
 这样 npm 包是可靠且轻量的；不建议让市场组件依赖平台内部 renderer，那会把内部实现、体积和破坏性升级都带给组件作者。
 
-在 `component-kit` 落地前，组件市场 skill 必须明文引用项目级时序规则，并由模板 README 告诉组件作者：先按 manifest 的 `designedDurationRange` 和 frame-driven 方式写确定性动画，不要引入 CSS 动画、计时器或真实时间。
+组件市场 skill 必须明文引用项目级时序规则，并由模板 README 告诉组件作者：先按 manifest 的 `designedDurationRange`、`fps` 和 frame-driven 方式写确定性动画，不要引入 CSS 动画、计时器或真实时间。
+
+## fps-aware timing（fps 自适应）规则
+
+外部组件不能假设所有视频永远是 30fps。平台主干会使用 30fps / 60fps 这类受控帧率；组件如果写死 `30`、`45`、`60` 这样的“帧数时间点”，在 60fps 下会把 1 秒动作压成 0.5 秒。
+
+推荐写法：
+
+```tsx
+import { interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
+import { createDurationTimeline, secondsToFrames } from '@promptframe/component-kit/timing';
+
+export function Component() {
+  const frame = useCurrentFrame();
+  const { fps, durationInFrames } = useVideoConfig();
+  const timeline = createDurationTimeline({ actualDuration: durationInFrames, designedDuration: secondsToFrames(4, fps) });
+  const introEnd = timeline.at(secondsToFrames(1.5, fps));
+  const opacity = interpolate(frame, [0, introEnd], [0, 1], { extrapolateRight: 'clamp' });
+  return <div style={{ opacity }} />;
+}
+```
+
+不推荐写法：
+
+```tsx
+interpolate(frame, [30, 60], [0, 1]);
+spring({ frame, fps: 30 });
+const visible = frame > 45;
+```
+
+`createPreviewCaseMatrix()` 可用 `fpsPresets: [30, 60]` 生成本地 fps-adaptive diagnostics（fps 自适应诊断）case，用来比较同一个 props / aspect 在 30fps 和 60fps 下的节奏。当前 `src/preview-props.json` 仍受公开 preview policy 约束；在公开标准允许 60fps 前，不要把 60fps local case 当成可上传的 source evidence。
+
+计划中的 AST 检测规则：
+
+- Rule ID: `runtime.deterministic.fps_hardcoded_timing`
+- Severity: `warning` first；等 CLI、server admission 和 fixture 矩阵同源后，才讨论是否升级为 upload-blocking。
+- 检测对象：`interpolate(frame, [30, 60], ...)`、`spring({ frame, fps: 30 })`、`frame > 45` / `frame < 90` 等疑似硬编码时间点。
+- 白名单：区间或比较表达式包含 `fps`、`secondsToFrames()`、`timeline.at()`、`timeline.frame()`，或者是纯布局尺寸/数组长度/颜色常量时不报。
+- repairHint：Use `secondsToFrames(seconds, fps)` or `createDurationTimeline()` / `timeline.at()` from `@promptframe/component-kit/timing`.
+- Fixture matrix：literal bad cases、const alias bad cases、comment/string false positives、`secondsToFrames` good cases、`timeline.at()` good cases、`spring({ fps })` good case、layout numeric constants good case.
 
 ## 上传验收应检查什么
 
@@ -72,3 +112,4 @@
 
 - 必须从 `@promptframe/component-kit` 引入时序 helper，禁止复制内部实现。
 - `DESIGNED_DURATION_RANGE` / manifest / preview props 能被构建脚本交叉校验。
+- CLI check / upload admission 如启用 fps-aware timing 规则，必须使用 AST evaluator，不使用正则扫描注释或字符串。

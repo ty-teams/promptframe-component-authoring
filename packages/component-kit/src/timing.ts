@@ -63,6 +63,14 @@ export function getScaledSpringTiming(
   };
 }
 
+export function secondsToFrames(seconds: number, fps: number): number {
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    throw new Error('seconds must be a non-negative finite number');
+  }
+  const normalizedFps = positiveInteger(fps, 'fps');
+  return Math.round(seconds * normalizedFps);
+}
+
 function positiveInteger(value: number, label: string): number {
   if (!Number.isInteger(value) || value <= 0) throw new Error(`${label} must be a positive integer`);
   return value;

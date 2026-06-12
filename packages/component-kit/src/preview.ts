@@ -12,6 +12,8 @@ export const COMPONENT_PREVIEW_CONSTRAINTS: ComponentPreviewConstraints = {
   maxFps: 30,
 };
 
+export type PromptFramePreviewFps = 30 | 60;
+
 export interface ComponentPreviewPropsEnvelope<TProps extends Record<string, unknown> = Record<string, unknown>> {
   durationFrames: number;
   fps: 30;
@@ -21,16 +23,18 @@ export interface ComponentPreviewPropsEnvelope<TProps extends Record<string, unk
 }
 
 export interface PromptFramePreviewCase<TProps extends Record<string, unknown> = Record<string, unknown>>
-  extends ComponentPreviewPropsEnvelope<TProps> {
+  extends Omit<ComponentPreviewPropsEnvelope<TProps>, 'fps'> {
   id: string;
   name: string;
   description: string;
+  fps: PromptFramePreviewFps;
 }
 
 export interface CreatePreviewCaseMatrixInput<TProps extends Record<string, unknown>> {
   basePreview: Omit<ComponentPreviewPropsEnvelope<TProps>, 'props'>;
   baseProps: TProps;
   validateProps?: (candidate: TProps) => TProps | undefined;
+  fpsPresets?: ReadonlyArray<PromptFramePreviewFps>;
   aspectPresets?: ReadonlyArray<{
     id: string;
     name: string;
@@ -61,6 +65,7 @@ export function createPreviewCaseMatrix<TProps extends Record<string, unknown>>(
   basePreview,
   baseProps,
   validateProps,
+  fpsPresets,
   aspectPresets = DEFAULT_PREVIEW_ASPECT_CASES,
 }: CreatePreviewCaseMatrixInput<TProps>): PromptFramePreviewCase<TProps>[] {
   const cases: PromptFramePreviewCase<TProps>[] = [];
@@ -72,7 +77,11 @@ export function createPreviewCaseMatrix<TProps extends Record<string, unknown>>(
       ...previewCase,
       props: parsedProps,
     };
-    const signature = `${normalizedCase.width}x${normalizedCase.height}:${stableJson(normalizedCase.props)}`;
+    const signature = [
+      `${normalizedCase.durationFrames}@${normalizedCase.fps}fps`,
+      `${normalizedCase.width}x${normalizedCase.height}`,
+      stableJson(normalizedCase.props),
+    ].join(':');
     if (seen.has(signature)) return;
     seen.add(signature);
     cases.push(normalizedCase);
@@ -85,6 +94,19 @@ export function createPreviewCaseMatrix<TProps extends Record<string, unknown>>(
     ...basePreview,
     props: cloneProps(baseProps),
   });
+
+  for (const fps of normalizeFpsPresets(fpsPresets)) {
+    if (fps === basePreview.fps) continue;
+    addCase({
+      id: `fps-${fps}`,
+      name: `${fps}fps`,
+      description: `${fps}fps timing case scaled from ${basePreview.fps}fps for fps-adaptive diagnostics.`,
+      ...basePreview,
+      fps,
+      durationFrames: scaleDurationFramesForFps(basePreview.durationFrames, basePreview.fps, fps),
+      props: cloneProps(baseProps),
+    });
+  }
 
   for (const preset of aspectPresets) {
     addCase({
@@ -109,6 +131,14 @@ export function createPreviewCaseMatrix<TProps extends Record<string, unknown>>(
   }
 
   return cases;
+}
+
+function normalizeFpsPresets(fpsPresets: ReadonlyArray<PromptFramePreviewFps> | undefined): PromptFramePreviewFps[] {
+  return Array.from(new Set(fpsPresets ?? [])).sort((left, right) => left - right);
+}
+
+function scaleDurationFramesForFps(durationFrames: number, sourceFps: number, targetFps: number): number {
+  return Math.max(1, Math.round((durationFrames * targetFps) / sourceFps));
 }
 
 function createPropsStressVariants<TProps extends Record<string, unknown>>(

@@ -165,6 +165,7 @@ component/
 - `promptframe dev .` uses the template's Vite shell to render `src/preview-props.json`.
 - The local preview shell may generate bounded preview cases from `@promptframe/component-kit/preview`, apply only cases that pass `propsSchema.safeParse`, and export saved preview cases into `.promptframe/local-previews/` for author regression only; these files are not source-package evidence and do not replace `src/preview-props.json`.
 - `promptframe preview . --json` only verifies the local preview envelope from `src/preview-props.json`; it does not replace platform iframe preview, probes, or render evidence.
+- Animation timing must be fps-aware: convert wall-clock seconds with `secondsToFrames(seconds, fps)` or route frame ranges through `createDurationTimeline()` / `timeline.at()`. Local fps-adaptive diagnostics should compare 30fps and 60fps behavior before upload.
 - Animation must be frame-driven with the platform-compatible hooks and helpers exposed by the template.
 - Do not use CSS transitions/keyframes, timers, `Date.now()`, or `Math.random()`.
 - Use the template's media primitives rather than browser-native media tags.

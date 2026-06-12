@@ -246,6 +246,23 @@ test('public docs document npx quickstart, pnpm workspace install and Remotion l
   }
 });
 
+test('public authoring docs document fps-aware timing and the planned AST rule boundary', async () => {
+  const timingRule = await readFile(path.join(repoRoot, 'skills/component-authoring/rules/timing-ssot.md'), 'utf8');
+  const skill = await readFile(path.join(repoRoot, 'skills/component-authoring/SKILL.md'), 'utf8');
+  const componentKitReadme = await readFile(path.join(repoRoot, 'packages/component-kit/README.md'), 'utf8');
+
+  for (const text of [timingRule, skill, componentKitReadme]) {
+    assert.match(text, /secondsToFrames/, text.slice(0, 80));
+    assert.match(text, /fps-aware|fps 自适应|fps-aware timing/i, text.slice(0, 80));
+    assert.match(text, /30fps[\s\S]*60fps|60fps[\s\S]*30fps/, text.slice(0, 80));
+  }
+
+  assert.match(timingRule, /runtime\.deterministic\.fps_hardcoded_timing/);
+  assert.match(timingRule, /interpolate\(frame, \[30, 60\]/);
+  assert.match(timingRule, /spring\(\{[\s\S]*fps: 30/);
+  assert.match(timingRule, /timeline\.at\(|secondsToFrames\(/);
+});
+
 test('public authoring docs describe the AI-first authoring boundary', async () => {
   for (const docPath of [
     'skills/component-authoring/SKILL.md',

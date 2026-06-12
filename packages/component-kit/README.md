@@ -11,7 +11,7 @@ npm install @promptframe/component-kit
 - Standard version stamps for component metadata, sourced from `@promptframe/contracts`.
 - Preview constraints used by PromptFrame component tooling.
 - Bounded local preview case matrix helpers for aspect and default-props stress checks.
-- Timing helpers for deterministic frame-driven animations.
+- Timing helpers for deterministic fps-aware timing and frame-driven animations.
 - Public style helpers backed by `@promptframe/contracts`.
 
 ## Usage
@@ -33,18 +33,22 @@ export const maxPreviewWidth = COMPONENT_PREVIEW_CONSTRAINTS.maxWidth;
 export const previewCases = createPreviewCaseMatrix({
   basePreview: { durationFrames: 120, fps: 30, width: 1280, height: 720 },
   baseProps: { title: 'Quarterly revenue' },
+  fpsPresets: [30, 60],
   validateProps: (candidate) => candidate,
 });
 ```
 
 ```ts
-import { createDurationTimeline } from '@promptframe/component-kit/timing';
+import { createDurationTimeline, secondsToFrames } from '@promptframe/component-kit/timing';
 
 const timeline = createDurationTimeline({
-  durationInFrames: 180,
-  fps: 30,
+  actualDuration: 180,
+  designedDuration: secondsToFrames(4, 30),
 });
+const introEnd = secondsToFrames(1.5, 30);
 ```
+
+Use `fpsPresets` for local fps-adaptive diagnostics such as 30fps / 60fps comparisons. Source `src/preview-props.json` remains governed by the current public preview policy; do not save or upload 60fps local preview cases until the public standard explicitly allows them.
 
 ```ts
 import { resolvePromptFrameStyle } from '@promptframe/component-kit/style';

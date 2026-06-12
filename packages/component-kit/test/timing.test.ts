@@ -7,6 +7,7 @@ import {
   createDurationTimeline,
   getComponentStandardStamp,
   getScaledSpringTiming,
+  secondsToFrames,
 } from '../src/index.js';
 
 test('component-kit exposes the platform standard stamp', () => {
@@ -46,4 +47,12 @@ test('getScaledSpringTiming prepares Remotion spring inputs without importing re
   const timing = getScaledSpringTiming(20, 30, 10, timeline);
   assert.equal(timing.frame, 15);
   assert.equal(timing.fps, 60);
+});
+
+test('secondsToFrames keeps wall-clock animation timing stable across fps variants', () => {
+  assert.equal(secondsToFrames(1.5, 30), 45);
+  assert.equal(secondsToFrames(1.5, 60), 90);
+  assert.equal(secondsToFrames(0, 60), 0);
+  assert.throws(() => secondsToFrames(-1, 30), /seconds must be a non-negative finite number/);
+  assert.throws(() => secondsToFrames(1, 29.97), /fps must be a positive integer/);
 });
