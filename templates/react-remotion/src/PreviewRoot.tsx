@@ -78,6 +78,24 @@ function isColorValue(value: unknown): value is string {
   return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value);
 }
 
+function isJsonLikeValue(value: unknown): value is Record<string, unknown> | unknown[] | null {
+  return value === null || typeof value === 'object';
+}
+
+function formatJsonValue(value: unknown): string {
+  return JSON.stringify(value, null, 2) ?? '';
+}
+
+function formatPrimitiveControlValue(value: unknown): string | number {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : '';
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+  return typeof value === 'string' ? value : '';
+}
+
 function coerceControlValue(currentValue: unknown, rawValue: string): unknown {
   if (typeof currentValue === 'number') {
     const numeric = Number(rawValue);
@@ -85,6 +103,13 @@ function coerceControlValue(currentValue: unknown, rawValue: string): unknown {
   }
   if (typeof currentValue === 'boolean') {
     return rawValue === 'true';
+  }
+  if (isJsonLikeValue(currentValue)) {
+    try {
+      return JSON.parse(rawValue);
+    } catch {
+      return currentValue;
+    }
   }
   return rawValue;
 }
@@ -141,8 +166,13 @@ function PreviewApp() {
   const [previewSize, setPreviewSize] = useState(initialSize);
   const [previewCaseName, setPreviewCaseName] = useState(defaultPreviewCaseName);
   const [exportStatus, setExportStatus] = useState('');
+  const [jsonDrafts, setJsonDrafts] = useState<Record<string, string>>({});
 
   const updateInputProp = (key: string, rawValue: string) => {
+    const currentValue = inputProps[key as keyof ComponentProps];
+    if (isJsonLikeValue(currentValue)) {
+      setJsonDrafts((current) => ({ ...current, [key]: rawValue }));
+    }
     setInputProps((current) => {
       const currentValue = current[key as keyof ComponentProps];
       const nextCandidate = {
@@ -162,6 +192,7 @@ function PreviewApp() {
 
   const applyGeneratedPreviewCase = (previewCase: PromptFramePreviewCase<ComponentProps>) => {
     setInputProps(previewCase.props);
+    setJsonDrafts({});
     setPreviewSize({
       label: previewCase.name,
       width: previewCase.width,
@@ -174,7 +205,7 @@ function PreviewApp() {
   return (
     <main
       style={{
-        minHeight: '100vh',
+        height: '100vh',
         margin: 0,
         background: '#111827',
         color: '#f8fafc',
@@ -183,31 +214,49 @@ function PreviewApp() {
         gap: 24,
         padding: 24,
         boxSizing: 'border-box',
+        overflow: 'hidden',
       }}
     >
       <section
+        data-promptframe-preview-stage
         style={{
           minWidth: 0,
+          minHeight: 0,
+          height: '100%',
           display: 'grid',
           placeItems: 'center',
+          overflow: 'hidden',
         }}
       >
-        <Player
-          component={Component}
-          inputProps={inputProps}
-          durationInFrames={preview.durationFrames}
-          compositionWidth={previewSize.width}
-          compositionHeight={previewSize.height}
-          fps={preview.fps}
-          controls
-          loop
+        <div
+          data-promptframe-preview-player
           style={{
-            width: 'min(100%, 1280px)',
+            width: `min(100%, 1280px, calc((100vh - 48px) * ${previewSize.width / previewSize.height}))`,
+            maxHeight: '100%',
             aspectRatio: `${previewSize.width} / ${previewSize.height}`,
-            background: '#000',
-            boxShadow: '0 18px 60px rgba(0, 0, 0, 0.38)',
+            display: 'grid',
+            placeItems: 'center',
           }}
-        />
+        >
+          <Player
+            component={Component}
+            inputProps={inputProps}
+            durationInFrames={preview.durationFrames}
+            compositionWidth={previewSize.width}
+            compositionHeight={previewSize.height}
+            fps={preview.fps}
+            controls
+            loop
+            acknowledgeRemotionLicense
+            style={{
+              width: '100%',
+              maxHeight: '100%',
+              aspectRatio: `${previewSize.width} / ${previewSize.height}`,
+              background: '#000',
+              boxShadow: '0 18px 60px rgba(0, 0, 0, 0.38)',
+            }}
+          />
+        </div>
       </section>
 
       <aside
@@ -219,6 +268,7 @@ function PreviewApp() {
           borderRadius: 8,
           padding: 18,
           boxSizing: 'border-box',
+          maxHeight: '100%',
           overflowY: 'auto',
         }}
       >
@@ -331,20 +381,59 @@ function PreviewApp() {
             {Object.entries(inputProps).map(([key, value]) => (
               <label key={key} style={{ display: 'grid', gap: 6, fontSize: 13 }}>
                 <span style={{ color: '#334155', fontWeight: 700 }}>{key}</span>
-                <input
-                  type={isColorValue(value) ? 'color' : typeof value === 'number' ? 'number' : 'text'}
-                  value={typeof value === 'string' || typeof value === 'number' ? value : String(value)}
-                  onChange={(event) => updateInputProp(key, event.currentTarget.value)}
-                  style={{
-                    width: '100%',
-                    minWidth: 0,
-                    boxSizing: 'border-box',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: 6,
-                    padding: isColorValue(value) ? 4 : '8px 10px',
-                    font: 'inherit',
-                  }}
-                />
+                {isJsonLikeValue(value) ? (
+                  <textarea
+                    data-promptframe-prop-json={key}
+                    value={jsonDrafts[key] ?? formatJsonValue(value)}
+                    onChange={(event) => updateInputProp(key, event.currentTarget.value)}
+                    rows={5}
+                    spellCheck={false}
+                    style={{
+                      width: '100%',
+                      minWidth: 0,
+                      boxSizing: 'border-box',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: 6,
+                      padding: '8px 10px',
+                      font: 'inherit',
+                      fontFamily:
+                        'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+                      resize: 'vertical',
+                    }}
+                  />
+                ) : typeof value === 'boolean' ? (
+                  <select
+                    value={formatPrimitiveControlValue(value)}
+                    onChange={(event) => updateInputProp(key, event.currentTarget.value)}
+                    style={{
+                      width: '100%',
+                      minWidth: 0,
+                      boxSizing: 'border-box',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: 6,
+                      padding: '8px 10px',
+                      font: 'inherit',
+                    }}
+                  >
+                    <option value="true">true</option>
+                    <option value="false">false</option>
+                  </select>
+                ) : (
+                  <input
+                    type={isColorValue(value) ? 'color' : typeof value === 'number' ? 'number' : 'text'}
+                    value={formatPrimitiveControlValue(value)}
+                    onChange={(event) => updateInputProp(key, event.currentTarget.value)}
+                    style={{
+                      width: '100%',
+                      minWidth: 0,
+                      boxSizing: 'border-box',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: 6,
+                      padding: isColorValue(value) ? 4 : '8px 10px',
+                      font: 'inherit',
+                    }}
+                  />
+                )}
               </label>
             ))}
           </div>

@@ -19,9 +19,10 @@ The package provides version stamps, preview constraints, and deterministic timi
 Typical author flow:
 
 ```bash
-npx create-promptframe-component ./my-component --name my-component --display-name "My Component"
+npx -y create-promptframe-component@latest ./my-component --name my-component --display-name "My Component"
 cd my-component
 npm install
+# pnpm workspace users: pnpm install --ignore-workspace
 npx promptframe dev .
 npx promptframe check .
 npx promptframe validate .
@@ -36,6 +37,8 @@ npx promptframe logout
 ```
 
 The CLI never embeds a production/private endpoint default. Use `--endpoint`, `PROMPTFRAME_API_BASE`, `REMOTION_MEDIA_API_BASE`, or `promptframe configure --endpoint <url>`. Formal platform endpoints use bearer auth from `promptframe login`, `PROMPTFRAME_CI_TOKEN`, or `PROMPTFRAME_CLI_TOKEN`; local dev-header flags are only for local smoke endpoints and are rejected for formal non-local endpoints. `dev .` starts the template's local video preview shell; `check .` validates the component and reports public standard freshness; `preview .` is a local preview envelope check; `preview . --write-local-report` writes `.promptframe/local-previews/preview-report.json` from canonical and saved local preview cases. Neither command replaces the platform iframe preview or render pipeline. Upload success means the platform accepted the source package for trust-pipeline admission; search, preview, render, and publish readiness are reported later by platform status/evidence/probe diagnostics.
+
+The generated local preview shell uses `@remotion/player` and passes `acknowledgeRemotionLicense` so the scaffold does not interrupt local authoring with repeated console prompts. This is only a local preview setting; component authors should still review the Remotion license for their own usage and distribution model.
 
 For automation, add `--json` to `standard`, `doctor`, `validate`, `check`, `upgrade`, `preview`, `login`, `whoami`, `logout`, `upload`, `status`, `reindex`, or `probe`. `dev --dry-run --json` reports the local preview command without starting a long-running server. `preview --write-local-report --json` reports `preview.local_report.written`. JSON output includes stable `diagnostic.code`; validation/check output includes `checkedRuleIds`, and JSON failures include `failureReason` plus `retryable`.
 

@@ -43,9 +43,10 @@ For visual style, use the public style contract from `@promptframe/contracts` an
 ## Quickstart
 
 ```bash
-npm create promptframe-component ./my-component -- --name my-component --display-name "My Component"
+npx -y create-promptframe-component@latest ./my-component --name my-component --display-name "My Component"
 cd my-component
 npm install
+# pnpm workspace users: pnpm install --ignore-workspace
 npx promptframe standard
 npx promptframe doctor .
 npx promptframe dev .
@@ -64,6 +65,8 @@ npx promptframe status <buildId> --endpoint <promptframe-api-base>
 
 Do not guess private service addresses. If no endpoint is provided, finish local video preview, validation, and local preview envelope checks, then report the missing endpoint.
 
+The generated local preview shell uses `@remotion/player` and passes `acknowledgeRemotionLicense` so local authoring is not interrupted by repeated prompts. This does not replace the author's responsibility to review the Remotion license for their own usage and distribution model.
+
 Automation can add `--json` to `standard`, `doctor`, `validate`, `check`, `upgrade`, `preview`, `upload`, `status`, `reindex`, and `probe`. Use `dev --dry-run --json` to inspect the local preview command without starting a long-running server. Use `upgrade --dry-run --json` to inspect package floor changes before editing. Read `diagnostic.code`, `checkedRuleIds`, `securityPolicyDigest`, `securityEvaluatorMode`, `failureReason`, and `retryable` instead of scraping prose logs.
 
 `validate` / `check` use the public security policy from `@promptframe/contracts`; current source candidates evaluate JS / TS / TSX through the contracts AST-aware evaluator. Treat `securityEvaluatorMode: "ast"` and the `securityPolicyDigest` as the public rule-cohort identity. If validation reports a browser or dynamic-code rule such as `browser.broadcast_channel`, `code.dynamic_import`, or `code.string_timer`, remove the capability instead of hiding it behind aliases.
@@ -75,9 +78,10 @@ Use this section when the component is authored outside the PromptFrame platform
 ### Human first run
 
 ```bash
-npm create promptframe-component ./my-component -- --name my-component --display-name "My Component"
+npx -y create-promptframe-component@latest ./my-component --name my-component --display-name "My Component"
 cd my-component
 npm install
+# pnpm workspace users: pnpm install --ignore-workspace
 npx promptframe check . --json
 npx promptframe preview .
 npx promptframe login --endpoint <promptframe-api-base>

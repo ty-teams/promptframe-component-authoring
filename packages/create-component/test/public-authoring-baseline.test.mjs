@@ -89,7 +89,7 @@ test('public authoring docs document the current npm registry baseline', async (
     'packages/create-component/templates/react-remotion/README.md',
   ]) {
     const text = await readFile(path.join(repoRoot, docPath), 'utf8');
-    assert.match(text, /Current npm registry baseline is[\s\S]*@promptframe\/cli@0\.1\.22[\s\S]*create-promptframe-component@0\.1\.13/, docPath);
+    assert.match(text, /Current npm registry baseline is[\s\S]*@promptframe\/cli@0\.1\.24[\s\S]*create-promptframe-component@0\.1\.13/, docPath);
     assert.doesNotMatch(text, /source candidate|source tree prepares|until Trusted Publishing completes/, docPath);
   }
 });
@@ -198,6 +198,51 @@ test('public templates expose component-kit generated preview case matrix', asyn
     assert.match(previewRoot, /Auto cases/, templateRoot);
     assert.match(previewRoot, /propsSchema\.safeParse/, templateRoot);
     assert.match(readme, /自动生成.*preview cases|preview cases.*自动生成/, templateRoot);
+  }
+});
+
+test('public templates keep the PreviewRoot viewport locked and Player contained', async () => {
+  for (const templateRoot of [
+    'templates/react-remotion',
+    'packages/create-component/templates/react-remotion',
+  ]) {
+    const previewRoot = await readFile(path.join(repoRoot, templateRoot, 'src/PreviewRoot.tsx'), 'utf8');
+
+    assert.match(previewRoot, /height:\s*'100vh'/, templateRoot);
+    assert.match(previewRoot, /overflow:\s*'hidden'/, templateRoot);
+    assert.match(previewRoot, /maxHeight:\s*'100%'/, templateRoot);
+    assert.match(previewRoot, /acknowledgeRemotionLicense/, templateRoot);
+    assert.match(previewRoot, /data-promptframe-preview-stage/, templateRoot);
+    assert.match(previewRoot, /data-promptframe-preview-player/, templateRoot);
+  }
+});
+
+test('public templates provide JSON fallback controls for complex props', async () => {
+  for (const templateRoot of [
+    'templates/react-remotion',
+    'packages/create-component/templates/react-remotion',
+  ]) {
+    const previewRoot = await readFile(path.join(repoRoot, templateRoot, 'src/PreviewRoot.tsx'), 'utf8');
+
+    assert.match(previewRoot, /isJsonLikeValue/, templateRoot);
+    assert.match(previewRoot, /data-promptframe-prop-json/, templateRoot);
+    assert.match(previewRoot, /JSON\.parse/, templateRoot);
+    assert.doesNotMatch(previewRoot, /String\(value\)/, templateRoot);
+  }
+});
+
+test('public docs document npx quickstart, pnpm workspace install and Remotion license context', async () => {
+  for (const docPath of [
+    'README.md',
+    'skills/component-authoring/SKILL.md',
+    'templates/react-remotion/README.md',
+    'packages/create-component/templates/react-remotion/README.md',
+  ]) {
+    const text = await readFile(path.join(repoRoot, docPath), 'utf8');
+
+    assert.match(text, /npx -y create-promptframe-component@latest/, docPath);
+    assert.match(text, /pnpm install --ignore-workspace/, docPath);
+    assert.match(text, /Remotion license|Remotion 许可证/, docPath);
   }
 });
 
