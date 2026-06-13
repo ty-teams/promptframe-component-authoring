@@ -10,7 +10,7 @@ PromptFrame 标准视频组件模板。
 
 CodingAI 不能读取 PromptFrame 平台源码、内部协作看板、REQ/TASK/QA、内部协作收件箱、secret、内部部署脚本或私有 endpoint 默认值。
 
-版本事实：Current npm registry baseline is `@promptframe/cli@0.1.26`, `@promptframe/contracts@0.1.11`, `@promptframe/component-kit@0.1.9`, and `create-promptframe-component@0.1.15`. The published CLI consumes the contracts AST-aware public security policy evaluator and reports `securityPolicyDigest` / `securityEvaluatorMode` in JSON output.
+版本事实：Current npm registry baseline is `@promptframe/cli@0.1.27`, `@promptframe/contracts@0.1.12`, `@promptframe/component-kit@0.1.10`, and `create-promptframe-component@0.1.16`. The published CLI consumes the contracts AST-aware public security policy evaluator and reports `securityPolicyDigest` / `securityEvaluatorMode` / `publicResources` in JSON output.
 
 ## 本地开发
 
@@ -85,7 +85,7 @@ npx promptframe status <buildId> --endpoint <promptframe-api-base>
 - 不要直接使用 `fetch()` / XHR / WebSocket / Beacon。
 - 即使使用 `componentRuntime.fetchJson()`，也必须等待平台提供白名单配置；未配置时会进入 `manual_review`。
 - 不要读取 `localStorage` / `sessionStorage` / cookie。当前可能只是 warning，但不建议保留。
-- 需要素材、状态或外部数据时，让平台通过 props / asset / 后续受控 wrapper 注入。当前没有组件级 `public/` 托管、资源 manifest、CDN URL rewrite 或任意 bundled asset runtime resolver；不要假设 `public/` 里的图片、音视频、字体或 JSON 会在平台渲染时变成可访问 URL。
+- 需要小型随组件分发的图片、音频、视频、字体、JSON 或文本时，放在 `public/`，并用 `promptFramePublicResource(props, '/sample-data.json', fallback)` 读取平台注入的 runtime URL。CLI 会在 `validate/check/package/upload --json` 里报告 `publicResources`；平台 build/status 诊断仍是运行时托管和 URL 注入是否可用的最终依据。不要绕过平台去写裸外部 URL 或组件侧 `fetch()`。
 
 ## 上传与状态
 

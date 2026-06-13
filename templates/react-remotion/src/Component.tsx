@@ -1,9 +1,11 @@
+import { promptFramePublicResource } from '@promptframe/component-kit';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
 import type { ComponentProps } from './schema';
 
 export default function Component(props: ComponentProps) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const sampleResourceUrl = promptFramePublicResource(props, '/sample-data.json');
   const progress = interpolate(frame, [0, Math.max(1, fps * 2)], [0, 1], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
@@ -27,6 +29,7 @@ export default function Component(props: ComponentProps) {
           {props.title}
         </h1>
       </div>
+      <div aria-hidden="true" data-promptframe-public-resource={sampleResourceUrl} style={{ display: 'none' }} />
     </AbsoluteFill>
   );
 }

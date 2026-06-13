@@ -11,6 +11,7 @@ npm install @promptframe/component-kit
 - Standard version stamps for component metadata, sourced from `@promptframe/contracts`.
 - Preview constraints used by PromptFrame component tooling.
 - Bounded local preview case matrix helpers for aspect and default-props stress checks.
+- `public/` resource lookup helper for runtime-injected component resources with local-dev fallback.
 - Timing helpers for deterministic fps-aware timing and frame-driven animations.
 - Public style helpers backed by `@promptframe/contracts`.
 
@@ -23,6 +24,19 @@ export const manifest = {
   name: 'sales-funnel-scene',
   standard: getComponentStandardStamp(),
 };
+```
+
+```ts
+import { promptFramePublicResource, type PromptFrameRuntimeResourceProps } from '@promptframe/component-kit';
+
+type Props = PromptFrameRuntimeResourceProps & {
+  title: string;
+};
+
+export function Component(props: Props) {
+  const logoSrc = promptFramePublicResource(props, '/logo.png', '/fallback-logo.png');
+  return logoSrc;
+}
 ```
 
 ```ts

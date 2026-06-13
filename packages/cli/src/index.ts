@@ -6,6 +6,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -13,14 +14,17 @@ import {
   writeFileSync,
 } from 'node:fs';
 import os from 'node:os';
-import { basename, dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { inflateRawSync } from 'node:zlib';
 import {
   COMPONENT_MANIFEST_SCHEMA_VERSION,
+  COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION,
   COMPONENT_REF_VERSION,
   COMPONENT_STANDARD_SOURCE_HASH,
   COMPONENT_STANDARD_VERSION,
   PROMPTFRAME_AUTHORING_STANDARD_RELEASE,
+  PROMPTFRAME_PUBLIC_RESOURCE_LIMITS,
+  PROMPTFRAME_PUBLIC_RESOURCE_POLICY,
   PROMPTFRAME_PUBLIC_SECURITY_POLICY,
   PROMPTFRAME_PUBLIC_SECURITY_POLICY_DIGEST,
   PROMPTFRAME_PUBLIC_STANDARD_POLICY,
@@ -32,6 +36,8 @@ import {
   parseComponentManifest,
   type ComponentManifest,
   type ComponentDiagnostic,
+  type ComponentPublicResourceEntry,
+  type ComponentPublicResourceKind,
   type AuthoringStandardFreshnessDecision,
   type AuthoringUploadTarget,
   type PublicPolicyRuleId,
@@ -90,6 +96,26 @@ const VALIDATE_CHECKED_RULE_IDS: PublicPolicyRuleId[] = [
   'package.no_parent_imports',
   'component.style.unknown_custom_style_prop',
 ];
+
+type PublicResourceReportStatus = 'empty' | 'accepted' | 'blocked';
+
+interface PublicResourceReport {
+  contractVersion: typeof COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION;
+  policyVersion: typeof PROMPTFRAME_PUBLIC_RESOURCE_POLICY.policyVersion;
+  sourceDirectory: 'public';
+  status: PublicResourceReportStatus;
+  total: number;
+  totalBytes: number;
+  entries: ComponentPublicResourceEntry[];
+  diagnostics: ComponentDiagnostic[];
+}
+
+interface ComponentPackageArtifact {
+  out: string;
+  sizeBytes: number;
+  sha256: string;
+  publicResources?: PublicResourceReport;
+}
 
 class PromptFrameCliError extends Error {
   constructor(message: string, public readonly code: string, public readonly exitCode = 1) {
@@ -166,6 +192,8 @@ function standard(): void {
     supportedComponentTypes: PROMPTFRAME_AUTHORING_STANDARD_RELEASE.supportedComponentTypes,
     standardPolicyVersion: PROMPTFRAME_PUBLIC_STANDARD_POLICY.policyVersion,
     securityPolicyVersion: PROMPTFRAME_PUBLIC_SECURITY_POLICY.policyVersion,
+    publicResourcePolicyVersion: PROMPTFRAME_PUBLIC_RESOURCE_POLICY.policyVersion,
+    publicResourcePolicy: PROMPTFRAME_PUBLIC_RESOURCE_POLICY,
     dependencyPolicyVersion: PROMPTFRAME_PUBLIC_DEPENDENCY_POLICY.policyVersion,
     dependencyPolicy: PROMPTFRAME_PUBLIC_DEPENDENCY_POLICY,
     previewLimits: PROMPTFRAME_PUBLIC_STANDARD_POLICY.previewLimits,
@@ -199,11 +227,14 @@ function doctor(argv: string[]): void {
 function validate(argv: string[]): void {
   const dir = resolve(firstPositionalArg(argv) ?? '.');
   const manifest = validateComponentDirectory(dir);
+  const publicResources = evaluateDirectoryPublicResources(dir);
+  assertPublicResourcesAccepted(publicResources);
   const dependencyPolicy = evaluateDirectoryDependencyPolicy(dir);
   const diagnostics = [
     ...stylePropDiagnostics(dir),
     ...securityPolicyWarningDiagnostics(dir),
     ...dependencyPolicy.diagnostics,
+    ...publicResources.diagnostics,
   ];
   const output = {
     command: 'validate',
@@ -220,6 +251,7 @@ function validate(argv: string[]): void {
     securityPolicyDigest: PROMPTFRAME_PUBLIC_SECURITY_POLICY_DIGEST,
     securityEvaluatorMode: SECURITY_EVALUATOR_MODE,
     dependencyPolicy,
+    publicResources,
     diagnostics,
     diagnostic: diagnostic('validate.completed', 'info', 'Component manifest and public source boundaries validated.'),
   };
@@ -239,11 +271,14 @@ async function check(argv: string[]): Promise<void> {
   const freshness = await resolveSoftRemoteStandardFreshness(argv, target, 'check');
   const localReusability = evaluateDirectoryReusability(dir, manifest, target);
   const dependencyPolicy = evaluateDirectoryDependencyPolicy(dir);
+  const publicResources = evaluateDirectoryPublicResources(dir);
+  assertPublicResourcesAccepted(publicResources);
   const diagnostics = [
     ...reusabilityDiagnostics(localReusability),
     ...stylePropDiagnostics(dir),
     ...securityPolicyWarningDiagnostics(dir),
     ...dependencyPolicy.diagnostics,
+    ...publicResources.diagnostics,
   ];
   const output = {
     command: 'check',
@@ -256,6 +291,7 @@ async function check(argv: string[]): Promise<void> {
     freshness,
     localReusability,
     dependencyPolicy,
+    publicResources,
     diagnostics,
     diagnostic: diagnostic('check.completed', 'info', 'Component authoring checks completed.'),
   };
@@ -394,6 +430,7 @@ function packageComponent(argv: string[]): void {
     out: artifact.out,
     sizeBytes: artifact.sizeBytes,
     sha256: artifact.sha256,
+    publicResources: artifact.publicResources,
   });
 }
 
@@ -458,16 +495,18 @@ function assertDependencyPolicyAccepted(receipt: PromptFrameDependencyPolicyRece
   );
 }
 
-function packageDirectory(componentDir: string, outArg?: string): { out: string; sizeBytes: number; sha256: string } {
+function packageDirectory(componentDir: string, outArg?: string): ComponentPackageArtifact {
   const dir = resolve(componentDir);
   const manifest = validateComponentDirectory(dir);
+  const publicResources = evaluateDirectoryPublicResources(dir);
+  assertPublicResourcesAccepted(publicResources);
   const out = resolve(outArg ?? join(dir, '.component-packages', `${manifest.name}.zip`));
   const files = collectPackageFiles(dir);
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, buildStoredZip(files));
   const sizeBytes = statSync(out).size;
   const sha256 = `sha256:${createHash('sha256').update(readFileSync(out)).digest('hex')}`;
-  return { out, sizeBytes, sha256 };
+  return { out, sizeBytes, sha256, publicResources };
 }
 
 function packageDirectoryForUploadWithLocalReusability(
@@ -475,7 +514,7 @@ function packageDirectoryForUploadWithLocalReusability(
   uploadTarget: AuthoringUploadTarget,
   outArg: string | undefined,
   onReusability: (reusability: ReturnType<typeof evaluateDirectoryReusability>) => void,
-): { out: string; sizeBytes: number; sha256: string } {
+): ComponentPackageArtifact {
   const dir = resolve(componentDir);
   const manifest = validateComponentDirectory(dir);
   assertAuthoringPackageFreshness(dir, uploadTarget);
@@ -518,6 +557,7 @@ async function uploadComponent(argv: string[]): Promise<void> {
     ? [
         ...reusabilityDiagnostics(localReusability),
         ...stylePropDiagnostics(target),
+        ...(artifact.publicResources?.diagnostics ?? []),
       ]
     : undefined;
   const endpoint = resolveEndpoint('upload', argv);
@@ -1552,17 +1592,289 @@ function normalizeLegacyManifest(input: Record<string, unknown>): Record<string,
   return input;
 }
 
-function packageZipForUpload(path: string, uploadTarget: AuthoringUploadTarget): { out: string; sizeBytes: number; sha256: string } {
+function packageZipForUpload(path: string, uploadTarget: AuthoringUploadTarget): ComponentPackageArtifact {
   assertAuthoringZipPackageFreshness(path, uploadTarget);
   return packageArtifactFromZip(path);
 }
 
-function packageArtifactFromZip(path: string): { out: string; sizeBytes: number; sha256: string } {
+function packageArtifactFromZip(path: string): ComponentPackageArtifact {
   const file = readFileSync(path);
   return {
     out: path,
     sizeBytes: file.byteLength,
     sha256: `sha256:${createHash('sha256').update(file).digest('hex')}`,
+  };
+}
+
+function evaluateDirectoryPublicResources(dir: string): PublicResourceReport {
+  const publicRoot = join(dir, 'public');
+  const entries: ComponentPublicResourceEntry[] = [];
+  const diagnostics: ComponentDiagnostic[] = [];
+  const seenPublicPaths = new Set<string>();
+  let totalBytes = 0;
+
+  if (!existsSync(publicRoot)) {
+    return createPublicResourceReport('empty', entries, totalBytes, diagnostics);
+  }
+
+  const rootStat = lstatSync(publicRoot);
+  if (!rootStat.isDirectory()) {
+    diagnostics.push(publicResourceDiagnostic(
+      'component_resources.public.path_rejected',
+      'error',
+      '`public` must be a directory when component resources are used.',
+      'Move resource files into a public/ directory or remove the file named public.',
+    ));
+    return createPublicResourceReport('blocked', entries, totalBytes, diagnostics);
+  }
+
+  function walk(currentDir: string): void {
+    for (const entry of readdirSync(currentDir, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
+      const full = join(currentDir, entry.name);
+      const relativePath = relative(publicRoot, full).replace(/\\/g, '/');
+      if (entry.isDirectory()) {
+        const normalized = normalizePublicResourcePath(relativePath);
+        if (!normalized.ok) {
+          diagnostics.push(publicResourceDiagnostic(
+            'component_resources.public.path_rejected',
+            'error',
+            `public/${relativePath}: ${normalized.reason}`,
+            'Use simple relative resource paths without dot segments, backslashes, URLs, or unsupported characters.',
+          ));
+          continue;
+        }
+        walk(full);
+        continue;
+      }
+      if (!entry.isFile()) {
+        diagnostics.push(publicResourceDiagnostic(
+          'component_resources.public.path_rejected',
+          'error',
+          `public/${relativePath}: only ordinary files are allowed in public resources.`,
+          'Remove symlinks, sockets, devices, and other non-file entries from public/.',
+        ));
+        continue;
+      }
+
+      const normalized = normalizePublicResourcePath(relativePath);
+      if (!normalized.ok) {
+        diagnostics.push(publicResourceDiagnostic(
+          'component_resources.public.path_rejected',
+          'error',
+          `public/${relativePath}: ${normalized.reason}`,
+          'Use simple relative resource paths without dot segments, backslashes, URLs, or unsupported characters.',
+        ));
+        continue;
+      }
+      if (seenPublicPaths.has(normalized.publicPath)) {
+        diagnostics.push(publicResourceDiagnostic(
+          'component_resources.public.path_rejected',
+          'error',
+          `${normalized.publicPath}: duplicate normalized public resource path.`,
+          'Keep one file for each public resource path.',
+        ));
+        continue;
+      }
+      seenPublicPaths.add(normalized.publicPath);
+
+      const resourceType = classifyPublicResource(relativePath);
+      if (!resourceType) {
+        diagnostics.push(publicResourceDiagnostic(
+          'component_resources.public.content_type_rejected',
+          'error',
+          `${normalized.sourcePath}: unsupported public resource file type.`,
+          `Use one of the supported extensions: ${supportedPublicResourceExtensions().join(', ')}.`,
+        ));
+        continue;
+      }
+
+      const data = readFileSync(full);
+      const sizeBytes = data.byteLength;
+      if (sizeBytes > PROMPTFRAME_PUBLIC_RESOURCE_LIMITS.maxFileBytes) {
+        diagnostics.push(publicResourceDiagnostic(
+          'component_resources.public.file_too_large',
+          'error',
+          `${normalized.sourcePath}: file is ${sizeBytes} bytes, above the ${PROMPTFRAME_PUBLIC_RESOURCE_LIMITS.maxFileBytes} byte limit.`,
+          'Compress the asset, reduce resolution/duration, or pass larger media through platform-managed assets.',
+        ));
+        continue;
+      }
+      if (resourceType.contentType === 'image/svg+xml') {
+        const svgDiagnostic = unsafeSvgDiagnostic(normalized.sourcePath, data);
+        if (svgDiagnostic) {
+          diagnostics.push(svgDiagnostic);
+          continue;
+        }
+      }
+      totalBytes += sizeBytes;
+
+      entries.push({
+        publicPath: normalized.publicPath,
+        sourcePath: normalized.sourcePath,
+        artifactPath: `resources/public/${normalized.relativePath}`,
+        kind: resourceType.kind,
+        contentType: resourceType.contentType,
+        sizeBytes,
+        sha256: sha256Buffer(data),
+      });
+    }
+  }
+
+  walk(publicRoot);
+
+  if (entries.length > PROMPTFRAME_PUBLIC_RESOURCE_LIMITS.maxFiles) {
+    diagnostics.push(publicResourceDiagnostic(
+      'component_resources.public.too_many_files',
+      'error',
+      `public/ contains ${entries.length} accepted resource files, above the ${PROMPTFRAME_PUBLIC_RESOURCE_LIMITS.maxFiles} file limit.`,
+      'Keep component resources small and reusable; move large media sets to platform-managed assets.',
+    ));
+  }
+  if (totalBytes > PROMPTFRAME_PUBLIC_RESOURCE_LIMITS.maxTotalBytes) {
+    diagnostics.push(publicResourceDiagnostic(
+      'component_resources.public.total_bytes_exceeded',
+      'error',
+      `public/ resources total ${totalBytes} bytes, above the ${PROMPTFRAME_PUBLIC_RESOURCE_LIMITS.maxTotalBytes} byte limit.`,
+      'Reduce bundled resources or move large media to platform-managed assets.',
+    ));
+  }
+  if (entries.length > 0 && !diagnostics.some((item) => item.severity === 'error')) {
+    diagnostics.push(publicResourceDiagnostic(
+      'component_resources.public.accepted',
+      'info',
+      `Accepted ${entries.length} public resource file${entries.length === 1 ? '' : 's'} (${totalBytes} bytes).`,
+    ));
+  }
+
+  return createPublicResourceReport(
+    diagnostics.some((item) => item.severity === 'error') ? 'blocked' : entries.length > 0 ? 'accepted' : 'empty',
+    entries.sort((left, right) => left.publicPath.localeCompare(right.publicPath)),
+    totalBytes,
+    diagnostics,
+  );
+}
+
+function createPublicResourceReport(
+  status: PublicResourceReportStatus,
+  entries: ComponentPublicResourceEntry[],
+  totalBytes: number,
+  diagnostics: ComponentDiagnostic[],
+): PublicResourceReport {
+  return {
+    contractVersion: COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION,
+    policyVersion: PROMPTFRAME_PUBLIC_RESOURCE_POLICY.policyVersion,
+    sourceDirectory: 'public',
+    status,
+    total: entries.length,
+    totalBytes,
+    entries,
+    diagnostics,
+  };
+}
+
+function assertPublicResourcesAccepted(report: PublicResourceReport): void {
+  const firstError = report.diagnostics.find((item) => item.severity === 'error');
+  if (!firstError) return;
+  fail(firstError.message, firstError.code);
+}
+
+function normalizePublicResourcePath(relativePath: string): (
+  | { ok: true; relativePath: string; publicPath: `/${string}`; sourcePath: `public/${string}` }
+  | { ok: false; reason: string }
+) {
+  const value = relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!value || value.endsWith('/')) return { ok: false, reason: 'empty resource path.' };
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return { ok: false, reason: 'URL-like paths are not allowed.' };
+  if (value.includes('//')) return { ok: false, reason: 'double slashes are not allowed.' };
+  const parts = value.split('/');
+  if (parts.some((part) => part === '.' || part === '..' || part.trim() !== part || part.length === 0)) {
+    return { ok: false, reason: 'dot segments and whitespace-padded path parts are not allowed.' };
+  }
+  if (!/^[A-Za-z0-9._~!$&'()+,;=@/-]+$/.test(value)) {
+    return { ok: false, reason: 'path contains unsupported characters.' };
+  }
+  return {
+    ok: true,
+    relativePath: value,
+    publicPath: `/${value}`,
+    sourcePath: `public/${value}`,
+  };
+}
+
+function classifyPublicResource(relativePath: string): { kind: ComponentPublicResourceKind; contentType: string } | undefined {
+  const ext = extname(relativePath).toLowerCase();
+  switch (ext) {
+    case '.png':
+      return { kind: 'image', contentType: 'image/png' };
+    case '.jpg':
+    case '.jpeg':
+      return { kind: 'image', contentType: 'image/jpeg' };
+    case '.webp':
+      return { kind: 'image', contentType: 'image/webp' };
+    case '.gif':
+      return { kind: 'image', contentType: 'image/gif' };
+    case '.svg':
+      return { kind: 'image', contentType: 'image/svg+xml' };
+    case '.mp3':
+      return { kind: 'audio', contentType: 'audio/mpeg' };
+    case '.wav':
+      return { kind: 'audio', contentType: 'audio/wav' };
+    case '.m4a':
+      return { kind: 'audio', contentType: 'audio/mp4' };
+    case '.ogg':
+      return { kind: 'audio', contentType: 'audio/ogg' };
+    case '.mp4':
+      return { kind: 'video', contentType: 'video/mp4' };
+    case '.webm':
+      return { kind: 'video', contentType: 'video/webm' };
+    case '.woff':
+      return { kind: 'font', contentType: 'font/woff' };
+    case '.woff2':
+      return { kind: 'font', contentType: 'font/woff2' };
+    case '.json':
+      return { kind: 'json', contentType: 'application/json' };
+    case '.txt':
+      return { kind: 'text', contentType: 'text/plain; charset=utf-8' };
+    case '.csv':
+      return { kind: 'text', contentType: 'text/csv; charset=utf-8' };
+    default:
+      return undefined;
+  }
+}
+
+function supportedPublicResourceExtensions(): string[] {
+  return Object.values(PROMPTFRAME_PUBLIC_RESOURCE_POLICY.allowedExtensions).flat().sort();
+}
+
+function unsafeSvgDiagnostic(sourcePath: string, data: Buffer): ComponentDiagnostic | undefined {
+  const text = data.toString('utf8');
+  if (/<\s*script\b/i.test(text)
+    || /<\s*foreignObject\b/i.test(text)
+    || /\son[a-z]+\s*=/i.test(text)
+    || /\b(?:href|xlink:href)\s*=\s*["']\s*(?:https?:|data:|javascript:)/i.test(text)
+    || /\burl\s*\(\s*["']?\s*(?:https?:|data:|javascript:)/i.test(text)) {
+    return publicResourceDiagnostic(
+      'component_resources.public.svg_rejected',
+      'error',
+      `${sourcePath}: SVG is outside the PromptFrame safe subset.`,
+      'Remove scripts, foreignObject, event handlers, external hrefs and javascript/data URLs, or use a raster image.',
+    );
+  }
+  return undefined;
+}
+
+function publicResourceDiagnostic(
+  code: string,
+  severity: ComponentDiagnostic['severity'],
+  message: string,
+  repairHint?: string,
+): ComponentDiagnostic {
+  return {
+    code,
+    severity,
+    stage: 'package',
+    message,
+    ...(repairHint ? { repairHint } : {}),
   };
 }
 

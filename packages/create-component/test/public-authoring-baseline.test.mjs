@@ -11,16 +11,16 @@ test('public templates use the current PromptFrame authoring package baseline', 
     'packages/create-component/templates/react-remotion/package.json',
   ]) {
     const packageJson = JSON.parse(await readFile(path.join(repoRoot, templatePackagePath), 'utf8'));
-    assert.equal(packageJson.dependencies?.['@promptframe/component-kit'], '^0.1.9', templatePackagePath);
-    assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.11', templatePackagePath);
+    assert.equal(packageJson.dependencies?.['@promptframe/component-kit'], '^0.1.10', templatePackagePath);
+    assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.12', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@remotion/player'], '^4.0.0', templatePackagePath);
-    assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.26', templatePackagePath);
+    assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.27', templatePackagePath);
   }
 });
 
 test('create package version is bumped for the next template release', async () => {
   const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'packages/create-component/package.json'), 'utf8'));
-  assert.equal(packageJson.version, '0.1.15');
+  assert.equal(packageJson.version, '0.1.16');
 });
 
 test('public templates expose PromptFrame CLI lifecycle scripts', async () => {
@@ -81,6 +81,32 @@ test('public authoring docs include the local preview command before upload', as
   }
 });
 
+test('public authoring docs and templates expose component public resource contract', async () => {
+  for (const docPath of [
+    'README.md',
+    'packages/cli/README.md',
+    'packages/component-kit/README.md',
+    'packages/contracts/README.md',
+    'skills/component-authoring/SKILL.md',
+    'templates/react-remotion/README.md',
+    'packages/create-component/templates/react-remotion/README.md',
+  ]) {
+    const text = await readFile(path.join(repoRoot, docPath), 'utf8');
+    assert.match(text, /publicResources|public\/|promptFramePublicResource/, docPath);
+    assert.doesNotMatch(text, /does not currently expose a component-level `public\/` hosting contract/, docPath);
+  }
+
+  for (const templateRoot of [
+    'templates/react-remotion',
+    'packages/create-component/templates/react-remotion',
+  ]) {
+    const component = await readFile(path.join(repoRoot, templateRoot, 'src/Component.tsx'), 'utf8');
+    const sample = JSON.parse(await readFile(path.join(repoRoot, templateRoot, 'public/sample-data.json'), 'utf8'));
+    assert.match(component, /promptFramePublicResource/, templateRoot);
+    assert.equal(sample.label, 'PromptFrame public resource sample');
+  }
+});
+
 test('public authoring docs document the current npm registry baseline', async () => {
   for (const docPath of [
     'README.md',
@@ -89,7 +115,7 @@ test('public authoring docs document the current npm registry baseline', async (
     'packages/create-component/templates/react-remotion/README.md',
   ]) {
     const text = await readFile(path.join(repoRoot, docPath), 'utf8');
-    assert.match(text, /Current npm registry baseline is[\s\S]*@promptframe\/cli@0\.1\.26[\s\S]*create-promptframe-component@0\.1\.15/, docPath);
+    assert.match(text, /Current npm registry baseline is[\s\S]*@promptframe\/cli@0\.1\.27[\s\S]*create-promptframe-component@0\.1\.16/, docPath);
     assert.doesNotMatch(text, /source candidate|source tree prepares|until Trusted Publishing completes/, docPath);
   }
 });

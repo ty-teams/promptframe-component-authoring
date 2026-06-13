@@ -4,9 +4,13 @@ import {
   authoringStandardFreshnessDecisionSchema,
   authoringStandardReleaseSchema,
   AUTHORING_STANDARD_RELEASE_VERSION,
+  COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION,
+  componentPublicResourceManifestSchema,
+  componentRuntimeResourceManifestSchema,
   COMPONENT_STANDARD_SOURCE_HASH,
   COMPONENT_STANDARD_VERSION,
   PROMPTFRAME_AUTHORING_STANDARD_RELEASE,
+  PROMPTFRAME_PUBLIC_RESOURCE_POLICY,
 } from '../dist/index.js';
 
 test('authoring standard release exposes upload targets and package floors', () => {
@@ -45,4 +49,46 @@ test('freshness decision keeps local and current standard fingerprints separate'
   assert.equal(decision.status, 'upload_blocking');
   assert.notEqual(decision.localStandardSourceHash, decision.currentStandardSourceHash);
   assert.equal(decision.diagnostic.code, 'standard.freshness.upload_blocking');
+});
+
+test('public resource policy and schemas describe component public assets', () => {
+  assert.equal(PROMPTFRAME_PUBLIC_RESOURCE_POLICY.contractVersion, COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION);
+  assert.ok(PROMPTFRAME_PUBLIC_RESOURCE_POLICY.allowedExtensions.image.includes('.png'));
+  assert.ok(PROMPTFRAME_PUBLIC_RESOURCE_POLICY.allowedExtensions.font.includes('.woff2'));
+  assert.equal(PROMPTFRAME_PUBLIC_RESOURCE_POLICY.runtime.injectedProp, 'promptFrameResources');
+
+  const manifest = componentPublicResourceManifestSchema.parse({
+    contractVersion: COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION,
+    basePath: '/',
+    entries: [
+      {
+        publicPath: '/logo.png',
+        sourcePath: 'public/logo.png',
+        artifactPath: 'resources/public/logo.png',
+        kind: 'image',
+        contentType: 'image/png',
+        sizeBytes: 12,
+        sha256: `sha256:${'a'.repeat(64)}`,
+      },
+    ],
+    totalBytes: 12,
+    generatedAt: '2026-06-13T00:00:00.000Z',
+  });
+
+  const runtime = componentRuntimeResourceManifestSchema.parse({
+    contractVersion: COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION,
+    entries: [
+      {
+        ...manifest.entries[0],
+        url: '/public/component-resources/demo/logo.png',
+      },
+    ],
+  });
+
+  assert.equal(manifest.entries[0].publicPath, '/logo.png');
+  assert.equal(runtime.entries[0].url, '/public/component-resources/demo/logo.png');
+  assert.throws(() => componentPublicResourceManifestSchema.parse({
+    ...manifest,
+    entries: [{ ...manifest.entries[0], publicPath: '/../secret.png' }],
+  }));
 });

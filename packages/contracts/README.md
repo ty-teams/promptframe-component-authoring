@@ -10,6 +10,8 @@ Key public exports:
 - `authoringStandardFreshnessDecisionSchema`: shared shape for local tooling and platform admission to explain whether an authoring package is current, warning-only, upload-blocking, or security-breaking.
 - `authoringUploadTargetSchema`: public upload lanes for `marketplace_authoring` and `project_private_generation`.
 - `componentReusabilityScoreSchema`: shared shape for deterministic component reuse diagnostics emitted by local CLI checks and platform admission.
+- `componentPublicResourceManifestSchema` and `componentRuntimeResourceManifestSchema`: public `public/` resource manifest and runtime URL shapes for component-bundled images, audio, video, fonts, JSON, and text.
+- `PROMPTFRAME_PUBLIC_RESOURCE_POLICY`: conservative path/type/size/SVG policy used by authoring tools before platform admission.
 - `PROMPTFRAME_PUBLIC_SECURITY_POLICY_DIGEST`: deterministic release-cohort fingerprint for the public security policy.
 - `@promptframe/contracts/security-evaluator`: AST-aware evaluator for JS / TS / TSX source diagnostics.
 

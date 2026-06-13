@@ -123,7 +123,7 @@ third-party components are not browser extensions. They run as deterministic Pro
 
 ### Asset and resource truth
 
-Use JSON props, safe fallback defaults, or platform-managed asset references when the platform provides them. The source package may include extra files, but PromptFrame does not currently expose a component-level `public/` hosting contract, resource manifest, receipt refs, CDN URL rewrite, or runtime resolver for arbitrary bundled images, audio, video, fonts, or JSON. Do not rely on raw external URLs or component-side `fetch()` unless a platform-mediated API explicitly allows it.
+Use JSON props, safe fallback defaults, platform-managed asset references, or the component-level `public/` resource contract. Put small bundled resources under `public/` and resolve them in component code with `promptFramePublicResource(props, '/asset.png', fallback)` from `@promptframe/component-kit`. The CLI reports `publicResources` in `validate/check/package/upload --json`; platform build/status diagnostics remain the final authority for hosted runtime URLs. Do not rely on raw external URLs or component-side `fetch()` unless a platform-mediated API explicitly allows it.
 
 ## Component Types
 

@@ -7,7 +7,7 @@ import {
 export const COMPONENT_STANDARD_VERSION = CONTRACTS_COMPONENT_STANDARD_VERSION;
 export const COMPONENT_STANDARD_SOURCE_HASH = CONTRACTS_COMPONENT_STANDARD_SOURCE_HASH;
 export const COMPONENT_STANDARD_SOURCE_PATH = 'https://github.com/ty-teams/promptframe-component-authoring#readme' as const;
-export const COMPONENT_KIT_VERSION = '0.1.9' as const;
+export const COMPONENT_KIT_VERSION = '0.1.10' as const;
 export const COMPONENT_MANIFEST_SCHEMA_VERSION = CONTRACTS_COMPONENT_MANIFEST_SCHEMA_VERSION;
 export const COMPONENT_REVIEW_CHECKLIST_VERSION = 'component-review-checklist.v0.1.0' as const;
 

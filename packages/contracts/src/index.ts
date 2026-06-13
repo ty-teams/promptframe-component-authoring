@@ -20,6 +20,39 @@ export const PROMPTFRAME_STYLE_CONTRACT_VERSION = 'promptframe-style.v0.1.0' as 
 export const AUTHORING_STANDARD_RELEASE_VERSION = 'authoring-standard-release.v0.1.0' as const;
 export const COMPONENT_REUSABILITY_CONTRACT_VERSION = 'component-reusability.v0.1.0' as const;
 export const COMPONENT_DEPENDENCY_POLICY_VERSION = 'component-dependency-policy.v0.1.0' as const;
+export const COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION = 'component-public-resources.v0.1.0' as const;
+export const COMPONENT_PUBLIC_RESOURCE_POLICY_VERSION = 'component-public-resource-policy.v0.1.0' as const;
+
+export const PROMPTFRAME_PUBLIC_RESOURCE_LIMITS = {
+  maxFiles: 64,
+  maxFileBytes: 10 * 1024 * 1024,
+  maxTotalBytes: 50 * 1024 * 1024,
+} as const;
+
+export const PROMPTFRAME_PUBLIC_RESOURCE_ALLOWED_EXTENSIONS = {
+  image: ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg'],
+  audio: ['.mp3', '.wav', '.m4a', '.ogg'],
+  video: ['.mp4', '.webm'],
+  font: ['.woff', '.woff2'],
+  json: ['.json'],
+  text: ['.txt', '.csv'],
+} as const;
+
+export const PROMPTFRAME_PUBLIC_RESOURCE_POLICY = {
+  policyVersion: COMPONENT_PUBLIC_RESOURCE_POLICY_VERSION,
+  contractVersion: COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION,
+  sourceDirectory: 'public',
+  limits: PROMPTFRAME_PUBLIC_RESOURCE_LIMITS,
+  allowedExtensions: PROMPTFRAME_PUBLIC_RESOURCE_ALLOWED_EXTENSIONS,
+  svgSafety: {
+    mode: 'safe_subset',
+    rejectedSignals: ['script', 'foreignObject', 'event_handler_attribute', 'external_href', 'javascript_url'],
+  },
+  runtime: {
+    injectedProp: 'promptFrameResources',
+    helper: 'promptFramePublicResource(resourcesOrProps, publicPath, fallback?)',
+  },
+} as const;
 
 export const PROMPTFRAME_PUBLIC_STANDARD_POLICY = {
   policyVersion: COMPONENT_STANDARD_POLICY_VERSION,
@@ -610,6 +643,61 @@ export const semverSchema = z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?
 export const componentIdSchema = z.string().regex(/^@[a-z0-9][a-z0-9-]{1,62}\/[a-z0-9][a-z0-9-]{1,62}$/);
 export const componentNameSchema = z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/);
 export const relativePathSchema = z.string().regex(/^[^/\\][\w./-]*$/);
+
+export const componentPublicResourceKindSchema = z.enum([
+  'image',
+  'audio',
+  'video',
+  'font',
+  'json',
+  'text',
+]);
+export type ComponentPublicResourceKind = z.infer<typeof componentPublicResourceKindSchema>;
+
+export const componentPublicResourcePublicPathSchema = z.string()
+  .regex(/^\/(?!.*\\)(?!.*\/\/)[A-Za-z0-9._~!$&'()+,;=:@/-]+$/)
+  .refine(hasNoDotPathSegments);
+export const componentPublicResourceSourcePathSchema = z.string()
+  .regex(/^public\/(?!.*\\)(?!.*\/\/)[A-Za-z0-9._~!$&'()+,;=:@/-]+$/)
+  .refine(hasNoDotPathSegments);
+export const componentPublicResourceArtifactPathSchema = z.string()
+  .regex(/^resources\/public\/(?!.*\\)(?!.*\/\/)[A-Za-z0-9._~!$&'()+,;=:@/-]+$/)
+  .refine(hasNoDotPathSegments);
+
+export const componentPublicResourceEntrySchema = z.object({
+  publicPath: componentPublicResourcePublicPathSchema,
+  sourcePath: componentPublicResourceSourcePathSchema,
+  artifactPath: componentPublicResourceArtifactPathSchema,
+  kind: componentPublicResourceKindSchema,
+  contentType: nonEmptyStringSchema.max(120),
+  sizeBytes: z.number().int().min(0).max(PROMPTFRAME_PUBLIC_RESOURCE_LIMITS.maxFileBytes),
+  sha256: sha256Schema,
+}).strict();
+export type ComponentPublicResourceEntry = z.infer<typeof componentPublicResourceEntrySchema>;
+
+export const componentPublicResourceManifestSchema = z.object({
+  contractVersion: z.literal(COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION),
+  basePath: z.literal('/').default('/'),
+  entries: z.array(componentPublicResourceEntrySchema).max(PROMPTFRAME_PUBLIC_RESOURCE_LIMITS.maxFiles),
+  totalBytes: z.number().int().min(0).max(PROMPTFRAME_PUBLIC_RESOURCE_LIMITS.maxTotalBytes),
+  generatedAt: z.string().datetime(),
+}).strict();
+export type ComponentPublicResourceManifest = z.infer<typeof componentPublicResourceManifestSchema>;
+
+export const componentRuntimeResourceEntrySchema = componentPublicResourceEntrySchema.extend({
+  url: nonEmptyStringSchema.max(2000),
+}).strict();
+
+export const componentRuntimeResourceManifestSchema = z.object({
+  contractVersion: z.literal(COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION),
+  baseUrl: z.string().max(2000).optional(),
+  entries: z.array(componentRuntimeResourceEntrySchema).max(PROMPTFRAME_PUBLIC_RESOURCE_LIMITS.maxFiles),
+}).strict();
+export type ComponentRuntimeResourceManifest = z.infer<typeof componentRuntimeResourceManifestSchema>;
+
+function hasNoDotPathSegments(value: string): boolean {
+  return value.split('/').every((part) => part !== '.' && part !== '..');
+}
 
 export const promptFrameComponentTypeSchema = z.enum([
   'scene_template',

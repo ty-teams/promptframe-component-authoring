@@ -1098,6 +1098,91 @@ test('package validates a component folder and writes a platform zip artifact', 
   }
 });
 
+test('validate check and package report accepted public resources deterministically', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-public-resources-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await mkdir(path.join(componentDir, 'public/assets'), { recursive: true });
+    await writeFile(path.join(componentDir, 'public/data.json'), JSON.stringify({ label: 'Demo' }));
+    await writeFile(path.join(componentDir, 'public/assets/logo.png'), 'fake png bytes');
+
+    const validate = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'validate',
+      componentDir,
+      '--json',
+    ])).stdout);
+    assert.equal(validate.publicResources.status, 'accepted');
+    assert.equal(validate.publicResources.total, 2);
+    assert.deepEqual(validate.publicResources.entries.map((entry) => entry.publicPath), [
+      '/assets/logo.png',
+      '/data.json',
+    ]);
+    assert.ok(validate.diagnostics.some((item) => item.code === 'component_resources.public.accepted'));
+
+    const check = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'check',
+      componentDir,
+      '--target',
+      'project_private_generation',
+      '--json',
+    ], {
+      env: {
+        ...process.env,
+        PROMPTFRAME_API_BASE: '',
+        REMOTION_MEDIA_API_BASE: '',
+        PROMPTFRAME_CONFIG: path.join(dir, 'missing-config.json'),
+      },
+    })).stdout);
+    assert.equal(check.publicResources.contractVersion, 'component-public-resources.v0.1.0');
+    assert.equal(check.publicResources.total, 2);
+
+    const out = path.join(dir, 'component.zip');
+    const packaged = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'package',
+      componentDir,
+      '--out',
+      out,
+    ])).stdout);
+    assert.equal(packaged.publicResources.status, 'accepted');
+    assert.equal(packaged.publicResources.entries[0].sourcePath, 'public/assets/logo.png');
+    const names = zipEntryNames(await readFile(out));
+    assert.equal(names.includes('public/assets/logo.png'), true);
+    assert.equal(names.includes('public/data.json'), true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('validate rejects unsafe SVG public resources before upload', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-public-resource-svg-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await mkdir(path.join(componentDir, 'public'), { recursive: true });
+    await writeFile(path.join(componentDir, 'public/unsafe.svg'), '<svg><script>alert(1)</script></svg>');
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'validate',
+        componentDir,
+        '--json',
+      ]),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stderr, /component_resources\.public\.svg_rejected/);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('package excludes local preview cases from .promptframe while keeping canonical preview props', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-package-local-previews-'));
   try {
