@@ -4,7 +4,7 @@ PromptFrame component authoring CLI.
 
 Use it to inspect the public component standard, check component folders, validate manifests, inspect the local preview envelope, package source archives, upload components, check build status, rebuild evidence indexes, and rerun layout/security probes.
 
-Current npm registry baseline is `@promptframe/cli@0.1.24`, `@promptframe/contracts@0.1.9`, and `create-promptframe-component@0.1.13`. The published CLI consumes the contracts AST-aware public security policy evaluator, reports `securityPolicyDigest` / `securityEvaluatorMode` in JSON output, and packages sanitized lockfile evidence for platform admission.
+Current npm registry baseline is `@promptframe/cli@0.1.25`, `@promptframe/contracts@0.1.10`, `@promptframe/component-kit@0.1.8`, and `create-promptframe-component@0.1.14`. The published CLI consumes the contracts AST-aware public security policy evaluator, reports `securityPolicyDigest` / `securityEvaluatorMode` in JSON output, and packages sanitized lockfile evidence for platform admission.
 
 ```bash
 npm install -D @promptframe/cli
