@@ -10,7 +10,7 @@ PromptFrame 标准视频组件模板。
 
 CodingAI 不能读取 PromptFrame 平台源码、内部协作看板、REQ/TASK/QA、内部协作收件箱、secret、内部部署脚本或私有 endpoint 默认值。
 
-版本事实：Current npm registry baseline is `@promptframe/cli@0.1.25`, `@promptframe/contracts@0.1.10`, `@promptframe/component-kit@0.1.8`, and `create-promptframe-component@0.1.14`. The published CLI consumes the contracts AST-aware public security policy evaluator and reports `securityPolicyDigest` / `securityEvaluatorMode` in JSON output.
+版本事实：Current npm registry baseline is `@promptframe/cli@0.1.26`, `@promptframe/contracts@0.1.11`, `@promptframe/component-kit@0.1.9`, and `create-promptframe-component@0.1.15`. The published CLI consumes the contracts AST-aware public security policy evaluator and reports `securityPolicyDigest` / `securityEvaluatorMode` in JSON output.
 
 ## 本地开发
 
