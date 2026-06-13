@@ -85,7 +85,7 @@ npx promptframe status <buildId> --endpoint <promptframe-api-base>
 - 不要直接使用 `fetch()` / XHR / WebSocket / Beacon。
 - 即使使用 `componentRuntime.fetchJson()`，也必须等待平台提供白名单配置；未配置时会进入 `manual_review`。
 - 不要读取 `localStorage` / `sessionStorage` / cookie。当前可能只是 warning，但不建议保留。
-- 需要小型随组件分发的图片、音频、视频、字体、JSON 或文本时，放在 `public/`，并用 `promptFramePublicResource(props, '/sample-data.json', fallback)` 读取平台注入的 runtime URL。CLI 会在 `validate/check/package/upload --json` 里报告 `publicResources`；平台 build/status 诊断仍是运行时托管和 URL 注入是否可用的最终依据。不要绕过平台去写裸外部 URL 或组件侧 `fetch()`。
+- 需要小型随组件分发的图片、音频、视频、字体、JSON 或文本时，放在 `public/`，并用 `promptFramePublicResource(props, '/sample-data.json', fallback)` 读取平台注入的 runtime URL。CLI 会在 `validate/check/package/upload --json` 里报告 `publicResources`；平台 build admission（构建准入）接受后会给 preview/render 注入平台托管 URL，`status` / build 诊断仍是已接收文件、托管 URL 和拒绝原因的最终依据。不要绕过平台去写裸外部 URL 或组件侧 `fetch()`。
 
 ## 上传与状态
 

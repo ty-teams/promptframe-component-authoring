@@ -123,7 +123,7 @@ third-party components are not browser extensions. They run as deterministic Pro
 
 ### Asset and resource truth
 
-Use JSON props, safe fallback defaults, platform-managed asset references, or the component-level `public/` resource contract. Put small bundled resources under `public/` and resolve them in component code with `promptFramePublicResource(props, '/asset.png', fallback)` from `@promptframe/component-kit`. The CLI reports `publicResources` in `validate/check/package/upload --json`; platform build/status diagnostics remain the final authority for hosted runtime URLs. Do not rely on raw external URLs or component-side `fetch()` unless a platform-mediated API explicitly allows it.
+Use JSON props, safe fallback defaults, platform-managed asset references, or the component-level `public/` resource contract. Put small bundled resources under `public/` and resolve them in component code with `promptFramePublicResource(props, '/asset.png', fallback)` from `@promptframe/component-kit`. The CLI reports `publicResources` in `validate/check/package/upload --json`; after platform build admission accepts the files, preview/render receive platform-managed runtime URLs. Platform build/status diagnostics remain the final authority for accepted files, hosted URLs and rejection reasons. Do not rely on raw external URLs or component-side `fetch()` unless a platform-mediated API explicitly allows it.
 
 ## Component Types
 
