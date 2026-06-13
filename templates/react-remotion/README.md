@@ -36,9 +36,13 @@ npx promptframe dev .
 npx promptframe check .
 npx promptframe validate .
 npx promptframe preview .
+npx promptframe login --endpoint <promptframe-api-base>
+npx promptframe whoami
 npx promptframe upload . --endpoint <promptframe-api-base>
 npx promptframe status <buildId> --endpoint <promptframe-api-base>
 ```
+
+`promptframe login --endpoint <promptframe-api-base>` 会打开浏览器授权码登录；如果平台已经给了 scoped token，也可以用 `promptframe login --endpoint <promptframe-api-base> --token <token>` 验证并保存。不要手填 `tenantId` / `userId` / `projectId`，正式平台会从浏览器登录或 token 推导身份和项目；用 `promptframe whoami` 查看当前身份和 scope。`marketplace_authoring` 是默认外部作者 lane，`project_private_generation` 只用于项目内私有生成；token 可能只能上传到指定 lane。
 
 如果上传入口不可用，仍然要完成本地 `dev` 预览、`validate` 和 `preview` envelope 检查，然后按组件作者报告模板写清本地结果。
 
@@ -81,7 +85,7 @@ npx promptframe status <buildId> --endpoint <promptframe-api-base>
 - 不要直接使用 `fetch()` / XHR / WebSocket / Beacon。
 - 即使使用 `componentRuntime.fetchJson()`，也必须等待平台提供白名单配置；未配置时会进入 `manual_review`。
 - 不要读取 `localStorage` / `sessionStorage` / cookie。当前可能只是 warning，但不建议保留。
-- 需要素材、状态或外部数据时，让平台通过 props / asset / 后续受控 wrapper 注入。
+- 需要素材、状态或外部数据时，让平台通过 props / asset / 后续受控 wrapper 注入。当前没有组件级 `public/` 托管、资源 manifest、CDN URL rewrite 或任意 bundled asset runtime resolver；不要假设 `public/` 里的图片、音视频、字体或 JSON 会在平台渲染时变成可访问 URL。
 
 ## 上传与状态
 

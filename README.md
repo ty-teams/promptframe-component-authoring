@@ -29,14 +29,20 @@ npx promptframe validate .
 npx promptframe preview .
 npx promptframe preview . --write-local-report --json
 npx promptframe package . --out ./component.zip
-npx promptframe login --endpoint https://your-promptframe.example/api-proxy --token "$PROMPTFRAME_CLI_TOKEN"
+npx promptframe login --endpoint https://your-promptframe.example/api-proxy
 npx promptframe whoami
 npx promptframe upload ./component.zip --endpoint https://your-promptframe.example/api-proxy
 npx promptframe status <buildId> --endpoint https://your-promptframe.example/api-proxy
 npx promptframe logout
 ```
 
-The CLI never embeds a production/private endpoint default. Use `--endpoint`, `PROMPTFRAME_API_BASE`, `REMOTION_MEDIA_API_BASE`, or `promptframe configure --endpoint <url>`. Formal platform endpoints use bearer auth from `promptframe login`, `PROMPTFRAME_CI_TOKEN`, or `PROMPTFRAME_CLI_TOKEN`; local dev-header flags are only for local smoke endpoints and are rejected for formal non-local endpoints. `dev .` starts the template's local video preview shell; `check .` validates the component and reports public standard freshness; `preview .` is a local preview envelope check; `preview . --write-local-report` writes `.promptframe/local-previews/preview-report.json` from canonical and saved local preview cases. Neither command replaces the platform iframe preview or render pipeline. Upload success means the platform accepted the source package for trust-pipeline admission; search, preview, render, and publish readiness are reported later by platform status/evidence/probe diagnostics.
+The CLI never embeds a production/private endpoint default. Use `--endpoint`, `PROMPTFRAME_API_BASE`, `REMOTION_MEDIA_API_BASE`, or `promptframe configure --endpoint <url>`. Formal platform endpoints use bearer auth from browser code login, `PROMPTFRAME_CI_TOKEN`, or `PROMPTFRAME_CLI_TOKEN`; local dev-header flags are only for local smoke endpoints and are rejected for formal non-local endpoints. `promptframe login --endpoint <url>` starts a browser Device Code flow and stores a short-lived human CLI token locally. `promptframe login --endpoint <url> --token <token>` is for a token that was already issued elsewhere. Do not paste token secrets into source, README files, issues, prompts, or workflow logs.
+
+Identity and project scope come from the platform session or scoped token. External authors should not hand-fill `tenantId`, `userId`, or `projectId`; formal endpoints reject dev identity headers. Use `promptframe whoami` to inspect the current identity. Upload targets are explicit lanes: `marketplace_authoring` is the reusable external marketplace lane, while `project_private_generation` is for project-scoped private component generation. A scoped token may be limited to specific upload targets, and the server is the final authority.
+
+`dev .` starts the template's local video preview shell; `check .` validates the component and reports public standard freshness; `preview .` is a local preview envelope check; `preview . --write-local-report` writes `.promptframe/local-previews/preview-report.json` from canonical and saved local preview cases. Neither command replaces the platform iframe preview or render pipeline. Upload success means the platform accepted the source package for trust-pipeline admission; search, preview, render, and publish readiness are reported later by platform status/evidence/probe diagnostics.
+
+Component assets should be passed through JSON props, safe fallback defaults, or platform-managed asset references when the platform provides them. The source zip may contain extra local files, but PromptFrame does not currently provide a component-level `public/` hosting contract, manifest resource refs, or runtime URL rewrite for arbitrary bundled images, audio, video, fonts, or JSON. Do not rely on raw external URLs or component-side `fetch()` for resources unless a platform-mediated API explicitly allows it.
 
 The generated local preview shell uses `@remotion/player` and passes `acknowledgeRemotionLicense` so the scaffold does not interrupt local authoring with repeated console prompts. This is only a local preview setting; component authors should still review the Remotion license for their own usage and distribution model.
 

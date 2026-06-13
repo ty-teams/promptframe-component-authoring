@@ -59,15 +59,19 @@ npx promptframe package . --out ./my-component.zip
 To upload, the caller must provide the current platform endpoint:
 
 ```bash
+npx promptframe login --endpoint <promptframe-api-base>
+npx promptframe whoami
 npx promptframe upload . --endpoint <promptframe-api-base>
 npx promptframe status <buildId> --endpoint <promptframe-api-base>
 ```
 
-Do not guess private service addresses. If no endpoint is provided, finish local video preview, validation, and local preview envelope checks, then report the missing endpoint.
+Do not guess private service addresses. Endpoint resolution is explicit: command `--endpoint`, then `PROMPTFRAME_API_BASE`, then `REMOTION_MEDIA_API_BASE`, then local config from `promptframe configure --endpoint <url>`. If no endpoint is provided, finish local video preview, validation, and local preview envelope checks, then report the missing endpoint.
+
+Formal platform identity comes from browser Device Code login or a scoped token. Do not hand-fill `tenantId`, `userId`, or `projectId`; formal endpoints reject dev identity headers. Use `promptframe whoami --json` to inspect the current token kind, endpoint, scopes, and project binding without printing the token secret. Store CI token secrets only in secret managers such as GitHub Actions secrets.
 
 The generated local preview shell uses `@remotion/player` and passes `acknowledgeRemotionLicense` so local authoring is not interrupted by repeated prompts. This does not replace the author's responsibility to review the Remotion license for their own usage and distribution model.
 
-Automation can add `--json` to `standard`, `doctor`, `validate`, `check`, `upgrade`, `preview`, `upload`, `status`, `reindex`, and `probe`. Use `dev --dry-run --json` to inspect the local preview command without starting a long-running server. Use `upgrade --dry-run --json` to inspect package floor changes before editing. Read `diagnostic.code`, `checkedRuleIds`, `securityPolicyDigest`, `securityEvaluatorMode`, `failureReason`, and `retryable` instead of scraping prose logs.
+Automation can add `--json` to `standard`, `doctor`, `validate`, `check`, `upgrade`, `preview`, `login`, `whoami`, `logout`, `upload`, `status`, `reindex`, and `probe`. Use `dev --dry-run --json` to inspect the local preview command without starting a long-running server. Use `upgrade --dry-run --json` to inspect package floor changes before editing. Read `diagnostic.code`, `checkedRuleIds`, `securityPolicyDigest`, `securityEvaluatorMode`, `failureReason`, and `retryable` instead of scraping prose logs.
 
 `validate` / `check` use the public security policy from `@promptframe/contracts`; current source candidates evaluate JS / TS / TSX through the contracts AST-aware evaluator. Treat `securityEvaluatorMode: "ast"` and the `securityPolicyDigest` as the public rule-cohort identity. If validation reports a browser or dynamic-code rule such as `browser.broadcast_channel`, `code.dynamic_import`, or `code.string_timer`, remove the capability instead of hiding it behind aliases.
 
@@ -91,6 +95,10 @@ npx promptframe status <buildId> --endpoint <promptframe-api-base> --json
 
 `promptframe login --endpoint <promptframe-api-base>` starts the browser login code flow for a human author. If the platform has issued a scoped token, `promptframe login --endpoint <promptframe-api-base> --token <token>` can verify and store it without printing the token secret.
 
+Upload targets are authorization lanes. `marketplace_authoring` is the reusable marketplace lane; `project_private_generation` is for project-scoped private generation. A scoped token may be allowed to upload only to specific targets, and the platform enforces that limit.
+
+Upload success only means the platform received the source package and started build admission. The component is not public until platform diagnostics, evidence readiness, preview/probe checks, review policy, and publish readiness say so. Use `status --json`, `reindex --json`, and `probe --json` rather than guessing from a single upload response.
+
 ### GitHub Actions automation
 
 ```bash
@@ -112,6 +120,10 @@ Do not read remotion-media internal REQ/TASK/QA, agent board, inboxes, deploymen
 ### Third-party component capability boundary
 
 third-party components are not browser extensions. They run as deterministic PromptFrame video components and should only use controlled rendering capabilities. If a requested feature needs raw network access, cross-tab messaging, browser storage, clipboard, WebRTC, notifications, service workers, dynamic imports, dangerous HTML injection, or long-running observers, redesign it around props, platform assets, or a platform-mediated API. Static local checks and GitHub PR checks are early feedback; upload admission, preview runtime pruning, and render sandbox remain final gates.
+
+### Asset and resource truth
+
+Use JSON props, safe fallback defaults, or platform-managed asset references when the platform provides them. The source package may include extra files, but PromptFrame does not currently expose a component-level `public/` hosting contract, resource manifest, receipt refs, CDN URL rewrite, or runtime resolver for arbitrary bundled images, audio, video, fonts, or JSON. Do not rely on raw external URLs or component-side `fetch()` unless a platform-mediated API explicitly allows it.
 
 ## Component Types
 
