@@ -565,6 +565,308 @@ test('whoami without a bearer credential emits a stable login-required diagnosti
   }
 });
 
+test('discovery and project commands fetch self-service context without owner overrides', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-discovery-projects-'));
+  const calls = [];
+  const server = await createServer(async (req, res) => {
+    calls.push({
+      method: req.method,
+      url: req.url,
+      authorization: req.headers.authorization,
+      tenantId: req.headers['x-tenant-id'],
+      userId: req.headers['x-user-id'],
+      projectId: req.headers['x-project-id'],
+    });
+    if (req.url === '/cli/discovery') {
+      assert.equal(req.method, 'GET');
+      writeJson(res, {
+        contractVersion: 'cli-auth.v0.1.0',
+        endpoint: server.url,
+        endpointProfile: 'local',
+        authRequired: true,
+        projectDiscoveryRequiresAuth: true,
+        selfCiTokensSupported: true,
+        uploadTargets: ['marketplace_authoring', 'project_private_generation'],
+      });
+      return;
+    }
+    if (req.url === '/cli/projects') {
+      assert.equal(req.method, 'GET');
+      assert.equal(req.headers.authorization, 'Bearer pf_self_secret');
+      writeJson(res, {
+        contractVersion: 'cli-auth.v0.1.0',
+        currentProjectId: 'project-a',
+        selectionRequired: false,
+        projects: [
+          {
+            tenantId: 'tenant-a',
+            projectId: 'project-a',
+            name: 'Project A',
+            visibility: 'shared',
+            role: 'editor',
+            source: 'invite',
+            status: 'active',
+            isCurrent: true,
+          },
+        ],
+      });
+      return;
+    }
+    writeJson(res, { success: false, error: `unexpected path: ${req.url}` }, 404);
+  });
+  try {
+    const configPath = path.join(dir, 'promptframe-config.json');
+    await writeFile(configPath, JSON.stringify({
+      endpoint: server.url,
+      credential: {
+        contractVersion: 'cli-auth.v0.1.0',
+        endpoint: server.url,
+        tokenId: 'cli_token_self',
+        tokenKind: 'human',
+        tenantId: 'tenant-a',
+        projectId: 'project-a',
+        expiresAt: '2099-06-10T00:00:00.000Z',
+        tokenSecret: 'pf_self_secret',
+      },
+    }, null, 2));
+
+    const discovery = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'discovery',
+      '--config',
+      configPath,
+      '--json',
+    ])).stdout);
+    assert.equal(discovery.command, 'discovery');
+    assert.equal(discovery.endpoint, server.url);
+    assert.equal(discovery.selfCiTokensSupported, true);
+    assert.deepEqual(discovery.uploadTargets, ['marketplace_authoring', 'project_private_generation']);
+    assert.equal(discovery.diagnostic.code, 'discovery.completed');
+
+    const list = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'project',
+      'list',
+      '--config',
+      configPath,
+      '--json',
+    ])).stdout);
+    assert.equal(list.command, 'project.list');
+    assert.equal(list.currentProjectId, 'project-a');
+    assert.equal(list.projects[0].projectId, 'project-a');
+    assert.equal(list.projects[0].isCurrent, true);
+
+    const current = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'project',
+      'current',
+      '--config',
+      configPath,
+      '--json',
+    ])).stdout);
+    assert.equal(current.command, 'project.current');
+    assert.equal(current.currentProject.projectId, 'project-a');
+
+    assert.equal(JSON.stringify(discovery).includes('pf_self_secret'), false);
+    assert.equal(JSON.stringify(list).includes('pf_self_secret'), false);
+    assert.equal(JSON.stringify(current).includes('pf_self_secret'), false);
+    for (const call of calls) {
+      assert.equal(call.tenantId, undefined);
+      assert.equal(call.userId, undefined);
+      assert.equal(call.projectId, undefined);
+    }
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('ci-token self-service commands create list and revoke without owner override fields', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-self-ci-token-'));
+  const calls = [];
+  const server = await createServer(async (req, res) => {
+    const body = await readRequestBody(req);
+    calls.push({
+      method: req.method,
+      url: req.url,
+      authorization: req.headers.authorization,
+      body,
+    });
+    if (req.url === '/cli/tokens/self' && req.method === 'POST') {
+      assert.equal(req.headers.authorization, 'Bearer pf_self_secret');
+      const payload = JSON.parse(body.toString('utf8'));
+      assert.equal(payload.name, 'GitHub release');
+      assert.deepEqual(payload.scopes, ['component.upload', 'component.status.read']);
+      assert.deepEqual(payload.allowedUploadTargets, ['marketplace_authoring']);
+      assert.equal(payload.tenantId, undefined);
+      assert.equal(payload.projectId, undefined);
+      assert.equal(payload.userId, undefined);
+      writeJson(res, {
+        contractVersion: 'cli-auth.v0.1.0',
+        token: {
+          contractVersion: 'cli-auth.v0.1.0',
+          tokenId: 'ci_token_self',
+          tokenKind: 'ci',
+          name: 'GitHub release',
+          endpoint: server.url,
+          endpointProfile: 'local',
+          tenantId: 'tenant-a',
+          projectId: 'project-a',
+          createdByUserId: 'user-a',
+          scopes: ['component.upload', 'component.status.read'],
+          allowedUploadTargets: ['marketplace_authoring'],
+          expiresAt: '2099-07-01T00:00:00.000Z',
+          createdReason: 'release automation',
+          createdAt: '2026-06-14T00:00:00.000Z',
+        },
+        tokenSecret: 'pf_ci_secret_once',
+      }, 201);
+      return;
+    }
+    if (req.url === '/cli/tokens/self?status=active' && req.method === 'GET') {
+      assert.equal(req.headers.authorization, 'Bearer pf_self_secret');
+      writeJson(res, {
+        contractVersion: 'cli-auth.v0.1.0',
+        items: [
+          {
+            contractVersion: 'cli-auth.v0.1.0',
+            tokenId: 'ci_token_self',
+            tokenKind: 'ci',
+            name: 'GitHub release',
+            endpoint: server.url,
+            endpointProfile: 'local',
+            tenantId: 'tenant-a',
+            projectId: 'project-a',
+            createdByUserId: 'user-a',
+            scopes: ['component.upload'],
+            allowedUploadTargets: ['marketplace_authoring'],
+            expiresAt: '2099-07-01T00:00:00.000Z',
+            createdReason: 'release automation',
+            createdAt: '2026-06-14T00:00:00.000Z',
+          },
+        ],
+        tokens: [],
+        page: {
+          cursor: null,
+          nextCursor: null,
+          hasNextPage: false,
+          pageSize: 25,
+          totalCount: 1,
+        },
+        filtersApplied: { status: 'active' },
+      });
+      return;
+    }
+    if (req.url === '/cli/tokens/self/ci_token_self/revoke' && req.method === 'POST') {
+      assert.equal(req.headers.authorization, 'Bearer pf_self_secret');
+      assert.deepEqual(JSON.parse(body.toString('utf8')), {
+        contractVersion: 'cli-auth.v0.1.0',
+        reason: 'rotate release credential',
+      });
+      writeJson(res, {
+        success: true,
+        token: {
+          contractVersion: 'cli-auth.v0.1.0',
+          tokenId: 'ci_token_self',
+          tokenKind: 'ci',
+          name: 'GitHub release',
+          endpoint: server.url,
+          endpointProfile: 'local',
+          tenantId: 'tenant-a',
+          projectId: 'project-a',
+          createdByUserId: 'user-a',
+          scopes: ['component.upload'],
+          allowedUploadTargets: ['marketplace_authoring'],
+          expiresAt: '2099-07-01T00:00:00.000Z',
+          createdReason: 'release automation',
+          createdAt: '2026-06-14T00:00:00.000Z',
+          revokedAt: '2026-06-14T00:10:00.000Z',
+        },
+      });
+      return;
+    }
+    writeJson(res, { success: false, error: `unexpected path: ${req.method} ${req.url}` }, 404);
+  });
+  try {
+    const configPath = path.join(dir, 'promptframe-config.json');
+    await writeFile(configPath, JSON.stringify({
+      endpoint: server.url,
+      credential: {
+        contractVersion: 'cli-auth.v0.1.0',
+        endpoint: server.url,
+        tokenId: 'cli_token_self',
+        tokenKind: 'human',
+        tenantId: 'tenant-a',
+        projectId: 'project-a',
+        expiresAt: '2099-06-10T00:00:00.000Z',
+        tokenSecret: 'pf_self_secret',
+      },
+    }, null, 2));
+
+    const created = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'ci-token',
+      'create',
+      '--name',
+      'GitHub release',
+      '--scope',
+      'component.upload',
+      '--scope',
+      'component.status.read',
+      '--upload-target',
+      'marketplace_authoring',
+      '--expires-at',
+      '2099-07-01T00:00:00.000Z',
+      '--reason',
+      'release automation',
+      '--config',
+      configPath,
+      '--json',
+    ])).stdout);
+    assert.equal(created.command, 'ci-token.create');
+    assert.equal(created.token.tokenId, 'ci_token_self');
+    assert.equal(created.tokenSecret, 'pf_ci_secret_once');
+
+    const list = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'ci-token',
+      'list',
+      '--status',
+      'active',
+      '--config',
+      configPath,
+      '--json',
+    ])).stdout);
+    assert.equal(list.command, 'ci-token.list');
+    assert.equal(list.items[0].tokenId, 'ci_token_self');
+    assert.equal(JSON.stringify(list).includes('pf_ci_secret_once'), false);
+
+    const revoked = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'ci-token',
+      'revoke',
+      'ci_token_self',
+      '--reason',
+      'rotate release credential',
+      '--config',
+      configPath,
+      '--json',
+    ])).stdout);
+    assert.equal(revoked.command, 'ci-token.revoke');
+    assert.equal(revoked.token.revokedAt, '2026-06-14T00:10:00.000Z');
+    assert.equal(JSON.stringify(revoked).includes('pf_ci_secret_once'), false);
+
+    assert.deepEqual(calls.map((call) => `${call.method} ${call.url}`), [
+      'POST /cli/tokens/self',
+      'GET /cli/tokens/self?status=active',
+      'POST /cli/tokens/self/ci_token_self/revoke',
+    ]);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('formal endpoints reject dev-header auth before remote transport', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-formal-dev-header-'));
   try {

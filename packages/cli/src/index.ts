@@ -155,6 +155,19 @@ async function run(name: string, argv: string[]): Promise<void> {
     case 'logout':
       await logout(argv);
       break;
+    case 'discovery':
+      await discovery(argv);
+      break;
+    case 'project':
+      await project(argv);
+      break;
+    case 'projects':
+      await project(['list', ...argv]);
+      break;
+    case 'ci-token':
+    case 'token':
+      await ciToken(argv);
+      break;
     case 'setup-ci':
       setupCi(argv);
       break;
@@ -941,6 +954,235 @@ async function whoami(argv: string[]): Promise<void> {
   console.log(`Tenant: ${stringValue(principal?.tenantId) ?? 'unknown'}`);
   console.log(`Project: ${stringValue(principal?.projectId) ?? '<none>'}`);
   console.log(`User: ${stringValue(principal?.displayIdentifier) ?? stringValue(principal?.email) ?? stringValue(principal?.userId) ?? 'unknown'}`);
+}
+
+async function discovery(argv: string[]): Promise<void> {
+  const endpoint = resolveEndpoint('discovery', argv);
+  const payload = await fetchJson(`${endpoint}/cli/discovery`, {
+    headers: buildRemoteHeaders(endpoint, argv, { requireAuth: false }),
+  }, 'discovery.http.failed');
+  const output = {
+    ...payload,
+    command: 'discovery',
+    endpoint,
+    diagnostic: diagnostic('discovery.completed', 'info', 'PromptFrame platform discovery fetched.'),
+  };
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
+  console.log(`Endpoint: ${endpoint}`);
+  console.log(`Endpoint profile: ${stringValue(payload.endpointProfile) ?? 'unknown'}`);
+  console.log(`Auth required: ${payload.authRequired === false ? 'no' : 'yes'}`);
+  console.log(`Project discovery requires auth: ${payload.projectDiscoveryRequiresAuth === false ? 'no' : 'yes'}`);
+  console.log(`Self CI tokens supported: ${payload.selfCiTokensSupported === false ? 'no' : 'yes'}`);
+  const uploadTargets = arrayValue(payload.uploadTargets).map((item) => String(item));
+  if (uploadTargets.length > 0) console.log(`Upload targets: ${uploadTargets.join(', ')}`);
+}
+
+async function project(argv: string[]): Promise<void> {
+  const subcommand = argv[0] && !argv[0].startsWith('--') ? argv[0] : 'list';
+  if (subcommand !== 'list' && subcommand !== 'current') {
+    fail(
+      'project supports read-only subcommands today: project list or project current. Server-side project use is not available yet.',
+      'project.subcommand.unsupported',
+      2,
+    );
+  }
+  const endpoint = resolveEndpoint('project', argv);
+  const payload = await fetchProjects(endpoint, argv);
+  const projects = arrayValue(payload.projects);
+  const currentProjectId = stringValue(payload.currentProjectId);
+  const currentProject = projects
+    .map((item) => asRecord(item))
+    .find((item) => stringValue(item?.projectId) === currentProjectId || item?.isCurrent === true);
+  if (subcommand === 'current') {
+    if (!currentProject) {
+      fail(
+        'PromptFrame did not report an active project for this credential.',
+        'project.current.missing',
+        2,
+      );
+    }
+    const output = {
+      command: 'project.current',
+      endpoint,
+      currentProjectId: stringValue(currentProject.projectId),
+      currentProject,
+      diagnostic: diagnostic('project.current.completed', 'info', 'PromptFrame current project fetched.'),
+    };
+    if (hasFlag(argv, '--json')) {
+      printJson(output);
+      return;
+    }
+    printProjectLine(currentProject, true);
+    return;
+  }
+
+  const output = {
+    ...payload,
+    command: 'project.list',
+    endpoint,
+    diagnostic: diagnostic('project.list.completed', 'info', 'PromptFrame project list fetched.'),
+  };
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
+  console.log(`Endpoint: ${endpoint}`);
+  if (projects.length === 0) {
+    console.log('No active projects are available for this credential.');
+    return;
+  }
+  for (const item of projects) {
+    const record = asRecord(item);
+    if (record) printProjectLine(record, stringValue(record.projectId) === currentProjectId || record.isCurrent === true);
+  }
+}
+
+async function fetchProjects(endpoint: string, argv: string[]): Promise<Record<string, unknown>> {
+  return fetchJson(`${endpoint}/cli/projects`, {
+    headers: buildRemoteHeaders(endpoint, argv),
+  }, 'project.http.failed');
+}
+
+function printProjectLine(project: Record<string, unknown>, current: boolean): void {
+  const prefix = current ? '*' : '-';
+  const projectId = stringValue(project.projectId) ?? 'unknown';
+  const name = stringValue(project.name) ?? projectId;
+  const role = stringValue(project.role) ?? 'unknown';
+  const visibility = stringValue(project.visibility) ?? 'unknown';
+  console.log(`${prefix} ${name} (${projectId}) role=${role} visibility=${visibility}`);
+}
+
+async function ciToken(argv: string[]): Promise<void> {
+  const subcommand = argv[0] && !argv[0].startsWith('--') ? argv[0] : 'list';
+  switch (subcommand) {
+    case 'create':
+      await createSelfCiToken(argv.slice(1));
+      break;
+    case 'list':
+      await listSelfCiTokens(argv.slice(1));
+      break;
+    case 'revoke':
+      await revokeSelfCiToken(argv.slice(1));
+      break;
+    default:
+      fail('ci-token supports: create, list, revoke.', 'ci_token.subcommand.unsupported', 2);
+  }
+}
+
+async function createSelfCiToken(argv: string[]): Promise<void> {
+  const endpoint = resolveEndpoint('ci-token.create', argv);
+  const name = requiredValue(argv, '--name');
+  const scopes = valuesAfter(argv, '--scope');
+  const uploadTargets = [
+    ...valuesAfter(argv, '--upload-target'),
+    ...valuesAfter(argv, '--allowed-upload-target'),
+  ];
+  const payload = {
+    contractVersion: CLI_AUTH_CONTRACT_VERSION,
+    name,
+    scopes: scopes.length > 0 ? scopes : ['component.upload'],
+    allowedUploadTargets: uploadTargets.length > 0 ? uploadTargets : ['marketplace_authoring'],
+    expiresAt: valueAfter(argv, '--expires-at') ?? defaultCiTokenExpiresAt(),
+    reason: valueAfter(argv, '--reason') ?? 'Self-service CI token created by PromptFrame CLI.',
+  };
+  const response = await fetchJson(`${endpoint}/cli/tokens/self`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...buildRemoteHeaders(endpoint, argv),
+    },
+    body: JSON.stringify(payload),
+  }, 'ci_token.create.http.failed');
+  const output = {
+    ...response,
+    command: 'ci-token.create',
+    endpoint,
+    diagnostic: diagnostic('ci_token.create.completed', 'info', 'Self-service CI token created. Store the token secret securely; it is shown only once.'),
+  };
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
+  const token = asRecord(response.token);
+  console.log(`Created CI token: ${stringValue(token?.tokenId) ?? 'unknown'}`);
+  console.log('Token secret is shown once. Store it in your CI secret manager now.');
+  console.log(`Secret: ${stringValue(response.tokenSecret) ?? '<missing>'}`);
+}
+
+async function listSelfCiTokens(argv: string[]): Promise<void> {
+  const endpoint = resolveEndpoint('ci-token.list', argv);
+  const params = new URLSearchParams();
+  appendOptionalParam(params, 'pageSize', valueAfter(argv, '--page-size') ?? valueAfter(argv, '--limit'));
+  appendOptionalParam(params, 'cursor', valueAfter(argv, '--cursor'));
+  appendOptionalParam(params, 'tokenId', valueAfter(argv, '--token-id'));
+  appendOptionalParam(params, 'name', valueAfter(argv, '--name'));
+  appendOptionalParam(params, 'status', valueAfter(argv, '--status'));
+  appendOptionalParam(params, 'scope', valueAfter(argv, '--scope'));
+  appendOptionalParam(params, 'uploadTarget', valueAfter(argv, '--upload-target'));
+  const query = params.toString();
+  const response = await fetchJson(`${endpoint}/cli/tokens/self${query ? `?${query}` : ''}`, {
+    headers: buildRemoteHeaders(endpoint, argv),
+  }, 'ci_token.list.http.failed');
+  const output = {
+    ...response,
+    command: 'ci-token.list',
+    endpoint,
+    diagnostic: diagnostic('ci_token.list.completed', 'info', 'Self-service CI token list fetched.'),
+  };
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
+  const tokens = arrayValue(response.items).length > 0 ? arrayValue(response.items) : arrayValue(response.tokens);
+  if (tokens.length === 0) {
+    console.log('No self-service CI tokens found for this credential.');
+    return;
+  }
+  for (const item of tokens) {
+    const token = asRecord(item);
+    if (!token) continue;
+    const status = token.revokedAt ? 'revoked' : 'active';
+    console.log(`${stringValue(token.tokenId) ?? 'unknown'} ${stringValue(token.name) ?? ''} ${status}`.trim());
+  }
+}
+
+async function revokeSelfCiToken(argv: string[]): Promise<void> {
+  const tokenId = requiredArg(argv[0], 'ci-token revoke requires a token id', 'ci_token.revoke.token_id.missing');
+  const endpoint = resolveEndpoint('ci-token.revoke', argv);
+  const response = await fetchJson(`${endpoint}/cli/tokens/self/${encodeURIComponent(tokenId)}/revoke`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...buildRemoteHeaders(endpoint, argv),
+    },
+    body: JSON.stringify({
+      contractVersion: CLI_AUTH_CONTRACT_VERSION,
+      reason: valueAfter(argv, '--reason') ?? 'Self-service CI token revoked by PromptFrame CLI.',
+    }),
+  }, 'ci_token.revoke.http.failed');
+  const output = {
+    ...response,
+    command: 'ci-token.revoke',
+    endpoint,
+    diagnostic: diagnostic('ci_token.revoke.completed', 'info', 'Self-service CI token revoked.'),
+  };
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
+  const token = asRecord(response.token);
+  console.log(`Revoked CI token: ${stringValue(token?.tokenId) ?? tokenId}`);
+}
+
+function defaultCiTokenExpiresAt(): string {
+  return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function appendOptionalParam(params: URLSearchParams, key: string, value: string | undefined): void {
+  if (value) params.set(key, value);
 }
 
 async function logout(argv: string[]): Promise<void> {
@@ -2096,6 +2338,22 @@ function valueAfter(argv: string[], flag: string): string | undefined {
   return next && !next.startsWith('--') ? next : undefined;
 }
 
+function valuesAfter(argv: string[], flag: string): string[] {
+  const values: string[] = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg.startsWith(`${flag}=`)) {
+      const value = arg.slice(flag.length + 1);
+      if (value) values.push(value);
+      continue;
+    }
+    if (arg !== flag) continue;
+    const next = argv[index + 1];
+    if (next && !next.startsWith('--')) values.push(next);
+  }
+  return values;
+}
+
 function firstPositionalArg(argv: string[]): string | undefined {
   return argv.find((arg) => !arg.startsWith('--'));
 }
@@ -2244,6 +2502,9 @@ Commands:
     --token <token>                  Verify and store an already issued CLI/CI token
   whoami                            Show the current PromptFrame CLI identity
   logout                            Revoke the current CLI token and clear local config
+  discovery                         Fetch platform endpoint and self-service capabilities
+  project list|current              List accessible projects or show the active project
+  ci-token create|list|revoke       Manage self-service CI tokens for the current project
   setup-ci [dir] --provider github   Write a GitHub Actions workflow skeleton
   configure --endpoint <url>       Write local CLI endpoint/context config
 

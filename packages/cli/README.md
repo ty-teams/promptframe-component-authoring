@@ -4,7 +4,7 @@ PromptFrame component authoring CLI.
 
 Use it to inspect the public component standard, check component folders, validate manifests, inspect the local preview envelope, package source archives, upload components, check build status, rebuild evidence indexes, and rerun layout/security probes.
 
-Current npm registry baseline is `@promptframe/cli@0.1.28`, `@promptframe/contracts@0.1.13`, `@promptframe/component-kit@0.1.11`, and `create-promptframe-component@0.1.17`. The published CLI consumes the contracts AST-aware public security policy evaluator, reports `securityPolicyDigest` / `securityEvaluatorMode` in JSON output, reports `publicResources` for component-level public assets, and packages sanitized lockfile evidence for platform admission.
+Current npm registry baseline is `@promptframe/cli@0.1.29`, `@promptframe/contracts@0.1.13`, `@promptframe/component-kit@0.1.11`, and `create-promptframe-component@0.1.17`. The published CLI consumes the contracts AST-aware public security policy evaluator, reports `securityPolicyDigest` / `securityEvaluatorMode` in JSON output, reports `publicResources` for component-level public assets, supports endpoint discovery, project list/current diagnostics, self-service CI token create/list/revoke, and packages sanitized lockfile evidence for platform admission.
 
 ```bash
 npm install -D @promptframe/cli
@@ -16,6 +16,9 @@ npx promptframe preview . --write-local-report --json
 npx promptframe package . --out ./component.zip
 npx promptframe login --endpoint https://your-promptframe.example/api-proxy
 npx promptframe whoami
+npx promptframe discovery
+npx promptframe project list
+npx promptframe ci-token create --name "GitHub release" --scope component.upload --scope component.status.read --upload-target marketplace_authoring
 npx promptframe upload ./component.zip --endpoint https://your-promptframe.example/api-proxy
 npx promptframe upload ./component.zip --target project_private_generation --endpoint https://your-promptframe.example/api-proxy
 npx promptframe status <buildId> --endpoint https://your-promptframe.example/api-proxy
@@ -33,7 +36,22 @@ The CLI embeds no production, Tailscale, local Docker, or private PromptFrame en
 
 Formal platform endpoints use bearer authentication. `promptframe login --endpoint <url>` starts a one-time browser login code flow through `/cli/auth/device/start`: open the printed URL, approve the code in an already signed-in PromptFrame browser session, and the CLI polls `/cli/auth/device/poll` until it receives a short-lived human CLI token. The token secret is stored only in the local PromptFrame config file with `0600` permissions and is never printed to stdout or JSON output. `promptframe login --endpoint <url> --token <token>` remains supported for already issued CLI/CI tokens and verifies them through `/cli/auth/whoami`; `promptframe whoami` shows the current platform identity without printing the token secret; `promptframe logout` revokes the current token and clears the matching local credential. Dev-header flags such as `--auth-roles` and `--auth-permissions` are local smoke helpers only and are rejected before transport for formal non-local endpoints.
 
-The platform derives tenant, user, and project from the browser-approved CLI token or scoped CI token. External authors should not hand-enter internal IDs, and formal endpoints reject dev identity headers. `whoami --json` is the safe way to inspect the current token kind, display identity, endpoint, scopes, and project binding without exposing the token secret. CI tokens are project-scoped automation credentials; store them in secret managers such as GitHub Actions secrets, not in source files.
+The platform derives tenant, user, and project from the browser-approved CLI token or scoped CI token. External authors should not hand-enter internal IDs, and formal endpoints reject dev identity headers. `whoami --json` is the safe way to inspect the current token kind, display identity, endpoint, scopes, upload targets, and project binding without exposing the token secret. `discovery --json` reports endpoint capabilities, and `project list --json` / `project current --json` report accessible projects. Server-side project switching is not a public CLI contract yet, so the CLI does not pretend that local config can override the platform principal. CI tokens are project-scoped automation credentials; store them in secret managers such as GitHub Actions secrets, not in source files.
+
+After browser login, authors can create and manage their own project-scoped CI tokens without asking an administrator:
+
+```bash
+npx promptframe ci-token create \
+  --name "GitHub release" \
+  --scope component.upload \
+  --scope component.status.read \
+  --upload-target marketplace_authoring \
+  --json
+npx promptframe ci-token list --status active --json
+npx promptframe ci-token revoke <tokenId> --reason "rotating release credential" --json
+```
+
+`ci-token create` is the only self-service command that returns a token secret, and it is shown once. `ci-token list`, `ci-token revoke`, `whoami`, `discovery`, and `project` diagnostics do not print token secrets or token digests.
 
 `upload` defaults to `--target marketplace_authoring`, the external authoring lane. `--target marketplace --strict` is accepted as the public strict authoring alias and resolves to the same lane. Director Component Author jobs must use `--target project_private_generation` so the server can keep the component project scoped. Unknown targets fail locally before network transport with diagnostic code `upload.target.invalid`; stale PromptFrame authoring package floors are checked before network transport for both component folders and source zip archives. Upload also checks the platform `/components/standard` source hash before sending the package bytes; stale local standards fail with `standard.freshness.upload_blocking`. The platform repeats the same admission checks and remains the final authority.
 
@@ -62,6 +80,9 @@ npx promptframe preview . --json
 npx promptframe preview . --write-local-report --json
 npx promptframe login --endpoint "$PROMPTFRAME_API_BASE" --json
 npx promptframe whoami --json
+npx promptframe discovery --json
+npx promptframe project list --json
+npx promptframe ci-token list --status active --json
 npx promptframe upload ./component.zip --endpoint "$PROMPTFRAME_API_BASE" --json
 npx promptframe status <buildId> --json
 npx promptframe reindex <buildId> --provider-kind cloud_embedding --json
@@ -69,7 +90,7 @@ npx promptframe probe <buildId> --level standard --json
 npx promptframe logout --json
 ```
 
-Every JSON response includes a stable `diagnostic.code`, for example `standard.completed`, `doctor.completed`, `validate.completed`, `check.completed`, `upgrade.dry_run`, `dev.ready`, `preview.ready`, `preview.local_report.written`, `login.completed`, `whoami.completed`, `logout.completed`, `upload.completed`, `status.completed`, `reindex.completed`, or `probe.completed`. `standard --json`, `validate --json`, and `check --json` report the active public security policy metadata; use `securityPolicyVersion`, `securityPolicyDigest`, and `securityEvaluatorMode` to compare release cohorts instead of scraping prose. `validate --json` and `check --json` also report `checkedRuleIds` for the public policy checks they ran. `upgrade --dry-run --json` reports package floor changes without writing files. `dev --dry-run --json` reports the local preview command without starting a long-running process. JSON failures include `failureReason` and `retryable`. Missing endpoint failures exit with code `2` and use `<command>.endpoint.missing`; missing credentials use `cli.auth.login_required`.
+Every JSON response includes a stable `diagnostic.code`, for example `standard.completed`, `doctor.completed`, `validate.completed`, `check.completed`, `upgrade.dry_run`, `dev.ready`, `preview.ready`, `preview.local_report.written`, `login.completed`, `whoami.completed`, `discovery.completed`, `project.list.completed`, `project.current.completed`, `ci_token.create.completed`, `ci_token.list.completed`, `ci_token.revoke.completed`, `logout.completed`, `upload.completed`, `status.completed`, `reindex.completed`, or `probe.completed`. `standard --json`, `validate --json`, and `check --json` report the active public security policy metadata; use `securityPolicyVersion`, `securityPolicyDigest`, and `securityEvaluatorMode` to compare release cohorts instead of scraping prose. `validate --json` and `check --json` also report `checkedRuleIds` for the public policy checks they ran. `upgrade --dry-run --json` reports package floor changes without writing files. `dev --dry-run --json` reports the local preview command without starting a long-running process. JSON failures include `failureReason` and `retryable`. Missing endpoint failures exit with code `2` and use `<command>.endpoint.missing`; missing credentials use `cli.auth.login_required`.
 
 `standard --json` also returns `authoringStandardRelease` and `freshness`. These fields are the public SSOT for package floors, upload targets, standard source hash, and local freshness decisions:
 
