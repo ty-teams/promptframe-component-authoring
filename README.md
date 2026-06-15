@@ -80,21 +80,52 @@ PromptFrame supports two repository styles. Use the simple one unless you have a
 
 **Single component repository (recommended default):** the repository root is the component package. It contains `manifest.json`, `package.json`, `src/`, and optional `public/`. Run `promptframe check .`, `promptframe upload .`, and `promptframe setup-ci --provider github` from the root. This is the generated scaffold's default shape and is the easiest path for external authors and CodingAI.
 
-**Multi-component repository / monorepo (advanced):** the repository may contain many independent component packages, but each upload must explicitly name one component directory. The CI token authorizes the request; it does not tell the platform which component changed. Component identity comes from the uploaded directory's `manifest.json`, and the platform remains the final authority for project, owner, upload target, and admission checks.
+**Multi-component repository / monorepo (advanced):** the repository may contain many independent component packages, but each upload must explicitly name one component entry from `promptframe-workspace.json`. The CI token authorizes the request; it does not tell the platform which component changed. Component identity comes from the selected directory's `manifest.json`, and `promptframe workspace validate` blocks manifest/config mismatches before upload. The platform remains the final authority for project, owner, upload target, and admission checks.
 
-Safe monorepo usage today:
+Create an advanced workspace scaffold:
 
 ```bash
+npx -y create-promptframe-component@latest ./component-workspace \
+  --workspace \
+  --component image-particle-remotion \
+  --display-name "Image Particle Remotion"
 cd component-workspace
-npx promptframe check components/motion-intro/image-particle-remotion --json
-npx promptframe upload components/motion-intro/image-particle-remotion --endpoint "$PROMPTFRAME_API_BASE" --json
+npx promptframe workspace validate . --json
+npx promptframe check . --workspace-component @marketplace/image-particle-remotion --json
+npx promptframe setup-ci . --provider github --workspace
+npx promptframe upload . --workspace-component @marketplace/image-particle-remotion --endpoint "$PROMPTFRAME_API_BASE" --json
+```
 
-# Equivalent when a CI matrix has already changed into the component folder:
+Existing monorepos can opt in by adding `promptframe-workspace.json`:
+
+```json
+{
+  "schemaVersion": "promptframe-workspace.v0.1.0",
+  "components": [
+    {
+      "id": "@marketplace/image-particle-remotion",
+      "path": "components/motion-intro/image-particle-remotion"
+    }
+  ]
+}
+```
+
+Then run:
+
+```bash
+npx promptframe workspace validate . --json
+npx promptframe check . --workspace-component @marketplace/image-particle-remotion --json
+npx promptframe upload . --workspace-component @marketplace/image-particle-remotion --endpoint "$PROMPTFRAME_API_BASE" --json
+```
+
+The older path-explicit form is still valid when you intentionally work inside one component directory:
+
+```bash
 cd components/motion-intro/image-particle-remotion
 npx promptframe upload . --endpoint "$PROMPTFRAME_API_BASE" --json
 ```
 
-Do not run `promptframe upload .` at a monorepo root unless that root is itself a valid single component package. Do not rely on repository names, commit messages, or tag names as the component mapping source. A future first-class workspace mode is planned around an explicit `promptframe-workspace.json`, CI matrix generation, and manifest/path consistency checks; until that ships, keep monorepo workflows explicit and path-based.
+Do not run `promptframe upload .` at a monorepo root unless that root is itself a valid single component package. Do not rely on repository names, commit messages, or tag names as the component mapping source. For CI tokens, use `promptframe setup-ci . --provider github --workspace`; it writes a matrix workflow that validates the workspace and uploads each configured component with explicit source metadata headers.
 
 External CodingAI should read local CLI JSON diagnostics, GitHub Check annotations, Action summary, artifact report, and platform status/admission diagnostics. It must not read PromptFrame internal REQ/TASK/QA docs, agent boards, deployment scripts, private endpoints, or token secrets.
 
@@ -124,6 +155,6 @@ Release configuration:
 
 To publish a new version, bump the package version, run local checks, push the matching package tag, and verify npm registry output after the workflow completes. Do not publish from a local npm token path for normal releases.
 
-Current npm registry baseline is `@promptframe/contracts@0.1.13`, `@promptframe/component-kit@0.1.11`, `@promptframe/cli@0.1.30`, and `create-promptframe-component@0.1.17`. `@promptframe/contracts@0.1.13` exposes the public authoring standard release, upload target policy, freshness decision schema, component reusability score schema, style intent contract, public dependency policy, public resource policy/schema, public security policy digest, and AST-aware security evaluator subpath. `@promptframe/component-kit@0.1.11` sources its public standard stamp and style/resource helper contracts from `@promptframe/contracts`, and exposes `createPreviewCaseMatrix()` plus `promptFramePublicResource()` for runtime resource lookup with local fallback. `@promptframe/cli@0.1.30` includes lifecycle diagnostics, package freshness checks, remote standard source hash checks, local preview reports, bearer login, browser login code flow, `whoami` / `logout`, endpoint discovery, project list/current diagnostics, self-service CI token create/list/revoke, formal-endpoint dev-header rejection, GitHub workflow setup, source validation backed by the contracts AST security evaluator with `securityPolicyDigest` / `securityEvaluatorMode` JSON output, public resource diagnostics, sanitized lockfile evidence packaging for platform admission, and case-sensitive native tag checks so Remotion `<Img>` / `<Video>` are not mistaken for raw browser tags. `create-promptframe-component@0.1.17` scaffolds templates with the current public contracts and CLI dependency floors.
+Current npm registry baseline is `@promptframe/contracts@0.1.13`, `@promptframe/component-kit@0.1.11`, `@promptframe/cli@0.1.31`, and `create-promptframe-component@0.1.18`. `@promptframe/contracts@0.1.13` exposes the public authoring standard release, upload target policy, freshness decision schema, component reusability score schema, style intent contract, public dependency policy, public resource policy/schema, public security policy digest, and AST-aware security evaluator subpath. `@promptframe/component-kit@0.1.11` sources its public standard stamp and style/resource helper contracts from `@promptframe/contracts`, and exposes `createPreviewCaseMatrix()` plus `promptFramePublicResource()` for runtime resource lookup with local fallback. `@promptframe/cli@0.1.31` includes lifecycle diagnostics, package freshness checks, remote standard source hash checks, local preview reports, bearer login, browser login code flow, `whoami` / `logout`, endpoint discovery, project list/current diagnostics, self-service CI token create/list/revoke, formal-endpoint dev-header rejection, single-component and workspace GitHub workflow setup, `promptframe-workspace.json` validation, source metadata headers for workspace uploads, source validation backed by the contracts AST security evaluator with `securityPolicyDigest` / `securityEvaluatorMode` JSON output, public resource diagnostics, sanitized lockfile evidence packaging for platform admission, and case-sensitive native tag checks so Remotion `<Img>` / `<Video>` are not mistaken for raw browser tags. `create-promptframe-component@0.1.18` scaffolds single-component projects and advanced `--workspace` monorepos with the current public contracts and CLI dependency floors.
 
 Before publishing, the platform repo should verify the local authoring source through its `pnpm authoring:link-local` gate. After publishing, it should switch back with `pnpm authoring:use-registry` and verify the real npm packages from `https://registry.npmjs.org/`; npm mirrors can lag new versions.

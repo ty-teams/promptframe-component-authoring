@@ -59,3 +59,43 @@ test('create CLI force overwrites template files in a non-empty target', async (
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('create CLI scaffolds an advanced workspace with one component', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-create-workspace-'));
+  const target = path.join(dir, 'component-workspace');
+  try {
+    await execFileAsync('node', [
+      cliPath,
+      target,
+      '--workspace',
+      '--component',
+      'image-particle-remotion',
+      '--display-name',
+      'Image Particle Remotion',
+      '--description',
+      'Image particle workspace fixture',
+    ]);
+
+    const workspace = JSON.parse(await readFile(path.join(target, 'promptframe-workspace.json'), 'utf8'));
+    assert.equal(workspace.schemaVersion, 'promptframe-workspace.v0.1.0');
+    assert.deepEqual(workspace.components, [{
+      id: '@marketplace/image-particle-remotion',
+      path: 'components/image-particle-remotion',
+    }]);
+
+    const rootPackage = JSON.parse(await readFile(path.join(target, 'package.json'), 'utf8'));
+    assert.equal(rootPackage.private, true);
+    assert.equal(rootPackage.scripts.check, 'promptframe workspace validate . && promptframe check . --workspace-component @marketplace/image-particle-remotion');
+
+    const pnpmWorkspace = await readFile(path.join(target, 'pnpm-workspace.yaml'), 'utf8');
+    assert.match(pnpmWorkspace, /components\/\*/);
+
+    const manifest = JSON.parse(await readFile(path.join(target, 'components/image-particle-remotion/manifest.json'), 'utf8'));
+    assert.equal(manifest.id, '@marketplace/image-particle-remotion');
+    assert.equal(manifest.name, 'image-particle-remotion');
+    assert.equal(manifest.displayName, 'Image Particle Remotion');
+    assert.equal(manifest.description, 'Image particle workspace fixture');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

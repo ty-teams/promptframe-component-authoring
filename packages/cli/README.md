@@ -4,7 +4,7 @@ PromptFrame component authoring CLI.
 
 Use it to inspect the public component standard, check component folders, validate manifests, inspect the local preview envelope, package source archives, upload components, check build status, rebuild evidence indexes, and rerun layout/security probes.
 
-Current npm registry baseline is `@promptframe/cli@0.1.30`, `@promptframe/contracts@0.1.13`, `@promptframe/component-kit@0.1.11`, and `create-promptframe-component@0.1.17`. The published CLI consumes the contracts AST-aware public security policy evaluator, reports `securityPolicyDigest` / `securityEvaluatorMode` in JSON output, reports `publicResources` for component-level public assets, keeps native `<img>` / `<video>` source checks case-sensitive so Remotion `<Img>` / `<Video>` remain valid, supports endpoint discovery, project list/current diagnostics, self-service CI token create/list/revoke, and packages sanitized lockfile evidence for platform admission.
+Current npm registry baseline is `@promptframe/cli@0.1.31`, `@promptframe/contracts@0.1.13`, `@promptframe/component-kit@0.1.11`, and `create-promptframe-component@0.1.18`. The published CLI consumes the contracts AST-aware public security policy evaluator, reports `securityPolicyDigest` / `securityEvaluatorMode` in JSON output, reports `publicResources` for component-level public assets, keeps native `<img>` / `<video>` source checks case-sensitive so Remotion `<Img>` / `<Video>` remain valid, supports endpoint discovery, project list/current diagnostics, self-service CI token create/list/revoke, single-component and workspace GitHub workflow setup, `promptframe-workspace.json` validation, workspace upload source metadata headers, and packages sanitized lockfile evidence for platform admission.
 
 ```bash
 npm install -D @promptframe/cli
@@ -69,19 +69,37 @@ The upload-to-publish lifecycle has multiple gates. `upload` returning success m
 
 The default CLI workflow assumes a single component repository: the current directory is the component package and contains `manifest.json`, `package.json`, `src/`, and optional `public/`.
 
-Monorepos are allowed only when the component path is explicit. `upload <dir|zip>` reads the selected directory or zip package, then derives component identity from that package's `manifest.json`. `PROMPTFRAME_CI_TOKEN` authorizes the upload; it does not map a repository, commit, or tag to a component for you.
+Monorepos are allowed only when component mapping is explicit. `promptframe-workspace.json` is the supported workspace SSOT; it lists each component `id` and relative `path`. `workspace validate` confirms every path exists and every selected directory's `manifest.json` declares the same id before upload. `PROMPTFRAME_CI_TOKEN` authorizes the upload; it does not map a repository, commit, or tag to a component for you.
 
-Safe monorepo examples:
+Create a workspace scaffold:
 
 ```bash
-npx promptframe check components/motion-intro/image-particle-remotion --json
-npx promptframe upload components/motion-intro/image-particle-remotion --endpoint "$PROMPTFRAME_API_BASE" --json
+npx -y create-promptframe-component@latest ./component-workspace \
+  --workspace \
+  --component image-particle-remotion \
+  --display-name "Image Particle Remotion"
+cd component-workspace
+npx promptframe workspace validate . --json
+npx promptframe check . --workspace-component @marketplace/image-particle-remotion --json
+npx promptframe setup-ci . --provider github --workspace
+npx promptframe upload . --workspace-component @marketplace/image-particle-remotion --endpoint "$PROMPTFRAME_API_BASE" --json
+```
 
+Add a component to an existing workspace:
+
+```bash
+npx promptframe workspace add . components/motion-intro/image-particle-remotion --id @marketplace/image-particle-remotion
+npx promptframe workspace validate . --json
+```
+
+The path-explicit single-directory form remains valid if you intentionally run inside one component package:
+
+```bash
 cd components/motion-intro/image-particle-remotion
 npx promptframe upload . --endpoint "$PROMPTFRAME_API_BASE" --json
 ```
 
-Do not run `promptframe upload .` at a monorepo root unless the root itself is a valid component package. If you use tag triggers, treat the tag only as a CI trigger or human-readable version hint; the upload mapping still comes from the CI matrix component path plus the uploaded manifest. A first-class workspace contract with `promptframe-workspace.json`, generated CI matrix support, and manifest/path consistency checks is planned but is not part of the current generated workflow.
+Do not run `promptframe upload .` at a monorepo root unless the root itself is a valid component package. If you use tag triggers, treat the tag only as a CI trigger or human-readable version hint; the upload mapping still comes from `promptframe-workspace.json`, `--workspace-component`, and the uploaded manifest. Workspace uploads send source metadata headers so the platform can record the workspace config, selected component id, component path, and manifest id alongside the build record.
 
 For external CodingAI, the feedback order is: local CLI JSON diagnostics, GitHub Check annotations, Action summary, artifact report, then platform `status` / admission diagnostics. The CLI never needs internal PromptFrame REQ/TASK/QA docs, agent boards, private endpoint defaults, Auth0 subjects, cookies, or token secrets.
 
@@ -96,6 +114,8 @@ npx promptframe upgrade . --dry-run --json
 npx promptframe dev . --dry-run --json
 npx promptframe preview . --json
 npx promptframe preview . --write-local-report --json
+npx promptframe workspace validate . --json
+npx promptframe check . --workspace-component @marketplace/my-component --json
 npx promptframe login --endpoint "$PROMPTFRAME_API_BASE" --json
 npx promptframe whoami --json
 npx promptframe discovery --json

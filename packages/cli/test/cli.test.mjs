@@ -935,6 +935,184 @@ test('setup-ci writes a GitHub workflow without embedding endpoint or token secr
   }
 });
 
+test('workspace validate reports component paths and manifest IDs', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-workspace-'));
+  try {
+    const componentDir = path.join(dir, 'components/motion-intro/image-particle-remotion');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(dir, 'promptframe-workspace.json'), JSON.stringify({
+      schemaVersion: 'promptframe-workspace.v0.1.0',
+      components: [{
+        id: '@demo/fixture-component',
+        path: 'components/motion-intro/image-particle-remotion',
+      }],
+    }, null, 2));
+
+    const payload = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'workspace',
+      'validate',
+      dir,
+      '--json',
+    ])).stdout);
+
+    assert.equal(payload.command, 'workspace.validate');
+    assert.equal(payload.diagnostic.code, 'workspace.validate.completed');
+    assert.equal(payload.workspace.configPath, path.join(dir, 'promptframe-workspace.json'));
+    assert.equal(payload.components[0].id, '@demo/fixture-component');
+    assert.equal(payload.components[0].path, 'components/motion-intro/image-particle-remotion');
+    assert.equal(payload.components[0].manifest.id, '@demo/fixture-component');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('workspace validate rejects manifest id mismatches before upload', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-workspace-mismatch-'));
+  try {
+    const componentDir = path.join(dir, 'components/motion-intro/image-particle-remotion');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(dir, 'promptframe-workspace.json'), JSON.stringify({
+      schemaVersion: 'promptframe-workspace.v0.1.0',
+      components: [{
+        id: '@demo/wrong-component',
+        path: 'components/motion-intro/image-particle-remotion',
+      }],
+    }, null, 2));
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'workspace',
+        'validate',
+        dir,
+        '--json',
+      ]),
+      (error) => {
+        assert.equal(error.code, 1);
+        const payload = JSON.parse(error.stderr);
+        assert.equal(payload.command, 'workspace');
+        assert.equal(payload.diagnostic.code, 'workspace.component.manifest_id_mismatch');
+        assert.match(payload.failureReason, /@demo\/wrong-component/);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('setup-ci --workspace writes a matrix workflow with explicit component paths', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-setup-ci-workspace-'));
+  try {
+    const componentDir = path.join(dir, 'components/motion-intro/image-particle-remotion');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(dir, 'promptframe-workspace.json'), JSON.stringify({
+      schemaVersion: 'promptframe-workspace.v0.1.0',
+      components: [{
+        id: '@demo/fixture-component',
+        path: 'components/motion-intro/image-particle-remotion',
+      }],
+    }, null, 2));
+
+    const payload = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'setup-ci',
+      dir,
+      '--provider',
+      'github',
+      '--workspace',
+      '--json',
+    ])).stdout);
+
+    assert.equal(payload.command, 'setup-ci');
+    assert.equal(payload.provider, 'github');
+    assert.equal(payload.workspace, true);
+    assert.equal(payload.workflowPath, path.join(dir, '.github/workflows/promptframe-workspace.yml'));
+    assert.deepEqual(payload.components, [{
+      id: '@demo/fixture-component',
+      path: 'components/motion-intro/image-particle-remotion',
+    }]);
+
+    const workflow = await readFile(payload.workflowPath, 'utf8');
+    assert.match(workflow, /componentId:/);
+    assert.match(workflow, /@demo\/fixture-component/);
+    assert.match(workflow, /componentPath:/);
+    assert.match(workflow, /components\/motion-intro\/image-particle-remotion/);
+    assert.match(workflow, /promptframe workspace validate \. --json/);
+    assert.match(workflow, /promptframe check \. --workspace-component "\$COMPONENT_ID" --json/);
+    assert.match(workflow, /promptframe upload \. --workspace-component "\$COMPONENT_ID" --endpoint "\$PROMPTFRAME_API_BASE" --json/);
+    assert.doesNotMatch(workflow, /pf_(?:ci|human|cli)_[A-Za-z0-9_-]+/);
+    assert.doesNotMatch(workflow, /promptframe-beta|tail0fae3a|100\.\d+\.\d+\.\d+/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('upload --workspace-component sends explicit source metadata headers', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-upload-workspace-'));
+  const calls = [];
+  const server = await createServer(async (req, res) => {
+    const body = await readRequestBody(req);
+    calls.push({ method: req.method, url: req.url, headers: req.headers, body });
+    if (req.url === '/components/standard') {
+      writeJson(res, {
+        success: true,
+        sourceVersion: 'component-standard.v0.1.0',
+        sourceHash: 'sha256:8c1e01c36155b4b646981064d24df9bd8cda501fd9cd9da93e5b62f40db22d52',
+      });
+      return;
+    }
+    if (req.url === '/components/marketplace/upload') {
+      assert.equal(req.headers['x-promptframe-source-mode'], 'workspace');
+      assert.equal(req.headers['x-promptframe-source-workspace-config'], 'promptframe-workspace.json');
+      assert.equal(req.headers['x-promptframe-source-workspace-component-id'], '@demo/fixture-component');
+      assert.equal(req.headers['x-promptframe-source-component-path'], 'components/motion-intro/image-particle-remotion');
+      assert.equal(req.headers['x-promptframe-source-manifest-id'], '@demo/fixture-component');
+      assert.match(body.toString('latin1'), /manifest\.json/);
+      writeJson(res, { success: true, buildId: 'build-workspace', status: 'queued' });
+      return;
+    }
+    res.statusCode = 404;
+    writeJson(res, { success: false, error: `unexpected ${req.method} ${req.url}` });
+  });
+  try {
+    const componentDir = path.join(dir, 'components/motion-intro/image-particle-remotion');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(dir, 'promptframe-workspace.json'), JSON.stringify({
+      schemaVersion: 'promptframe-workspace.v0.1.0',
+      components: [{
+        id: '@demo/fixture-component',
+        path: 'components/motion-intro/image-particle-remotion',
+      }],
+    }, null, 2));
+
+    const payload = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'upload',
+      dir,
+      '--workspace-component',
+      '@demo/fixture-component',
+      '--endpoint',
+      server.url,
+      '--json',
+    ])).stdout);
+
+    assert.equal(payload.command, 'upload');
+    assert.equal(payload.jobId, 'build-workspace');
+    assert.equal(payload.source.mode, 'workspace');
+    assert.equal(payload.source.workspaceComponentId, '@demo/fixture-component');
+    assert.equal(payload.source.componentPath, 'components/motion-intro/image-particle-remotion');
+    assert.deepEqual(calls.map((call) => call.url), [
+      '/components/standard',
+      '/components/marketplace/upload',
+    ]);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('upload rejects unknown public authoring targets before network transport', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-upload-target-'));
   try {

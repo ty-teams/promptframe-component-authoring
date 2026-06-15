@@ -115,17 +115,37 @@ Default to a single component repository. The repo root is the component package
 
 Use a monorepo only when the user or team explicitly needs multiple independent components in one repository. In a monorepo, never ask the platform to infer the component from the repository, branch, commit, or tag. The CI job must pass the component directory explicitly, and the uploaded directory's `manifest.json` is the component identity source.
 
-Safe monorepo commands:
+The supported monorepo SSOT is `promptframe-workspace.json`. It lists component ids and relative paths, and `promptframe workspace validate` checks that every path exists and every `manifest.json` id matches before upload.
+
+Create a workspace scaffold:
 
 ```bash
-npx promptframe check components/motion-intro/image-particle-remotion --json
-npx promptframe upload components/motion-intro/image-particle-remotion --endpoint <promptframe-api-base> --json
+npx -y create-promptframe-component@latest ./component-workspace \
+  --workspace \
+  --component image-particle-remotion \
+  --display-name "Image Particle Remotion"
+cd component-workspace
+npx promptframe workspace validate . --json
+npx promptframe check . --workspace-component @marketplace/image-particle-remotion --json
+npx promptframe setup-ci . --provider github --workspace
+npx promptframe upload . --workspace-component @marketplace/image-particle-remotion --endpoint <promptframe-api-base> --json
+```
 
+Add an existing component path to a workspace:
+
+```bash
+npx promptframe workspace add . components/motion-intro/image-particle-remotion --id @marketplace/image-particle-remotion
+npx promptframe workspace validate . --json
+```
+
+The older path-explicit form remains valid when the command runs inside one component directory:
+
+```bash
 cd components/motion-intro/image-particle-remotion
 npx promptframe upload . --endpoint <promptframe-api-base> --json
 ```
 
-`PROMPTFRAME_CI_TOKEN` authorizes upload and status access; it does not choose the component. If a future `promptframe-workspace.json` / workspace CI generator is present, follow it. Until then, keep monorepo workflows path-explicit and do not run `upload .` at the monorepo root unless that root is itself a valid component package.
+`PROMPTFRAME_CI_TOKEN` authorizes upload and status access; it does not choose the component. Keep monorepo workflows workspace-explicit and do not run `upload .` at the monorepo root unless that root is itself a valid component package. Workspace uploads send source metadata headers so the platform can record the selected workspace component id, component path, and manifest id.
 
 ### CodingAI feedback locations
 

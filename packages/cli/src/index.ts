@@ -75,6 +75,7 @@ const DEFAULT_CLI_LOGIN_SCOPES = ['component.upload', 'component.status.read'];
 const SECURITY_EVALUATOR_MODE = 'ast';
 const LOCKFILE_EVIDENCE_SCHEMA_VERSION = 'promptframe.lockfile-evidence.v0.1.0';
 const LOCKFILE_EVIDENCE_FILE_NAME = 'promptframe-lockfile-evidence.json';
+const PROMPTFRAME_WORKSPACE_SCHEMA_VERSION = 'promptframe-workspace.v0.1.0';
 const PACKAGE_MANAGER_LOCKFILE_NAMES = [
   'package-lock.json',
   'npm-shrinkwrap.json',
@@ -115,6 +116,37 @@ interface ComponentPackageArtifact {
   sizeBytes: number;
   sha256: string;
   publicResources?: PublicResourceReport;
+}
+
+type ComponentSourceMetadata =
+  | {
+      mode: 'single_component';
+      componentPath: '.';
+    }
+  | {
+      mode: 'workspace';
+      workspaceConfig: 'promptframe-workspace.json';
+      workspaceComponentId: string;
+      componentPath: string;
+      manifestId: string;
+    }
+  | {
+      mode: 'zip';
+    };
+
+interface ResolvedComponentInput {
+  dir: string;
+  source: ComponentSourceMetadata;
+}
+
+interface WorkspaceComponentDeclaration {
+  id: string;
+  path: string;
+}
+
+interface WorkspaceComponentReport extends WorkspaceComponentDeclaration {
+  absolutePath: string;
+  manifest: Record<string, string | undefined>;
 }
 
 class PromptFrameCliError extends Error {
@@ -167,6 +199,9 @@ async function run(name: string, argv: string[]): Promise<void> {
     case 'ci-token':
     case 'token':
       await ciToken(argv);
+      break;
+    case 'workspace':
+      workspace(argv);
       break;
     case 'setup-ci':
       setupCi(argv);
@@ -238,7 +273,8 @@ function doctor(argv: string[]): void {
 }
 
 function validate(argv: string[]): void {
-  const dir = resolve(firstPositionalArg(argv) ?? '.');
+  const input = resolveComponentInput(argv);
+  const dir = input.dir;
   const manifest = validateComponentDirectory(dir);
   const publicResources = evaluateDirectoryPublicResources(dir);
   assertPublicResourcesAccepted(publicResources);
@@ -252,6 +288,7 @@ function validate(argv: string[]): void {
   const output = {
     command: 'validate',
     dir,
+    source: input.source,
     manifest: {
       id: manifest.id,
       name: manifest.name,
@@ -277,7 +314,8 @@ function validate(argv: string[]): void {
 }
 
 async function check(argv: string[]): Promise<void> {
-  const dir = resolve(firstPositionalArg(argv) ?? '.');
+  const input = resolveComponentInput(argv);
+  const dir = input.dir;
   const target = resolveUploadTarget(argv);
   const manifest = validateComponentDirectory(dir);
   assertAuthoringPackageFreshness(dir, target);
@@ -296,6 +334,7 @@ async function check(argv: string[]): Promise<void> {
   const output = {
     command: 'check',
     dir,
+    source: input.source,
     manifest: manifestSummary(manifest),
     checkedRuleIds: VALIDATE_CHECKED_RULE_IDS,
     securityPolicyVersion: PROMPTFRAME_PUBLIC_SECURITY_POLICY.policyVersion,
@@ -357,7 +396,8 @@ function upgrade(argv: string[]): void {
 }
 
 function preview(argv: string[]): void {
-  const dir = resolve(firstPositionalArg(argv) ?? '.');
+  const input = resolveComponentInput(argv);
+  const dir = input.dir;
   const manifest = validateComponentDirectory(dir);
   const previewEnvelope = readPreviewProps(dir);
   const previewScript = resolveLocalPreviewScript(readPackageManifest(join(dir, 'package.json')));
@@ -372,6 +412,7 @@ function preview(argv: string[]): void {
   const output = {
     command: 'preview',
     dir,
+    source: input.source,
     manifest: manifestSummary(manifest),
     renderingSystem: 'remotion',
     previewSource: 'src/preview-props.json',
@@ -392,7 +433,8 @@ function preview(argv: string[]): void {
 }
 
 async function dev(argv: string[]): Promise<void> {
-  const dir = resolve(firstPositionalArg(argv) ?? '.');
+  const input = resolveComponentInput(argv);
+  const dir = input.dir;
   const target = resolveUploadTarget(argv);
   const manifest = validateComponentDirectory(dir);
   assertAuthoringPackageFreshness(dir, target);
@@ -405,6 +447,7 @@ async function dev(argv: string[]): Promise<void> {
   const output = {
     command: 'dev',
     dir,
+    source: input.source,
     manifest: manifestSummary(manifest),
     renderingSystem: 'remotion-player',
     previewSource: 'src/preview-props.json',
@@ -436,13 +479,15 @@ async function dev(argv: string[]): Promise<void> {
 }
 
 function packageComponent(argv: string[]): void {
-  const artifact = packageDirectory(argv[0] ?? '.', valueAfter(argv, '--out'));
+  const input = resolveComponentInput(argv);
+  const artifact = packageDirectory(input.dir, valueAfter(argv, '--out'));
   printJson({
     command: 'package',
     diagnostic: diagnostic('package.completed', 'info', 'Component source archive created.'),
     out: artifact.out,
     sizeBytes: artifact.sizeBytes,
     sha256: artifact.sha256,
+    source: input.source,
     publicResources: artifact.publicResources,
   });
 }
@@ -553,13 +598,20 @@ async function remoteCommand(name: 'upload' | 'status' | 'reindex' | 'probe', ar
 }
 
 async function uploadComponent(argv: string[]): Promise<void> {
-  const target = resolve(argv[0] ?? '.');
+  const workspaceComponent = valueAfter(argv, '--workspace-component');
+  const target = resolve(componentPathArg(argv) ?? '.');
   const uploadTarget = resolveUploadTarget(argv);
   let localReusability: ReturnType<typeof evaluateDirectoryReusability> | undefined;
+  if (workspaceComponent && target.endsWith('.zip')) {
+    fail('upload --workspace-component requires a workspace root, not a zip file.', 'workspace.component.zip_unsupported', 2);
+  }
+  const input: ResolvedComponentInput = target.endsWith('.zip')
+    ? { dir: target, source: { mode: 'zip' } }
+    : resolveComponentInput(argv);
   const artifact = target.endsWith('.zip')
     ? packageZipForUpload(target, uploadTarget)
     : packageDirectoryForUploadWithLocalReusability(
-        target,
+        input.dir,
         uploadTarget,
         valueAfter(argv, '--out'),
         (reusability) => {
@@ -569,7 +621,7 @@ async function uploadComponent(argv: string[]): Promise<void> {
   const localDiagnostics = localReusability
     ? [
         ...reusabilityDiagnostics(localReusability),
-        ...stylePropDiagnostics(target),
+        ...stylePropDiagnostics(input.dir),
         ...(artifact.publicResources?.diagnostics ?? []),
       ]
     : undefined;
@@ -584,6 +636,7 @@ async function uploadComponent(argv: string[]): Promise<void> {
     headers: {
       ...buildRemoteHeaders(endpoint, argv),
       ...buildSecurityPolicyHeaders(),
+      ...buildSourceMetadataHeaders(input.source),
       'x-promptframe-upload-target': uploadTarget,
     },
   }, 'upload.http.failed');
@@ -594,6 +647,7 @@ async function uploadComponent(argv: string[]): Promise<void> {
     uploadTarget,
     jobId: getBuildId(payload),
     package: artifact,
+    source: input.source,
     ...(localReusability ? { localReusability, diagnostics: localDiagnostics } : {}),
     diagnostic: diagnostic('upload.completed', 'info', 'Component upload accepted by platform.'),
   };
@@ -713,6 +767,384 @@ function buildFreshnessWarningDecision(
 
 function formatRemoteStandardStaleFailure(remoteSourceHash: string): string {
   return `PromptFrame component standard is stale: local=${COMPONENT_STANDARD_SOURCE_HASH}, platform=${remoteSourceHash}. Run promptframe upgrade . --apply before upload.`;
+}
+
+function workspace(argv: string[]): void {
+  const subcommand = argv[0] ?? 'validate';
+  const rest = argv.slice(argv[0] ? 1 : 0);
+  switch (subcommand) {
+    case 'validate':
+      workspaceValidate(rest);
+      break;
+    case 'list':
+      workspaceList(rest);
+      break;
+    case 'init':
+      workspaceInit(rest);
+      break;
+    case 'add':
+      workspaceAdd(rest);
+      break;
+    default:
+      fail(`Unknown workspace command: ${subcommand}`, 'workspace.command.unknown', 2);
+  }
+}
+
+function workspaceValidate(argv: string[]): void {
+  const root = resolve(componentPathArg(argv) ?? '.');
+  const reports = collectWorkspaceComponentReports(root);
+  const output = {
+    command: 'workspace.validate',
+    workspace: workspaceSummary(root),
+    components: reports.map(workspaceReportForOutput),
+    diagnostic: diagnostic('workspace.validate.completed', 'info', 'PromptFrame workspace configuration is valid.'),
+  };
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
+  console.log(`workspace valid: ${root}`);
+  for (const component of reports) {
+    console.log(`${component.id} -> ${component.path}`);
+  }
+}
+
+function workspaceList(argv: string[]): void {
+  const root = resolve(componentPathArg(argv) ?? '.');
+  const reports = collectWorkspaceComponentReports(root);
+  const output = {
+    command: 'workspace.list',
+    workspace: workspaceSummary(root),
+    components: reports.map(workspaceReportForOutput),
+    diagnostic: diagnostic('workspace.list.completed', 'info', 'PromptFrame workspace components listed.'),
+  };
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
+  for (const component of reports) {
+    console.log(`${component.id}\t${component.path}`);
+  }
+}
+
+function workspaceInit(argv: string[]): void {
+  const root = resolve(componentPathArg(argv) ?? '.');
+  const configPath = workspaceConfigPath(root);
+  if (existsSync(configPath) && !hasFlag(argv, '--force')) {
+    fail(`PromptFrame workspace config already exists at ${configPath}. Use --force to overwrite.`, 'workspace.config.exists');
+  }
+  const componentPath = valueAfter(argv, '--component-path');
+  const componentId = valueAfter(argv, '--id');
+  const components = componentPath || componentId
+    ? [{
+        id: componentId ?? fail('--id is required when --component-path is provided.', 'workspace.component.id_missing', 2),
+        path: normalizeWorkspacePath(componentPath ?? fail('--component-path is required when --id is provided.', 'workspace.component.path_missing', 2)),
+      }]
+    : [];
+  writeWorkspaceConfig(root, components);
+  const output = {
+    command: 'workspace.init',
+    workspace: workspaceSummary(root),
+    components,
+    diagnostic: diagnostic('workspace.init.completed', 'info', 'PromptFrame workspace configuration written.'),
+  };
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
+  console.log(`Wrote PromptFrame workspace config: ${configPath}`);
+}
+
+function workspaceAdd(argv: string[]): void {
+  const positionals = positionalArgs(argv);
+  const root = resolve(positionals.length >= 2 ? positionals[0]! : '.');
+  const rawPath = positionals.length >= 2 ? positionals[1] : positionals[0];
+  const componentPath = normalizeWorkspacePath(rawPath ?? fail('workspace add requires a component path.', 'workspace.component.path_missing', 2));
+  const id = valueAfter(argv, '--id') ?? fail('workspace add requires --id <component-id>.', 'workspace.component.id_missing', 2);
+  const current = readWorkspaceConfig(root);
+  const components = [...current.components, { id, path: componentPath }];
+  assertNoDuplicateWorkspaceComponents(components);
+  writeWorkspaceConfig(root, components);
+  const output = {
+    command: 'workspace.add',
+    workspace: workspaceSummary(root),
+    component: { id, path: componentPath },
+    diagnostic: diagnostic('workspace.add.completed', 'info', 'PromptFrame workspace component added.'),
+  };
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
+  console.log(`Added workspace component: ${id} -> ${componentPath}`);
+}
+
+function resolveComponentInput(argv: string[]): ResolvedComponentInput {
+  const workspaceComponentId = valueAfter(argv, '--workspace-component');
+  if (!workspaceComponentId) {
+    return {
+      dir: resolve(componentPathArg(argv) ?? '.'),
+      source: {
+        mode: 'single_component',
+        componentPath: '.',
+      },
+    };
+  }
+  const root = resolve(componentPathArg(argv) ?? '.');
+  const report = resolveWorkspaceComponent(root, workspaceComponentId);
+  return {
+    dir: report.absolutePath,
+    source: {
+      mode: 'workspace',
+      workspaceConfig: 'promptframe-workspace.json',
+      workspaceComponentId: report.id,
+      componentPath: report.path,
+      manifestId: stringValue(report.manifest.id) ?? report.id,
+    },
+  };
+}
+
+function resolveWorkspaceComponent(root: string, componentId: string): WorkspaceComponentReport {
+  const reports = collectWorkspaceComponentReports(root);
+  const report = reports.find((component) => component.id === componentId);
+  if (!report) {
+    fail(
+      `PromptFrame workspace component not found: ${componentId}. Run promptframe workspace list ${root} to inspect configured ids.`,
+      'workspace.component.not_found',
+      2,
+    );
+  }
+  return report;
+}
+
+function collectWorkspaceComponentReports(root: string): WorkspaceComponentReport[] {
+  const workspace = readWorkspaceConfig(root);
+  if (workspace.components.length === 0) {
+    fail(
+      'PromptFrame workspace config does not list any components.',
+      'workspace.components.empty',
+      2,
+    );
+  }
+  return workspace.components.map((component) => {
+    const absolutePath = resolve(root, component.path);
+    assertWorkspacePathInsideRoot(root, absolutePath, component.path);
+    if (!existsSync(absolutePath)) {
+      fail(
+        `PromptFrame workspace component path does not exist: ${component.path}`,
+        'workspace.component.path_missing',
+        2,
+      );
+    }
+    const manifest = validateComponentDirectory(absolutePath);
+    if (manifest.id !== component.id) {
+      fail(
+        `PromptFrame workspace component ${component.id} points to ${component.path}, but manifest.json declares ${manifest.id}. Keep promptframe-workspace.json and manifest.json ids identical.`,
+        'workspace.component.manifest_id_mismatch',
+      );
+    }
+    return {
+      ...component,
+      absolutePath,
+      manifest: manifestSummary(manifest),
+    };
+  });
+}
+
+function workspaceReportForOutput(report: WorkspaceComponentReport): Record<string, unknown> {
+  return {
+    id: report.id,
+    path: report.path,
+    manifest: report.manifest,
+  };
+}
+
+function workspaceSummary(root: string): Record<string, unknown> {
+  return {
+    schemaVersion: PROMPTFRAME_WORKSPACE_SCHEMA_VERSION,
+    root,
+    configPath: workspaceConfigPath(root),
+  };
+}
+
+function workspaceConfigPath(root: string): string {
+  return join(root, 'promptframe-workspace.json');
+}
+
+function readWorkspaceConfig(root: string): { schemaVersion: string; components: WorkspaceComponentDeclaration[] } {
+  const configPath = workspaceConfigPath(root);
+  if (!existsSync(configPath)) {
+    fail(
+      `PromptFrame workspace config not found at ${configPath}.`,
+      'workspace.config.missing',
+      2,
+    );
+  }
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(configPath, 'utf8'));
+  } catch {
+    fail(
+      `PromptFrame workspace config must be valid JSON: ${configPath}`,
+      'workspace.config.invalid_json',
+      2,
+    );
+  }
+  const config = asRecord(raw);
+  if (!config) {
+    fail('PromptFrame workspace config must be a JSON object.', 'workspace.config.invalid', 2);
+  }
+  const schemaVersion = stringValue(config.schemaVersion);
+  if (schemaVersion !== PROMPTFRAME_WORKSPACE_SCHEMA_VERSION) {
+    fail(
+      `Unsupported PromptFrame workspace schemaVersion: ${schemaVersion ?? '<missing>'}. Expected ${PROMPTFRAME_WORKSPACE_SCHEMA_VERSION}.`,
+      'workspace.config.schema_version_unsupported',
+      2,
+    );
+  }
+  const rawComponents = arrayValue(config.components);
+  const components = rawComponents.map((item, index): WorkspaceComponentDeclaration => {
+    const component = asRecord(item);
+    if (!component) {
+      fail(`PromptFrame workspace components[${index}] must be a JSON object.`, 'workspace.component.invalid', 2);
+    }
+    const id = stringValue(component.id);
+    const path = stringValue(component.path);
+    if (!id) {
+      fail(`PromptFrame workspace components[${index}].id is required.`, 'workspace.component.id_missing', 2);
+    }
+    if (!path) {
+      fail(`PromptFrame workspace components[${index}].path is required.`, 'workspace.component.path_missing', 2);
+    }
+    return {
+      id,
+      path: normalizeWorkspacePath(path),
+    };
+  });
+  assertNoDuplicateWorkspaceComponents(components);
+  return { schemaVersion, components };
+}
+
+function writeWorkspaceConfig(root: string, components: WorkspaceComponentDeclaration[]): void {
+  assertNoDuplicateWorkspaceComponents(components);
+  mkdirSync(root, { recursive: true });
+  writeFileSync(
+    workspaceConfigPath(root),
+    `${JSON.stringify({
+      schemaVersion: PROMPTFRAME_WORKSPACE_SCHEMA_VERSION,
+      components,
+    }, null, 2)}\n`,
+    'utf8',
+  );
+}
+
+function assertNoDuplicateWorkspaceComponents(components: WorkspaceComponentDeclaration[]): void {
+  const ids = new Set<string>();
+  const paths = new Set<string>();
+  for (const component of components) {
+    if (ids.has(component.id)) {
+      fail(`Duplicate PromptFrame workspace component id: ${component.id}`, 'workspace.component.id_duplicate', 2);
+    }
+    if (paths.has(component.path)) {
+      fail(`Duplicate PromptFrame workspace component path: ${component.path}`, 'workspace.component.path_duplicate', 2);
+    }
+    ids.add(component.id);
+    paths.add(component.path);
+  }
+}
+
+function normalizeWorkspacePath(rawPath: string): string {
+  const normalized = rawPath
+    .replaceAll('\\', '/')
+    .replace(/^\.\/+/, '')
+    .replace(/\/+$/, '');
+  if (!normalized) {
+    fail('PromptFrame workspace component path is required.', 'workspace.component.path_missing', 2);
+  }
+  if (normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized)) {
+    fail(
+      `PromptFrame workspace component path must be relative: ${rawPath}`,
+      'workspace.component.path_absolute',
+      2,
+    );
+  }
+  const segments = normalized.split('/');
+  if (segments.some((segment) => !segment || segment === '.' || segment === '..')) {
+    fail(
+      `PromptFrame workspace component path must not contain empty, "." or ".." segments: ${rawPath}`,
+      'workspace.component.path_unsafe',
+      2,
+    );
+  }
+  return normalized;
+}
+
+function assertWorkspacePathInsideRoot(root: string, absolutePath: string, displayPath: string): void {
+  const relativePath = relative(root, absolutePath);
+  if (relativePath.startsWith('..') || relativePath === '' || /^[A-Za-z]:/.test(relativePath)) {
+    fail(
+      `PromptFrame workspace component path must stay inside the workspace root: ${displayPath}`,
+      'workspace.component.path_unsafe',
+      2,
+    );
+  }
+}
+
+function buildSourceMetadataHeaders(source: ComponentSourceMetadata): Record<string, string> {
+  if (source.mode !== 'workspace') return {};
+  return {
+    'x-promptframe-source-mode': 'workspace',
+    'x-promptframe-source-workspace-config': source.workspaceConfig,
+    'x-promptframe-source-workspace-component-id': source.workspaceComponentId,
+    'x-promptframe-source-component-path': source.componentPath,
+    'x-promptframe-source-manifest-id': source.manifestId,
+  };
+}
+
+const POSITIONAL_VALUE_FLAGS = new Set([
+  '--allowed-upload-target',
+  '--auth-permissions',
+  '--auth-roles',
+  '--component-path',
+  '--config',
+  '--endpoint',
+  '--expires-at',
+  '--host',
+  '--id',
+  '--level',
+  '--name',
+  '--out',
+  '--poll-interval-seconds',
+  '--port',
+  '--provider',
+  '--provider-kind',
+  '--provider-name',
+  '--reason',
+  '--scope',
+  '--session-id',
+  '--target',
+  '--tenant-id',
+  '--timeout-seconds',
+  '--token',
+  '--upload-target',
+  '--user-id',
+  '--workspace-component',
+]);
+
+function componentPathArg(argv: string[]): string | undefined {
+  return positionalArgs(argv)[0];
+}
+
+function positionalArgs(argv: string[]): string[] {
+  const result: string[] = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg.startsWith('--')) {
+      if (!arg.includes('=') && POSITIONAL_VALUE_FLAGS.has(arg)) index += 1;
+      continue;
+    }
+    result.push(arg);
+  }
+  return result;
 }
 
 function extractRemoteStandardSourceHash(payload: Record<string, unknown>): string | undefined {
@@ -1252,7 +1684,14 @@ function setupCi(argv: string[]): void {
     fail(`Unsupported CI provider: ${provider}.`, 'setup_ci.provider.unsupported', 2);
   }
   const targetDir = resolve(setupCiTargetDir(argv));
-  const workflowPath = join(targetDir, '.github', 'workflows', 'promptframe-component.yml');
+  const workspaceMode = hasFlag(argv, '--workspace');
+  const workspaceReports = workspaceMode ? collectWorkspaceComponentReports(targetDir) : [];
+  const workflowPath = join(
+    targetDir,
+    '.github',
+    'workflows',
+    workspaceMode ? 'promptframe-workspace.yml' : 'promptframe-component.yml',
+  );
   if (existsSync(workflowPath) && !hasFlag(argv, '--force')) {
     fail(
       `PromptFrame GitHub workflow already exists at ${workflowPath}. Use --force to overwrite.`,
@@ -1260,11 +1699,19 @@ function setupCi(argv: string[]): void {
     );
   }
   mkdirSync(dirname(workflowPath), { recursive: true });
-  writeFileSync(workflowPath, promptFrameGithubWorkflow(), 'utf8');
+  writeFileSync(
+    workflowPath,
+    workspaceMode ? promptFrameGithubWorkspaceWorkflow(workspaceReports) : promptFrameGithubWorkflow(),
+    'utf8',
+  );
   const output = {
     success: true,
     command: 'setup-ci',
     provider,
+    ...(workspaceMode ? {
+      workspace: true,
+      components: workspaceReports.map(({ id, path }) => ({ id, path })),
+    } : {}),
     workflowPath,
     requiredSecrets: ['PROMPTFRAME_CI_TOKEN'],
     requiredVariables: ['PROMPTFRAME_API_BASE'],
@@ -1290,6 +1737,168 @@ function setupCiTargetDir(argv: string[]): string {
     return arg;
   }
   return '.';
+}
+
+function promptFrameGithubWorkspaceWorkflow(components: WorkspaceComponentReport[]): string {
+  const apiBaseVariable = '$' + '{{ vars.PROMPTFRAME_API_BASE }}';
+  const ciTokenSecret = '$' + '{{ secrets.PROMPTFRAME_CI_TOKEN }}';
+  const matrixComponentId = '$' + '{{ matrix.component.componentId }}';
+  const matrixComponentPath = '$' + '{{ matrix.component.componentPath }}';
+  const matrixArtifactName = '$' + '{{ matrix.component.artifactName }}';
+  const matrixItems = components.map((component) => [
+    '          - componentId: ' + JSON.stringify(component.id),
+    '            componentPath: ' + JSON.stringify(component.path),
+    '            artifactName: ' + JSON.stringify(githubMatrixArtifactName(component.id)),
+  ].join('\n')).join('\n');
+  return `name: PromptFrame Component Workspace
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+      - '*@*'
+      - 'component-*'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: PromptFrame check (${matrixComponentId})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        component:
+${matrixItems}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm install
+      - name: Validate workspace
+        run: npx promptframe workspace validate . --json | tee promptframe-workspace-report.json
+      - name: Validate component package
+        env:
+          PROMPTFRAME_API_BASE: ${apiBaseVariable}
+          COMPONENT_ID: ${matrixComponentId}
+          COMPONENT_PATH: ${matrixComponentPath}
+        run: |
+          set +e
+          npx promptframe check . --workspace-component "$COMPONENT_ID" --json > promptframe-check.json
+          CHECK_EXIT=$?
+          set -e
+          node <<'NODE'
+          const fs = require('node:fs');
+          const payload = JSON.parse(fs.readFileSync('promptframe-check.json', 'utf8'));
+          const diagnostics = Array.isArray(payload.diagnostics) ? payload.diagnostics : [];
+          for (const item of diagnostics) {
+            const code = String(item.code || 'promptframe.diagnostic');
+            const message = String(item.message || code).replace(/\\r?\\n/g, ' ');
+            if (item.severity === 'error') {
+              console.log(\`::error title=\${code}::\${message}\`);
+            } else {
+              console.log(\`::warning title=\${code}::\${message}\`);
+            }
+          }
+          const summary = process.env.GITHUB_STEP_SUMMARY;
+          if (summary) {
+            fs.appendFileSync(summary, [
+              '### PromptFrame workspace check',
+              '',
+              \`- Component ID: \\\`\${process.env.COMPONENT_ID || payload.source?.workspaceComponentId || 'unknown'}\\\`\`,
+              \`- Component path: \\\`\${process.env.COMPONENT_PATH || payload.source?.componentPath || 'unknown'}\\\`\`,
+              \`- Diagnostic: \\\`\${payload.diagnostic?.code || 'unknown'}\\\`\`,
+              \`- Freshness: \\\`\${payload.freshness?.status || 'unknown'}\\\`\`,
+              \`- Diagnostics: \\\`\${diagnostics.length}\\\`\`,
+              '',
+            ].join('\\n'));
+          }
+          NODE
+          exit "$CHECK_EXIT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: promptframe-check-report-${matrixArtifactName}
+          path: |
+            promptframe-workspace-report.json
+            promptframe-check.json
+
+  upload:
+    name: PromptFrame upload (${matrixComponentId})
+    if: github.event_name == 'push'
+    needs: check
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        component:
+${matrixItems}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm install
+      - name: Upload component to PromptFrame
+        env:
+          PROMPTFRAME_API_BASE: ${apiBaseVariable}
+          PROMPTFRAME_CI_TOKEN: ${ciTokenSecret}
+          COMPONENT_ID: ${matrixComponentId}
+          COMPONENT_PATH: ${matrixComponentPath}
+        run: |
+          set -euo pipefail
+          npx promptframe upload . --workspace-component "$COMPONENT_ID" --endpoint "$PROMPTFRAME_API_BASE" --json | tee promptframe-upload.json
+          BUILD_ID=$(node <<'NODE'
+          const fs = require('node:fs');
+          const payload = JSON.parse(fs.readFileSync('promptframe-upload.json', 'utf8'));
+          process.stdout.write(String(payload.jobId || payload.buildId || payload.build?.buildId || ''));
+          NODE
+          )
+          if [ -z "$BUILD_ID" ]; then
+            echo "PromptFrame upload response did not include a build id." >&2
+            exit 1
+          fi
+          npx promptframe status "$BUILD_ID" --endpoint "$PROMPTFRAME_API_BASE" --json | tee promptframe-status.json
+          node <<'NODE'
+          const fs = require('node:fs');
+          const payload = JSON.parse(fs.readFileSync('promptframe-upload.json', 'utf8'));
+          const status = JSON.parse(fs.readFileSync('promptframe-status.json', 'utf8'));
+          const summary = process.env.GITHUB_STEP_SUMMARY;
+          if (summary) {
+            fs.appendFileSync(summary, [
+              '### PromptFrame workspace upload',
+              '',
+              \`- Component ID: \\\`\${process.env.COMPONENT_ID || payload.source?.workspaceComponentId || 'unknown'}\\\`\`,
+              \`- Component path: \\\`\${process.env.COMPONENT_PATH || payload.source?.componentPath || 'unknown'}\\\`\`,
+              \`- Diagnostic: \\\`\${payload.diagnostic?.code || 'unknown'}\\\`\`,
+              \`- Build ID: \\\`\${payload.jobId || payload.buildId || 'unknown'}\\\`\`,
+              \`- Admission status: \\\`\${status.build?.status || status.status || payload.status || 'queued'}\\\`\`,
+              '',
+            ].join('\\n'));
+          }
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: promptframe-upload-report-${matrixArtifactName}
+          path: |
+            promptframe-upload.json
+            promptframe-status.json
+`;
+}
+
+function githubMatrixArtifactName(componentId: string): string {
+  return componentId
+    .replace(/^@/, '')
+    .replace(/[^A-Za-z0-9_.-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    || 'component';
 }
 
 function promptFrameGithubWorkflow(): string {
