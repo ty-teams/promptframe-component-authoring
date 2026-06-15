@@ -74,6 +74,28 @@ npx promptframe setup-ci --provider github
 
 This writes `.github/workflows/promptframe-component.yml`. Pull requests run `promptframe check . --json` and publish GitHub annotations / summary only; `main` and release-style tag pushes run `promptframe upload .`. Configure repository variable `PROMPTFRAME_API_BASE` and secret `PROMPTFRAME_CI_TOKEN` in GitHub. The generated workflow references only those names and does not write token values or private endpoints into the repo.
 
+## Repository Layouts
+
+PromptFrame supports two repository styles. Use the simple one unless you have a real multi-component team workflow.
+
+**Single component repository (recommended default):** the repository root is the component package. It contains `manifest.json`, `package.json`, `src/`, and optional `public/`. Run `promptframe check .`, `promptframe upload .`, and `promptframe setup-ci --provider github` from the root. This is the generated scaffold's default shape and is the easiest path for external authors and CodingAI.
+
+**Multi-component repository / monorepo (advanced):** the repository may contain many independent component packages, but each upload must explicitly name one component directory. The CI token authorizes the request; it does not tell the platform which component changed. Component identity comes from the uploaded directory's `manifest.json`, and the platform remains the final authority for project, owner, upload target, and admission checks.
+
+Safe monorepo usage today:
+
+```bash
+cd component-workspace
+npx promptframe check components/motion-intro/image-particle-remotion --json
+npx promptframe upload components/motion-intro/image-particle-remotion --endpoint "$PROMPTFRAME_API_BASE" --json
+
+# Equivalent when a CI matrix has already changed into the component folder:
+cd components/motion-intro/image-particle-remotion
+npx promptframe upload . --endpoint "$PROMPTFRAME_API_BASE" --json
+```
+
+Do not run `promptframe upload .` at a monorepo root unless that root is itself a valid single component package. Do not rely on repository names, commit messages, or tag names as the component mapping source. A future first-class workspace mode is planned around an explicit `promptframe-workspace.json`, CI matrix generation, and manifest/path consistency checks; until that ships, keep monorepo workflows explicit and path-based.
+
 External CodingAI should read local CLI JSON diagnostics, GitHub Check annotations, Action summary, artifact report, and platform status/admission diagnostics. It must not read PromptFrame internal REQ/TASK/QA docs, agent boards, deployment scripts, private endpoints, or token secrets.
 
 ## Local Checks

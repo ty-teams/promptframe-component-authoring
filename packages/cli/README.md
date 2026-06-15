@@ -65,6 +65,24 @@ The upload-to-publish lifecycle has multiple gates. `upload` returning success m
 
 `setup-ci --provider github` writes `.github/workflows/promptframe-component.yml` for a component project. Pull requests run check-only diagnostics and GitHub annotations; `main` and release-style tag pushes upload with `${{ secrets.PROMPTFRAME_CI_TOKEN }}` against `${{ vars.PROMPTFRAME_API_BASE }}`. Add those values in GitHub repository settings. Do not paste the CI token into the workflow, README, issue, or component source.
 
+### Repository layouts and monorepos
+
+The default CLI workflow assumes a single component repository: the current directory is the component package and contains `manifest.json`, `package.json`, `src/`, and optional `public/`.
+
+Monorepos are allowed only when the component path is explicit. `upload <dir|zip>` reads the selected directory or zip package, then derives component identity from that package's `manifest.json`. `PROMPTFRAME_CI_TOKEN` authorizes the upload; it does not map a repository, commit, or tag to a component for you.
+
+Safe monorepo examples:
+
+```bash
+npx promptframe check components/motion-intro/image-particle-remotion --json
+npx promptframe upload components/motion-intro/image-particle-remotion --endpoint "$PROMPTFRAME_API_BASE" --json
+
+cd components/motion-intro/image-particle-remotion
+npx promptframe upload . --endpoint "$PROMPTFRAME_API_BASE" --json
+```
+
+Do not run `promptframe upload .` at a monorepo root unless the root itself is a valid component package. If you use tag triggers, treat the tag only as a CI trigger or human-readable version hint; the upload mapping still comes from the CI matrix component path plus the uploaded manifest. A first-class workspace contract with `promptframe-workspace.json`, generated CI matrix support, and manifest/path consistency checks is planned but is not part of the current generated workflow.
+
 For external CodingAI, the feedback order is: local CLI JSON diagnostics, GitHub Check annotations, Action summary, artifact report, then platform `status` / admission diagnostics. The CLI never needs internal PromptFrame REQ/TASK/QA docs, agent boards, private endpoint defaults, Auth0 subjects, cookies, or token secrets.
 
 Local and remote commands support stable JSON output:

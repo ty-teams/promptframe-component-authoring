@@ -129,6 +129,24 @@ npx promptframe setup-ci --provider github --force
 
 CodingAI 排查失败时优先看 CLI JSON diagnostics、GitHub Check annotations、Action summary、artifact report 和平台 `status` / admission diagnostics。不要读取 `remotion-media` 内部 REQ/TASK/QA、agent board、部署脚本或私有 endpoint；身份由浏览器登录或 `PROMPTFRAME_CI_TOKEN` 代表，不靠手填 `userId` / `tenantId` / `projectId`。
 
+## 仓库模式
+
+默认推荐“一个组件一个仓库”。也就是说，本仓库根目录就是组件包，根目录里有 `manifest.json`、`package.json`、`src/` 和可选的 `public/`，所以 `promptframe check .`、`promptframe upload .`、`promptframe setup-ci --provider github` 都从根目录运行。
+
+高级团队可以把多个独立组件放在同一个 monorepo（多组件仓库）里，但每次上传必须明确指定某一个组件目录。`PROMPTFRAME_CI_TOKEN` 只代表“这个 CI 有权限上传/查状态”，它不会告诉平台“这次应该更新哪个组件”。组件身份来自被上传目录里的 `manifest.json`。
+
+monorepo 中安全的用法：
+
+```bash
+npx promptframe check components/motion-intro/image-particle-remotion --json
+npx promptframe upload components/motion-intro/image-particle-remotion --endpoint <promptframe-api-base> --json
+
+cd components/motion-intro/image-particle-remotion
+npx promptframe upload . --endpoint <promptframe-api-base> --json
+```
+
+不要在 monorepo 根目录执行 `promptframe upload .`，除非根目录本身就是一个合法组件包。不要依赖仓库名、commit message 或 tag 名让平台猜组件映射；tag 最多作为 CI 触发和版本提示，真正映射仍然来自 CI matrix 的组件路径和上传包里的 `manifest.json`。后续平台会补一等 `promptframe-workspace.json` / workspace CI 生成能力；在那之前，多组件仓库请保持路径显式。
+
 第三方组件不是完整浏览器扩展环境。不要默认使用跨标签通信、Service Worker、WebRTC、Notification、剪贴板、裸网络请求、动态 import、危险 HTML 或长时间 observer；优先改成 props、平台 asset 或受控平台 API。CLI / GitHub PR check 会尽量提前提示，平台 upload admission、preview runtime 和 render sandbox 仍是最终门禁。
 
 查看构建验收状态：

@@ -109,6 +109,24 @@ npx promptframe setup-ci --provider github
 
 Do not paste `PROMPTFRAME_CI_TOKEN` into the workflow, README, source, issue, pull request, prompt, or chat. Do not commit private endpoints. The workflow should reference `${{ secrets.PROMPTFRAME_CI_TOKEN }}` and `${{ vars.PROMPTFRAME_API_BASE }}` only.
 
+### Repository layout choice
+
+Default to a single component repository. The repo root is the component package, and `promptframe check .`, `promptframe upload .`, and `promptframe setup-ci --provider github` all run from that root.
+
+Use a monorepo only when the user or team explicitly needs multiple independent components in one repository. In a monorepo, never ask the platform to infer the component from the repository, branch, commit, or tag. The CI job must pass the component directory explicitly, and the uploaded directory's `manifest.json` is the component identity source.
+
+Safe monorepo commands:
+
+```bash
+npx promptframe check components/motion-intro/image-particle-remotion --json
+npx promptframe upload components/motion-intro/image-particle-remotion --endpoint <promptframe-api-base> --json
+
+cd components/motion-intro/image-particle-remotion
+npx promptframe upload . --endpoint <promptframe-api-base> --json
+```
+
+`PROMPTFRAME_CI_TOKEN` authorizes upload and status access; it does not choose the component. If a future `promptframe-workspace.json` / workspace CI generator is present, follow it. Until then, keep monorepo workflows path-explicit and do not run `upload .` at the monorepo root unless that root is itself a valid component package.
+
 ### CodingAI feedback locations
 
 External CodingAI should read local CLI JSON diagnostics first. In GitHub Actions, read GitHub Check annotations, the Action summary, the artifact report, and then platform status / admission diagnostics. Treat `ruleId`, `diagnostic.code`, `severity`, `failureReason`, and `retryable` as machine-readable feedback; do not scrape prose logs.
