@@ -2161,6 +2161,59 @@ test('validate rejects deterministic source and security policy violations', asy
   }
 });
 
+test('validate accepts Remotion Img while still rejecting native img tags', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-img-policy-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(componentDir, 'src/Component.tsx'), [
+      "import { AbsoluteFill, Img, useCurrentFrame, useVideoConfig } from 'remotion';",
+      'export default function Component() {',
+      '  useCurrentFrame();',
+      '  useVideoConfig();',
+      '  return <AbsoluteFill style={{ width: "100%", height: "100%" }}><Img src="/demo.png" /></AbsoluteFill>;',
+      '}',
+    ].join('\n'));
+
+    const validate = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'validate',
+      componentDir,
+      '--json',
+    ])).stdout);
+    assert.equal(validate.command, 'validate');
+    assert.equal(validate.diagnostic.code, 'validate.completed');
+
+    await writeFile(path.join(componentDir, 'src/Component.tsx'), [
+      "import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';",
+      'export default function Component() {',
+      '  useCurrentFrame();',
+      '  useVideoConfig();',
+      '  return <AbsoluteFill style={{ width: "100%", height: "100%" }}><img src="/demo.png" alt="" /></AbsoluteFill>;',
+      '}',
+    ].join('\n'));
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'validate',
+        componentDir,
+        '--json',
+      ]),
+      (error) => {
+        assert.equal(error.code, 1);
+        const payload = JSON.parse(error.stderr);
+        assert.equal(payload.success, false);
+        assert.equal(payload.command, 'validate');
+        assert.equal(payload.diagnostic.code, 'component_standard.source.no_native_img');
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('validate ignores tool config text when checking deterministic component source', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-source-config-text-'));
   try {

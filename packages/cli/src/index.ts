@@ -1729,11 +1729,21 @@ function validateSourceSafety(dir: string): void {
     if (!isSourceSafetyScannableFile(entry.name)) continue;
     const source = entry.data.toString('utf8');
     for (const rule of PROMPTFRAME_PUBLIC_STANDARD_POLICY.sourceSafetyRules) {
-      const match = source.match(new RegExp(rule.pattern, 'i'));
+      const match = source.match(new RegExp(rule.pattern, sourceSafetyRuleFlags(rule.id)));
       if (!match) continue;
       fail(`${entry.name}: ${rule.message} ${rule.repairHint}`, rule.id);
     }
   }
+}
+
+function sourceSafetyRuleFlags(ruleId: string): string {
+  if (
+    ruleId === 'component_standard.source.no_native_img' ||
+    ruleId === 'component_standard.source.no_native_video'
+  ) {
+    return '';
+  }
+  return 'i';
 }
 
 function validateSecurityPolicy(dir: string): void {
