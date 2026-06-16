@@ -891,6 +891,8 @@ test('formal endpoints reject dev-header auth before remote transport', async ()
         const payload = JSON.parse(error.stderr);
         assert.equal(payload.command, 'status');
         assert.equal(payload.diagnostic.code, 'cli.auth.dev_header_formal_endpoint_forbidden');
+        assert.match(payload.failureReason, /promptframe login --endpoint https:\/\/promptframe\.example\/api-proxy/);
+        assert.match(payload.failureReason, /PROMPTFRAME_CI_TOKEN/);
         return true;
       },
     );
@@ -1546,6 +1548,123 @@ test('directory upload returns local reusability diagnostics with the accepted p
     assert.equal(upload.jobId, 'build-reuse');
     assert.equal(upload.localReusability.recommendation, 'manual_review');
     assert.equal(upload.diagnostics[0].code, 'component_market.reusability.marketplace_manual_review');
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('upload --json redacts public-unsafe platform response fields', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-upload-json-safe-'));
+  const server = await createServer(async (req, res) => {
+    if (req.url === '/components/standard') {
+      writeJson(res, {
+        success: true,
+        sourceVersion: 'component-standard.v0.1.0',
+        sourceHash: 'sha256:8c1e01c36155b4b646981064d24df9bd8cda501fd9cd9da93e5b62f40db22d52',
+      });
+      return;
+    }
+    if (req.url === '/components/marketplace/upload') {
+      writeJson(res, {
+        success: true,
+        buildId: 'build-safe-json',
+        status: 'succeeded',
+        statusUrl: '/admin/components/builds/build-safe-json',
+        providerUsageReceipt: { provider: 'internal' },
+        vectorRef: 'minio://private/vector',
+        retryKey: 'retry-secret',
+        sourceHash: 'sha256:source-secret',
+        build: {
+          buildId: 'build-safe-json',
+          status: 'succeeded',
+          statusUrl: '/admin/components/builds/build-safe-json',
+          sourceHash: 'sha256:nested-source-secret',
+          diagnostics: [{ code: 'component.internal', severity: 'info', message: 'Internal REQ-150 note' }],
+        },
+        evidence: [{
+          evidenceId: 'evidence-secret',
+          vectorRef: 'minio://private/evidence-vector',
+          providerUsageReceipt: { provider: 'internal' },
+        }],
+      });
+      return;
+    }
+    writeJson(res, { success: false, error: `unexpected path: ${req.url}` }, 404);
+  });
+  try {
+    const zipPath = path.join(dir, 'component.zip');
+    await writeFile(zipPath, 'fake component zip');
+    const { stdout } = await execFileAsync('node', [
+      cliPath,
+      'upload',
+      zipPath,
+      '--endpoint',
+      server.url,
+      '--target',
+      'project_private_generation',
+      '--json',
+    ]);
+    const payload = JSON.parse(stdout);
+
+    assert.equal(payload.command, 'upload');
+    assert.equal(payload.jobId, 'build-safe-json');
+    assert.equal(payload.build.status, 'succeeded');
+    assert.equal(payload.evidence, undefined);
+    assert.equal(payload.providerUsageReceipt, undefined);
+    assert.equal(payload.build.sourceHash, undefined);
+    assert.equal(stdout.includes('providerUsageReceipt'), false);
+    assert.equal(stdout.includes('vectorRef'), false);
+    assert.equal(stdout.includes('retry-secret'), false);
+    assert.equal(stdout.includes('REQ-150'), false);
+    assert.equal(stdout.includes('sha256:source-secret'), false);
+    assert.equal(stdout.includes('evidence-secret'), false);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('upload default output prints status link and next status command', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-upload-human-output-'));
+  const server = await createServer(async (req, res) => {
+    if (req.url === '/components/standard') {
+      writeJson(res, {
+        success: true,
+        sourceVersion: 'component-standard.v0.1.0',
+        sourceHash: 'sha256:8c1e01c36155b4b646981064d24df9bd8cda501fd9cd9da93e5b62f40db22d52',
+      });
+      return;
+    }
+    if (req.url === '/components/marketplace/upload') {
+      writeJson(res, {
+        success: true,
+        buildId: 'build-human',
+        status: 'succeeded',
+        statusUrl: '/admin/components/builds/build-human',
+      });
+      return;
+    }
+    writeJson(res, { success: false, error: `unexpected path: ${req.url}` }, 404);
+  });
+  try {
+    const zipPath = path.join(dir, 'component.zip');
+    await writeFile(zipPath, 'fake component zip');
+    const { stdout } = await execFileAsync('node', [
+      cliPath,
+      'upload',
+      zipPath,
+      '--endpoint',
+      server.url,
+      '--target',
+      'project_private_generation',
+    ]);
+
+    assert.match(stdout, /Upload accepted/);
+    assert.match(stdout, /Build: build-human/);
+    assert.match(stdout, /Status: succeeded/);
+    assert.match(stdout, new RegExp(`Status URL: ${server.url}/admin/components/builds/build-human`));
+    assert.match(stdout, new RegExp(`Next: promptframe status build-human --endpoint ${server.url}`));
   } finally {
     await server.close();
     await rm(dir, { recursive: true, force: true });

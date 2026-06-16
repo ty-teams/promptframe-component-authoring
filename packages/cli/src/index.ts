@@ -640,8 +640,9 @@ async function uploadComponent(argv: string[]): Promise<void> {
       'x-promptframe-upload-target': uploadTarget,
     },
   }, 'upload.http.failed');
-  const output = {
-    ...payload,
+  const safePayload = sanitizePublicUploadPayload(payload);
+  const output = sanitizePublicUploadPayload({
+    ...safePayload,
     command: 'upload',
     endpoint,
     uploadTarget,
@@ -650,7 +651,7 @@ async function uploadComponent(argv: string[]): Promise<void> {
     source: input.source,
     ...(localReusability ? { localReusability, diagnostics: localDiagnostics } : {}),
     diagnostic: diagnostic('upload.completed', 'info', 'Component upload accepted by platform.'),
-  };
+  });
   if (hasFlag(argv, '--json')) {
     printJson(output);
     return;
@@ -658,8 +659,56 @@ async function uploadComponent(argv: string[]): Promise<void> {
   console.log('Upload accepted by PromptFrame platform.');
   console.log(`Build: ${output.jobId ?? 'unknown'}`);
   console.log(`Status: ${stringValue(payload.status) ?? stringValue(asRecord(payload.build)?.status) ?? 'queued'}`);
+  if (output.jobId) {
+    console.log(`Next: promptframe status ${output.jobId} --endpoint ${endpoint}`);
+  }
   if (localDiagnostics) printDiagnostics(localDiagnostics);
   printStatusUrl(endpoint, payload);
+}
+
+const PUBLIC_UPLOAD_JSON_OMIT_KEYS = new Set([
+  'providerUsageReceipt',
+  'providerUsageReceipts',
+  'vectorRef',
+  'retryKey',
+  'sourceHash',
+  'sourceHashDetails',
+  'internalSourceHash',
+  'schemaHash',
+  'manifestHash',
+  'bundleHash',
+  'evidence',
+  'evidenceRecords',
+  'evidenceItems',
+  'rawEvidence',
+]);
+
+function sanitizePublicUploadPayload(value: unknown): Record<string, unknown> {
+  return asRecord(sanitizePublicUploadValue(value)) ?? {};
+}
+
+function sanitizePublicUploadValue(value: unknown): unknown {
+  if (typeof value === 'string') {
+    return scrubInternalReferences(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizePublicUploadValue(item));
+  }
+  const record = asRecord(value);
+  if (!record) return value;
+  const output: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(record)) {
+    if (PUBLIC_UPLOAD_JSON_OMIT_KEYS.has(key)) continue;
+    output[key] = sanitizePublicUploadValue(entry);
+  }
+  return output;
+}
+
+function scrubInternalReferences(value: string): string {
+  return value
+    .replace(/\bREQ-\d+\b/g, 'internal reference')
+    .replace(/\bTASK-\d+(?:-[A-Za-z0-9-]+)?\b/g, 'internal task')
+    .replace(/\bBUG-\d+\b/g, 'internal bug');
 }
 
 function resolveUploadTarget(argv: string[]): AuthoringUploadTarget {
@@ -2081,7 +2130,7 @@ function buildRemoteHeaders(
   ].includes(name));
   if (isFormalEndpoint(endpoint) && hasDevHeaders) {
     fail(
-      'Formal PromptFrame endpoints do not accept dev identity headers. Use promptframe login or a scoped CI token.',
+      `Formal PromptFrame endpoints do not accept dev identity headers. Run promptframe login --endpoint ${endpoint}, or set PROMPTFRAME_CI_TOKEN to a scoped CI token and retry without --auth-roles/--auth-permissions.`,
       'cli.auth.dev_header_formal_endpoint_forbidden',
     );
   }
