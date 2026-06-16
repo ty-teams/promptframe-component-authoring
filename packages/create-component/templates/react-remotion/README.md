@@ -10,7 +10,7 @@ PromptFrame 标准视频组件模板。
 
 CodingAI 不能读取 PromptFrame 平台源码、内部协作看板、REQ/TASK/QA、内部协作收件箱、secret、内部部署脚本或私有 endpoint 默认值。
 
-版本事实：Current npm registry baseline is `@promptframe/cli@0.1.31`, `@promptframe/contracts@0.1.13`, `@promptframe/component-kit@0.1.11`, and `create-promptframe-component@0.1.19`. The published CLI consumes the contracts AST-aware public security policy evaluator and reports `securityPolicyDigest` / `securityEvaluatorMode` / `publicResources` in JSON output.
+版本事实：Current npm registry baseline is `@promptframe/cli@0.1.31`, `@promptframe/contracts@0.1.13`, `@promptframe/component-kit@0.1.11`, and `create-promptframe-component@0.1.20`. The published CLI consumes the contracts AST-aware public security policy evaluator and reports `securityPolicyDigest` / `securityEvaluatorMode` / `publicResources` in JSON output.
 
 ## 本地开发
 
@@ -93,7 +93,7 @@ npx promptframe status <buildId> --endpoint <promptframe-api-base>
 
 本地预览壳使用 `@remotion/player`，并传入 `acknowledgeRemotionLicense` 来减少本地开发时的重复提示；这不改变平台验收结论，也不是法律建议。作者仍应按自己的用途确认 Remotion license（Remotion 许可证）是否满足分发和商业使用要求。
 
-预览壳右侧可以临时调整 props、切换画幅，并点击 `Export case` 导出当前本地预览 JSON。它还会通过 `@promptframe/component-kit/preview` 自动生成一组 bounded preview cases，包括 16:9、9:16、1:1 和基于默认 props 的文本/数字/布尔边界样本；这些样本仍会经过 `propsSchema.safeParse`，不会绕过 schema。建议把导出的文件保存到 `.promptframe/local-previews/<name>.json`，用于作者本地回归；然后运行 `promptframe preview . --write-local-report --json` 生成 `.promptframe/local-previews/preview-report.json`，记录 canonical preview 与本地 saved cases 的 hash。该目录只作为本地草稿，不进入上传 source package，平台验收仍以 `src/preview-props.json`、schema 和服务端 admission 结果为准。
+预览壳右侧可以临时调整 props、切换画幅，并点击 `Export case` 导出当前本地预览 JSON。object / array 这类复杂 props 会默认展开为结构化分组、字段和数组项控件；`Advanced JSON` 只作为兜底编辑模式。它还会通过 `@promptframe/component-kit/preview` 自动生成一组 bounded preview cases，包括 16:9、9:16、1:1 和基于默认 props 的文本/数字/布尔边界样本；这些样本仍会经过 `propsSchema.safeParse`，不会绕过 schema。建议把导出的文件保存到 `.promptframe/local-previews/<name>.json`，用于作者本地回归；然后运行 `promptframe preview . --write-local-report --json` 生成 `.promptframe/local-previews/preview-report.json`，记录 canonical preview 与本地 saved cases 的 hash。该目录只作为本地草稿，不进入上传 source package，平台验收仍以 `src/preview-props.json`、schema 和服务端 admission 结果为准。
 
 ```bash
 npx promptframe dev .
@@ -126,28 +126,6 @@ npx promptframe upload . --endpoint <promptframe-api-base>
 ```bash
 npx promptframe setup-ci --provider github --force
 ```
-
-CodingAI 排查失败时优先看 CLI JSON diagnostics、GitHub Check annotations、Action summary、artifact report 和平台 `status` / admission diagnostics。不要读取 `remotion-media` 内部 REQ/TASK/QA、agent board、部署脚本或私有 endpoint；身份由浏览器登录或 `PROMPTFRAME_CI_TOKEN` 代表，不靠手填 `userId` / `tenantId` / `projectId`。
-
-## 仓库模式
-
-默认推荐“一个组件一个仓库”。也就是说，本仓库根目录就是组件包，根目录里有 `manifest.json`、`package.json`、`src/` 和可选的 `public/`，所以 `promptframe check .`、`promptframe upload .`、`promptframe setup-ci --provider github` 都从根目录运行。
-
-高级团队可以把多个独立组件放在同一个 monorepo（多组件仓库）里，但每次上传必须明确指定某一个组件目录。`PROMPTFRAME_CI_TOKEN` 只代表“这个 CI 有权限上传/查状态”，它不会告诉平台“这次应该更新哪个组件”。组件身份来自被上传目录里的 `manifest.json`。
-
-monorepo 中安全的用法：
-
-```bash
-npx promptframe check components/motion-intro/image-particle-remotion --json
-npx promptframe upload components/motion-intro/image-particle-remotion --endpoint <promptframe-api-base> --json
-
-cd components/motion-intro/image-particle-remotion
-npx promptframe upload . --endpoint <promptframe-api-base> --json
-```
-
-不要在 monorepo 根目录执行 `promptframe upload .`，除非根目录本身就是一个合法组件包。不要依赖仓库名、commit message 或 tag 名让平台猜组件映射；tag 最多作为 CI 触发和版本提示，真正映射仍然来自 CI matrix 的组件路径和上传包里的 `manifest.json`。后续平台会补一等 `promptframe-workspace.json` / workspace CI 生成能力；在那之前，多组件仓库请保持路径显式。
-
-第三方组件不是完整浏览器扩展环境。不要默认使用跨标签通信、Service Worker、WebRTC、Notification、剪贴板、裸网络请求、动态 import、危险 HTML 或长时间 observer；优先改成 props、平台 asset 或受控平台 API。CLI / GitHub PR check 会尽量提前提示，平台 upload admission、preview runtime 和 render sandbox 仍是最终门禁。
 
 查看构建验收状态：
 

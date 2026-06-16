@@ -1,8 +1,8 @@
-import { promptFramePublicResource } from '@promptframe/component-kit';
+import { promptFramePublicResource, type PromptFrameRuntimeResourceProps } from '@promptframe/component-kit';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
 import type { ComponentProps } from './schema';
 
-export default function Component(props: ComponentProps) {
+export default function Component(props: ComponentProps & PromptFrameRuntimeResourceProps) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const sampleResourceUrl = promptFramePublicResource(props, '/sample-data.json');

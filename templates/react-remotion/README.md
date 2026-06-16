@@ -10,7 +10,7 @@ PromptFrame 标准视频组件模板。
 
 CodingAI 不能读取 PromptFrame 平台源码、内部协作看板、REQ/TASK/QA、内部协作收件箱、secret、内部部署脚本或私有 endpoint 默认值。
 
-版本事实：Current npm registry baseline is `@promptframe/cli@0.1.31`, `@promptframe/contracts@0.1.13`, `@promptframe/component-kit@0.1.11`, and `create-promptframe-component@0.1.19`. The published CLI consumes the contracts AST-aware public security policy evaluator and reports `securityPolicyDigest` / `securityEvaluatorMode` / `publicResources` in JSON output.
+版本事实：Current npm registry baseline is `@promptframe/cli@0.1.31`, `@promptframe/contracts@0.1.13`, `@promptframe/component-kit@0.1.11`, and `create-promptframe-component@0.1.20`. The published CLI consumes the contracts AST-aware public security policy evaluator and reports `securityPolicyDigest` / `securityEvaluatorMode` / `publicResources` in JSON output.
 
 ## 本地开发
 
@@ -93,7 +93,7 @@ npx promptframe status <buildId> --endpoint <promptframe-api-base>
 
 本地预览壳使用 `@remotion/player`，并传入 `acknowledgeRemotionLicense` 来减少本地开发时的重复提示；这不改变平台验收结论，也不是法律建议。作者仍应按自己的用途确认 Remotion license（Remotion 许可证）是否满足分发和商业使用要求。
 
-预览壳右侧可以临时调整 props、切换画幅，并点击 `Export case` 导出当前本地预览 JSON。它还会通过 `@promptframe/component-kit/preview` 自动生成一组 bounded preview cases，包括 16:9、9:16、1:1 和基于默认 props 的文本/数字/布尔边界样本；这些样本仍会经过 `propsSchema.safeParse`，不会绕过 schema。建议把导出的文件保存到 `.promptframe/local-previews/<name>.json`，用于作者本地回归；然后运行 `promptframe preview . --write-local-report --json` 生成 `.promptframe/local-previews/preview-report.json`，记录 canonical preview 与本地 saved cases 的 hash。该目录只作为本地草稿，不进入上传 source package，平台验收仍以 `src/preview-props.json`、schema 和服务端 admission 结果为准。
+预览壳右侧可以临时调整 props、切换画幅，并点击 `Export case` 导出当前本地预览 JSON。object / array 这类复杂 props 会默认展开为结构化分组、字段和数组项控件；`Advanced JSON` 只作为兜底编辑模式。它还会通过 `@promptframe/component-kit/preview` 自动生成一组 bounded preview cases，包括 16:9、9:16、1:1 和基于默认 props 的文本/数字/布尔边界样本；这些样本仍会经过 `propsSchema.safeParse`，不会绕过 schema。建议把导出的文件保存到 `.promptframe/local-previews/<name>.json`，用于作者本地回归；然后运行 `promptframe preview . --write-local-report --json` 生成 `.promptframe/local-previews/preview-report.json`，记录 canonical preview 与本地 saved cases 的 hash。该目录只作为本地草稿，不进入上传 source package，平台验收仍以 `src/preview-props.json`、schema 和服务端 admission 结果为准。
 
 ```bash
 npx promptframe dev .

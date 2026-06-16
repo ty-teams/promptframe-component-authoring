@@ -69,7 +69,7 @@ Do not guess private service addresses. Endpoint resolution is explicit: command
 
 Formal platform identity comes from browser Device Code login or a scoped token. Do not hand-fill `tenantId`, `userId`, or `projectId`; formal endpoints reject dev identity headers. Use `promptframe whoami --json` to inspect the current token kind, endpoint, scopes, and project binding without printing the token secret. Store CI token secrets only in secret managers such as GitHub Actions secrets.
 
-The generated local preview shell uses `@remotion/player` and passes `acknowledgeRemotionLicense` so local authoring is not interrupted by repeated prompts. This does not replace the author's responsibility to review the Remotion license for their own usage and distribution model.
+The generated local preview shell uses `@remotion/player`, renders object / array props as structured controls with an `Advanced JSON` fallback, and passes `acknowledgeRemotionLicense` so local authoring is not interrupted by repeated prompts. This does not replace the author's responsibility to review the Remotion license for their own usage and distribution model.
 
 Automation can add `--json` to `standard`, `doctor`, `validate`, `check`, `upgrade`, `preview`, `login`, `whoami`, `logout`, `upload`, `status`, `reindex`, and `probe`. Use `dev --dry-run --json` to inspect the local preview command without starting a long-running server. Use `upgrade --dry-run --json` to inspect package floor changes before editing. Read `diagnostic.code`, `checkedRuleIds`, `securityPolicyDigest`, `securityEvaluatorMode`, `failureReason`, and `retryable` instead of scraping prose logs.
 
@@ -213,6 +213,7 @@ component/
 - Props must be JSON serializable and described by schema.
 - `src/preview-props.json` must render a meaningful bounded preview without asking the user for extra input.
 - `promptframe dev .` uses the template's Vite shell to render `src/preview-props.json`.
+- The generated controls expand object / array props into structured groups, fields, and array items by default; use `Advanced JSON` only as a fallback for bulk edits.
 - The local preview shell may generate bounded preview cases from `@promptframe/component-kit/preview`, apply only cases that pass `propsSchema.safeParse`, and export saved preview cases into `.promptframe/local-previews/` for author regression only; these files are not source-package evidence and do not replace `src/preview-props.json`.
 - `promptframe preview . --json` only verifies the local preview envelope from `src/preview-props.json`; it does not replace platform iframe preview, probes, or render evidence.
 - Animation timing must be fps-aware: convert wall-clock seconds with `secondsToFrames(seconds, fps)` or route frame ranges through `createDurationTimeline()` / `timeline.at()`. Local fps-adaptive diagnostics should compare 30fps and 60fps behavior before upload.

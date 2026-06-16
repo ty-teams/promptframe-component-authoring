@@ -1,6 +1,6 @@
 import { Player } from '@remotion/player';
 import { createPreviewCaseMatrix, type PromptFramePreviewCase } from '@promptframe/component-kit/preview';
-import { StrictMode, useState } from 'react';
+import { StrictMode, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import Component from './Component';
 import previewEnvelope from './preview-props.json';
@@ -29,6 +29,8 @@ type PreviewCase = {
   props: ComponentProps;
   generatedAt: string;
 };
+
+type PropPath = Array<string | number>;
 
 const initialPropsParse = propsSchema.safeParse(preview.props ?? {});
 const initialProps: ComponentProps = initialPropsParse.success
@@ -80,6 +82,48 @@ function isColorValue(value: unknown): value is string {
 
 function isJsonLikeValue(value: unknown): value is Record<string, unknown> | unknown[] | null {
   return value === null || typeof value === 'object';
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function formatPathKey(path: PropPath): string {
+  return path.map(String).join('.');
+}
+
+function getValueAtPath(rootValue: unknown, path: PropPath): unknown {
+  return path.reduce<unknown>((current, segment) => {
+    if (Array.isArray(current) && typeof segment === 'number') {
+      return current[segment];
+    }
+    if (isRecordValue(current) && typeof segment === 'string') {
+      return current[segment];
+    }
+    return undefined;
+  }, rootValue);
+}
+
+function setValueAtPath(rootValue: unknown, path: PropPath, nextValue: unknown): unknown {
+  if (path.length === 0) {
+    return nextValue;
+  }
+
+  const [segment, ...rest] = path;
+  if (Array.isArray(rootValue) && typeof segment === 'number') {
+    const clone = [...rootValue];
+    clone[segment] = setValueAtPath(clone[segment], rest, nextValue);
+    return clone;
+  }
+
+  if (isRecordValue(rootValue) && typeof segment === 'string') {
+    return {
+      ...rootValue,
+      [segment]: setValueAtPath(rootValue[segment], rest, nextValue),
+    };
+  }
+
+  return rootValue;
 }
 
 function formatJsonValue(value: unknown): string {
@@ -184,16 +228,17 @@ function PreviewApp() {
   const [jsonDrafts, setJsonDrafts] = useState<Record<string, string>>({});
   const [jsonDraftErrors, setJsonDraftErrors] = useState<Record<string, string>>({});
 
-  const updateInputProp = (key: string, rawValue: string) => {
-    const currentValue = inputProps[key as keyof ComponentProps];
+  const updateInputPropAtPath = (path: PropPath, rawValue: string) => {
+    const draftKey = formatPathKey(path);
+    const currentValue = getValueAtPath(inputProps, path);
     let nextValue: unknown;
 
     if (isJsonLikeValue(currentValue)) {
-      setJsonDrafts((current) => ({ ...current, [key]: rawValue }));
+      setJsonDrafts((current) => ({ ...current, [draftKey]: rawValue }));
 
       const parsedJson = parseJsonDraft(rawValue);
       if (!parsedJson.success) {
-        setJsonDraftErrors((current) => ({ ...current, [key]: parsedJson.message }));
+        setJsonDraftErrors((current) => ({ ...current, [draftKey]: parsedJson.message }));
         return;
       }
       nextValue = parsedJson.value;
@@ -201,25 +246,22 @@ function PreviewApp() {
       nextValue = coerceControlValue(currentValue, rawValue);
     }
 
-    const nextCandidate = {
-      ...inputProps,
-      [key]: nextValue,
-    };
+    const nextCandidate = setValueAtPath(inputProps, path, nextValue);
     const parsed = propsSchema.safeParse(nextCandidate);
     if (!parsed.success) {
       setJsonDraftErrors((current) => ({
         ...current,
-        [key]: `Invalid props: ${formatPropsParseError(parsed.error)}`,
+        [draftKey]: `Invalid props: ${formatPropsParseError(parsed.error)}`,
       }));
       return;
     }
 
     setJsonDraftErrors((current) => {
-      if (!(key in current)) {
+      if (!(draftKey in current)) {
         return current;
       }
       const next = { ...current };
-      delete next[key];
+      delete next[draftKey];
       return next;
     });
     setInputProps(parsed.data);
@@ -242,6 +284,173 @@ function PreviewApp() {
     });
     setPreviewCaseName(previewCase.id);
     setExportStatus(`Loaded ${previewCase.name}. Adjust props if needed, then export it as a local preview case.`);
+  };
+
+  const renderDraftError = (draftKey: string): ReactNode => {
+    const jsonDraftError = jsonDraftErrors[draftKey];
+    return jsonDraftError ? (
+      <span
+        data-promptframe-json-draft-error={draftKey}
+        role="alert"
+        style={{ color: '#b91c1c', fontSize: 12, lineHeight: 1.45 }}
+      >
+        {jsonDraftError}
+      </span>
+    ) : null;
+  };
+
+  const renderJsonFallback = (path: PropPath, value: unknown): ReactNode => {
+    const draftKey = formatPathKey(path);
+    return (
+      <details style={{ display: 'grid', gap: 8 }}>
+        <summary style={{ color: '#475569', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
+          Advanced JSON
+        </summary>
+        <textarea
+          data-promptframe-prop-json={draftKey}
+          value={jsonDrafts[draftKey] ?? formatJsonValue(value)}
+          onChange={(event) => updateInputPropAtPath(path, event.currentTarget.value)}
+          rows={5}
+          spellCheck={false}
+          style={{
+            width: '100%',
+            minWidth: 0,
+            boxSizing: 'border-box',
+            border: jsonDraftErrors[draftKey] ? '1px solid #dc2626' : '1px solid #cbd5e1',
+            borderRadius: 6,
+            padding: '8px 10px',
+            font: 'inherit',
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+            resize: 'vertical',
+          }}
+        />
+        {renderDraftError(draftKey)}
+      </details>
+    );
+  };
+
+  const renderPrimitiveControl = (path: PropPath, value: unknown): ReactNode => {
+    const draftKey = formatPathKey(path);
+    if (typeof value === 'boolean') {
+      return (
+        <select
+          data-promptframe-prop-field={draftKey}
+          value={formatPrimitiveControlValue(value)}
+          onChange={(event) => updateInputPropAtPath(path, event.currentTarget.value)}
+          style={{
+            width: '100%',
+            minWidth: 0,
+            boxSizing: 'border-box',
+            border: jsonDraftErrors[draftKey] ? '1px solid #dc2626' : '1px solid #cbd5e1',
+            borderRadius: 6,
+            padding: '8px 10px',
+            font: 'inherit',
+          }}
+        >
+          <option value="true">true</option>
+          <option value="false">false</option>
+        </select>
+      );
+    }
+
+    return (
+      <input
+        data-promptframe-prop-field={draftKey}
+        type={isColorValue(value) ? 'color' : typeof value === 'number' ? 'number' : 'text'}
+        value={formatPrimitiveControlValue(value)}
+        onChange={(event) => updateInputPropAtPath(path, event.currentTarget.value)}
+        style={{
+          width: '100%',
+          minWidth: 0,
+          boxSizing: 'border-box',
+          border: jsonDraftErrors[draftKey] ? '1px solid #dc2626' : '1px solid #cbd5e1',
+          borderRadius: 6,
+          padding: isColorValue(value) ? 4 : '8px 10px',
+          font: 'inherit',
+        }}
+      />
+    );
+  };
+
+  const renderPropControl = (path: PropPath, label: string, value: unknown, depth = 0): ReactNode => {
+    const draftKey = formatPathKey(path);
+
+    if (Array.isArray(value)) {
+      return (
+        <div
+          key={draftKey}
+          data-promptframe-prop-structured={draftKey}
+          style={{
+            display: 'grid',
+            gap: 8,
+            border: '1px solid #e2e8f0',
+            borderRadius: 6,
+            padding: 10,
+            background: depth === 0 ? '#fff' : '#f8fafc',
+          }}
+        >
+          <span style={{ color: '#334155', fontSize: 13, fontWeight: 700 }}>{label}</span>
+          {value.length > 0 ? (
+            <div style={{ display: 'grid', gap: 8 }}>
+              {value.map((item, index) => (
+                <div
+                  data-promptframe-prop-array-item={`${draftKey}.${index}`}
+                  key={`${draftKey}.${index}`}
+                  style={{ display: 'grid', gap: 8, borderLeft: '2px solid #cbd5e1', paddingLeft: 10 }}
+                >
+                  {renderPropControl([...path, index], `Item ${index + 1}`, item, depth + 1)}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <span style={{ color: '#64748b', fontSize: 12 }}>No items</span>
+          )}
+          {renderJsonFallback(path, value)}
+        </div>
+      );
+    }
+
+    if (isRecordValue(value)) {
+      return (
+        <div
+          key={draftKey}
+          data-promptframe-prop-structured={draftKey}
+          style={{
+            display: 'grid',
+            gap: 8,
+            border: '1px solid #e2e8f0',
+            borderRadius: 6,
+            padding: 10,
+            background: depth === 0 ? '#fff' : '#f8fafc',
+          }}
+        >
+          <span style={{ color: '#334155', fontSize: 13, fontWeight: 700 }}>{label}</span>
+          {Object.entries(value).map(([childKey, childValue]) => (
+            <div key={`${draftKey}.${childKey}`} style={{ display: 'grid', gap: 6, paddingLeft: depth > 0 ? 8 : 0 }}>
+              {renderPropControl([...path, childKey], childKey, childValue, depth + 1)}
+            </div>
+          ))}
+          {renderJsonFallback(path, value)}
+        </div>
+      );
+    }
+
+    if (value === null) {
+      return (
+        <div key={draftKey} data-promptframe-prop-structured={draftKey} style={{ display: 'grid', gap: 6 }}>
+          <span style={{ color: '#334155', fontSize: 13, fontWeight: 700 }}>{label}</span>
+          {renderJsonFallback(path, value)}
+        </div>
+      );
+    }
+
+    return (
+      <label key={draftKey} style={{ display: 'grid', gap: 6, fontSize: 13 }}>
+        <span style={{ color: '#334155', fontWeight: 700 }}>{label}</span>
+        {renderPrimitiveControl(path, value)}
+        {renderDraftError(draftKey)}
+      </label>
+    );
   };
 
   return (
@@ -420,79 +629,7 @@ function PreviewApp() {
         <section style={{ marginTop: 22 }}>
           <h2 style={{ fontSize: 16, margin: '0 0 12px', letterSpacing: 0 }}>Props</h2>
           <div style={{ display: 'grid', gap: 12 }}>
-            {Object.entries(inputProps).map(([key, value]) => {
-              const jsonDraftError = jsonDraftErrors[key];
-
-              return (
-                <label key={key} style={{ display: 'grid', gap: 6, fontSize: 13 }}>
-                  <span style={{ color: '#334155', fontWeight: 700 }}>{key}</span>
-                  {isJsonLikeValue(value) ? (
-                    <>
-                      <textarea
-                        data-promptframe-prop-json={key}
-                        value={jsonDrafts[key] ?? formatJsonValue(value)}
-                        onChange={(event) => updateInputProp(key, event.currentTarget.value)}
-                        rows={5}
-                        spellCheck={false}
-                        style={{
-                          width: '100%',
-                          minWidth: 0,
-                          boxSizing: 'border-box',
-                          border: jsonDraftError ? '1px solid #dc2626' : '1px solid #cbd5e1',
-                          borderRadius: 6,
-                          padding: '8px 10px',
-                          font: 'inherit',
-                          fontFamily:
-                            'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
-                          resize: 'vertical',
-                        }}
-                      />
-                      {jsonDraftError ? (
-                        <span
-                          data-promptframe-json-draft-error={key}
-                          role="alert"
-                          style={{ color: '#b91c1c', fontSize: 12, lineHeight: 1.45 }}
-                        >
-                          {jsonDraftError}
-                        </span>
-                      ) : null}
-                    </>
-                  ) : typeof value === 'boolean' ? (
-                    <select
-                      value={formatPrimitiveControlValue(value)}
-                      onChange={(event) => updateInputProp(key, event.currentTarget.value)}
-                      style={{
-                        width: '100%',
-                        minWidth: 0,
-                        boxSizing: 'border-box',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: 6,
-                        padding: '8px 10px',
-                        font: 'inherit',
-                      }}
-                    >
-                      <option value="true">true</option>
-                      <option value="false">false</option>
-                    </select>
-                  ) : (
-                    <input
-                      type={isColorValue(value) ? 'color' : typeof value === 'number' ? 'number' : 'text'}
-                      value={formatPrimitiveControlValue(value)}
-                      onChange={(event) => updateInputProp(key, event.currentTarget.value)}
-                      style={{
-                        width: '100%',
-                        minWidth: 0,
-                        boxSizing: 'border-box',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: 6,
-                        padding: isColorValue(value) ? 4 : '8px 10px',
-                        font: 'inherit',
-                      }}
-                    />
-                  )}
-                </label>
-              );
-            })}
+            {Object.entries(inputProps).map(([key, value]) => renderPropControl([key], key, value))}
           </div>
         </section>
       </aside>
