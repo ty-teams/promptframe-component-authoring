@@ -114,6 +114,21 @@ function coerceControlValue(currentValue: unknown, rawValue: string): unknown {
   return rawValue;
 }
 
+function parseJsonDraft(rawValue: string): { success: true; value: unknown } | { success: false; message: string } {
+  try {
+    return { success: true, value: JSON.parse(rawValue) };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to parse JSON.';
+    return { success: false, message: `Invalid JSON: ${message}` };
+  }
+}
+
+function formatPropsParseError(error: { issues?: Array<{ path?: Array<string | number>; message?: string }> }): string {
+  const firstIssue = error.issues?.[0];
+  const path = firstIssue?.path?.length ? `${firstIssue.path.join('.')}: ` : '';
+  return `${path}${firstIssue?.message ?? 'Schema validation failed.'}`;
+}
+
 function normalizePreviewCaseName(name: string): string {
   const trimmed = name.trim();
   return trimmed.length > 0 ? trimmed : defaultPreviewCaseName;
@@ -167,21 +182,47 @@ function PreviewApp() {
   const [previewCaseName, setPreviewCaseName] = useState(defaultPreviewCaseName);
   const [exportStatus, setExportStatus] = useState('');
   const [jsonDrafts, setJsonDrafts] = useState<Record<string, string>>({});
+  const [jsonDraftErrors, setJsonDraftErrors] = useState<Record<string, string>>({});
 
   const updateInputProp = (key: string, rawValue: string) => {
     const currentValue = inputProps[key as keyof ComponentProps];
+    let nextValue: unknown;
+
     if (isJsonLikeValue(currentValue)) {
       setJsonDrafts((current) => ({ ...current, [key]: rawValue }));
+
+      const parsedJson = parseJsonDraft(rawValue);
+      if (!parsedJson.success) {
+        setJsonDraftErrors((current) => ({ ...current, [key]: parsedJson.message }));
+        return;
+      }
+      nextValue = parsedJson.value;
+    } else {
+      nextValue = coerceControlValue(currentValue, rawValue);
     }
-    setInputProps((current) => {
-      const currentValue = current[key as keyof ComponentProps];
-      const nextCandidate = {
+
+    const nextCandidate = {
+      ...inputProps,
+      [key]: nextValue,
+    };
+    const parsed = propsSchema.safeParse(nextCandidate);
+    if (!parsed.success) {
+      setJsonDraftErrors((current) => ({
         ...current,
-        [key]: coerceControlValue(currentValue, rawValue),
-      };
-      const parsed = propsSchema.safeParse(nextCandidate);
-      return parsed.success ? parsed.data : current;
+        [key]: `Invalid props: ${formatPropsParseError(parsed.error)}`,
+      }));
+      return;
+    }
+
+    setJsonDraftErrors((current) => {
+      if (!(key in current)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[key];
+      return next;
     });
+    setInputProps(parsed.data);
   };
 
   const exportPreviewCase = () => {
@@ -193,6 +234,7 @@ function PreviewApp() {
   const applyGeneratedPreviewCase = (previewCase: PromptFramePreviewCase<ComponentProps>) => {
     setInputProps(previewCase.props);
     setJsonDrafts({});
+    setJsonDraftErrors({});
     setPreviewSize({
       label: previewCase.name,
       width: previewCase.width,
@@ -378,64 +420,79 @@ function PreviewApp() {
         <section style={{ marginTop: 22 }}>
           <h2 style={{ fontSize: 16, margin: '0 0 12px', letterSpacing: 0 }}>Props</h2>
           <div style={{ display: 'grid', gap: 12 }}>
-            {Object.entries(inputProps).map(([key, value]) => (
-              <label key={key} style={{ display: 'grid', gap: 6, fontSize: 13 }}>
-                <span style={{ color: '#334155', fontWeight: 700 }}>{key}</span>
-                {isJsonLikeValue(value) ? (
-                  <textarea
-                    data-promptframe-prop-json={key}
-                    value={jsonDrafts[key] ?? formatJsonValue(value)}
-                    onChange={(event) => updateInputProp(key, event.currentTarget.value)}
-                    rows={5}
-                    spellCheck={false}
-                    style={{
-                      width: '100%',
-                      minWidth: 0,
-                      boxSizing: 'border-box',
-                      border: '1px solid #cbd5e1',
-                      borderRadius: 6,
-                      padding: '8px 10px',
-                      font: 'inherit',
-                      fontFamily:
-                        'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
-                      resize: 'vertical',
-                    }}
-                  />
-                ) : typeof value === 'boolean' ? (
-                  <select
-                    value={formatPrimitiveControlValue(value)}
-                    onChange={(event) => updateInputProp(key, event.currentTarget.value)}
-                    style={{
-                      width: '100%',
-                      minWidth: 0,
-                      boxSizing: 'border-box',
-                      border: '1px solid #cbd5e1',
-                      borderRadius: 6,
-                      padding: '8px 10px',
-                      font: 'inherit',
-                    }}
-                  >
-                    <option value="true">true</option>
-                    <option value="false">false</option>
-                  </select>
-                ) : (
-                  <input
-                    type={isColorValue(value) ? 'color' : typeof value === 'number' ? 'number' : 'text'}
-                    value={formatPrimitiveControlValue(value)}
-                    onChange={(event) => updateInputProp(key, event.currentTarget.value)}
-                    style={{
-                      width: '100%',
-                      minWidth: 0,
-                      boxSizing: 'border-box',
-                      border: '1px solid #cbd5e1',
-                      borderRadius: 6,
-                      padding: isColorValue(value) ? 4 : '8px 10px',
-                      font: 'inherit',
-                    }}
-                  />
-                )}
-              </label>
-            ))}
+            {Object.entries(inputProps).map(([key, value]) => {
+              const jsonDraftError = jsonDraftErrors[key];
+
+              return (
+                <label key={key} style={{ display: 'grid', gap: 6, fontSize: 13 }}>
+                  <span style={{ color: '#334155', fontWeight: 700 }}>{key}</span>
+                  {isJsonLikeValue(value) ? (
+                    <>
+                      <textarea
+                        data-promptframe-prop-json={key}
+                        value={jsonDrafts[key] ?? formatJsonValue(value)}
+                        onChange={(event) => updateInputProp(key, event.currentTarget.value)}
+                        rows={5}
+                        spellCheck={false}
+                        style={{
+                          width: '100%',
+                          minWidth: 0,
+                          boxSizing: 'border-box',
+                          border: jsonDraftError ? '1px solid #dc2626' : '1px solid #cbd5e1',
+                          borderRadius: 6,
+                          padding: '8px 10px',
+                          font: 'inherit',
+                          fontFamily:
+                            'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+                          resize: 'vertical',
+                        }}
+                      />
+                      {jsonDraftError ? (
+                        <span
+                          data-promptframe-json-draft-error={key}
+                          role="alert"
+                          style={{ color: '#b91c1c', fontSize: 12, lineHeight: 1.45 }}
+                        >
+                          {jsonDraftError}
+                        </span>
+                      ) : null}
+                    </>
+                  ) : typeof value === 'boolean' ? (
+                    <select
+                      value={formatPrimitiveControlValue(value)}
+                      onChange={(event) => updateInputProp(key, event.currentTarget.value)}
+                      style={{
+                        width: '100%',
+                        minWidth: 0,
+                        boxSizing: 'border-box',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: 6,
+                        padding: '8px 10px',
+                        font: 'inherit',
+                      }}
+                    >
+                      <option value="true">true</option>
+                      <option value="false">false</option>
+                    </select>
+                  ) : (
+                    <input
+                      type={isColorValue(value) ? 'color' : typeof value === 'number' ? 'number' : 'text'}
+                      value={formatPrimitiveControlValue(value)}
+                      onChange={(event) => updateInputProp(key, event.currentTarget.value)}
+                      style={{
+                        width: '100%',
+                        minWidth: 0,
+                        boxSizing: 'border-box',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: 6,
+                        padding: isColorValue(value) ? 4 : '8px 10px',
+                        font: 'inherit',
+                      }}
+                    />
+                  )}
+                </label>
+              );
+            })}
           </div>
         </section>
       </aside>

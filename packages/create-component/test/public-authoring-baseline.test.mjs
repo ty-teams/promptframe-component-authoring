@@ -20,7 +20,7 @@ test('public templates use the current PromptFrame authoring package baseline', 
 
 test('create package version is bumped for the next template release', async () => {
   const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'packages/create-component/package.json'), 'utf8'));
-  assert.equal(packageJson.version, '0.1.18');
+  assert.equal(packageJson.version, '0.1.19');
 });
 
 test('public templates expose PromptFrame CLI lifecycle scripts', async () => {
@@ -115,7 +115,7 @@ test('public authoring docs document the current npm registry baseline', async (
     'packages/create-component/templates/react-remotion/README.md',
   ]) {
     const text = await readFile(path.join(repoRoot, docPath), 'utf8');
-    assert.match(text, /Current npm registry baseline is[\s\S]*@promptframe\/cli@0\.1\.31[\s\S]*create-promptframe-component@0\.1\.18/, docPath);
+    assert.match(text, /Current npm registry baseline is[\s\S]*@promptframe\/cli@0\.1\.31[\s\S]*create-promptframe-component@0\.1\.19/, docPath);
     assert.doesNotMatch(text, /source candidate|source tree prepares|until Trusted Publishing completes/, docPath);
   }
 });
@@ -251,8 +251,12 @@ test('public templates provide JSON fallback controls for complex props', async 
     const previewRoot = await readFile(path.join(repoRoot, templateRoot, 'src/PreviewRoot.tsx'), 'utf8');
 
     assert.match(previewRoot, /isJsonLikeValue/, templateRoot);
+    assert.match(previewRoot, /jsonDraftErrors/, templateRoot);
     assert.match(previewRoot, /data-promptframe-prop-json/, templateRoot);
+    assert.match(previewRoot, /data-promptframe-json-draft-error/, templateRoot);
     assert.match(previewRoot, /JSON\.parse/, templateRoot);
+    assert.match(previewRoot, /Invalid JSON/, templateRoot);
+    assert.match(previewRoot, /Invalid props/, templateRoot);
     assert.doesNotMatch(previewRoot, /String\(value\)/, templateRoot);
   }
 });
