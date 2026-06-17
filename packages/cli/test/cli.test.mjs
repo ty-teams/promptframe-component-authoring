@@ -917,6 +917,54 @@ test('component commands use promptframerc endpoint and avoid owner override fie
   }
 });
 
+test('component commands reject secret-bearing promptframe project context', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-project-context-secret-'));
+  try {
+    const configPath = path.join(dir, 'promptframe-config.json');
+    await writeFile(configPath, JSON.stringify({
+      credential: {
+        contractVersion: 'cli-auth.v0.1.0',
+        endpoint: 'http://127.0.0.1:9/api-proxy',
+        tokenId: 'cli_token_self',
+        tokenKind: 'human',
+        tenantId: 'tenant-a',
+        projectId: 'project-a',
+        expiresAt: '2099-06-10T00:00:00.000Z',
+        tokenSecret: 'pf_self_secret',
+      },
+    }, null, 2));
+    await writeFile(path.join(dir, '.promptframerc'), JSON.stringify({
+      schemaVersion: 'promptframe-project-context.v0.1.0',
+      endpoint: 'http://127.0.0.1:9/api-proxy',
+      projectId: 'project-a',
+      projectNamespace: 'project-a',
+      tokenSecret: 'pf_must_not_live_in_repo',
+    }, null, 2));
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'component',
+        'list',
+        '--config',
+        configPath,
+        '--json',
+      ], { cwd: dir }),
+      (error) => {
+        assert.equal(error.code, 2);
+        const payload = JSON.parse(error.stderr);
+        assert.equal(payload.command, 'component');
+        assert.equal(payload.diagnostic.code, 'project_context.secret_field_forbidden');
+        assert.match(payload.failureReason, /tokenSecret/);
+        assert.equal(payload.failureReason.includes('pf_must_not_live_in_repo'), false);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('ci-token self-service commands create list and revoke without owner override fields', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-self-ci-token-'));
   const calls = [];
