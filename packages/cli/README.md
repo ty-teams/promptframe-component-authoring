@@ -18,6 +18,9 @@ npx promptframe login --endpoint https://your-promptframe.example/api-proxy
 npx promptframe whoami
 npx promptframe discovery
 npx promptframe project list
+npx promptframe init . --endpoint https://your-promptframe.example/api-proxy
+npx promptframe component create @project-namespace/my-component --display-name "My Component"
+npx promptframe component list
 npx promptframe ci-token create --name "GitHub release" --scope component.upload --scope component.status.read --upload-target marketplace_authoring
 npx promptframe upload ./component.zip --endpoint https://your-promptframe.example/api-proxy
 npx promptframe upload ./component.zip --target project_private_generation --endpoint https://your-promptframe.example/api-proxy
@@ -31,12 +34,30 @@ Endpoint resolution is explicit and public-safe:
 2. `PROMPTFRAME_API_BASE`
 3. `REMOTION_MEDIA_API_BASE`
 4. local config written by `promptframe configure --endpoint <url>`
+5. secret-free `.promptframerc` in the current directory or a parent directory
 
 The CLI embeds no production, Tailscale, local Docker, or private PromptFrame endpoint default. `dev .` starts the component template's local Vite preview shell. `check .` runs the local public policy checks, reports standard freshness for the selected upload lane, and emits deterministic `localReusability` diagnostics so low-reuse marketplace submissions are visible before upload. If no platform endpoint is available, `dev` / `check` return `standard.freshness.offline_degraded` as a warning instead of pretending the online standard was verified. `preview .` reads `src/preview-props.json` and reports the local preview envelope; `preview . --write-local-report` also validates saved `.promptframe/local-previews/*.json` cases and writes `.promptframe/local-previews/preview-report.json` for local author evidence. Neither command runs a custom runtime or replaces the platform iframe preview/render pipeline. Upload success only means the platform accepted the source package for trust-pipeline admission; use `status`, `reindex`, and `probe` to inspect build readiness, evidence/search readiness, and layout/security diagnostics.
 
 Formal platform endpoints use bearer authentication. `promptframe login --endpoint <url>` starts a one-time browser login code flow through `/cli/auth/device/start`: open the printed URL, approve the code in an already signed-in PromptFrame browser session, and the CLI polls `/cli/auth/device/poll` until it receives a short-lived human CLI token. The token secret is stored only in the local PromptFrame config file with `0600` permissions and is never printed to stdout or JSON output. `promptframe login --endpoint <url> --token <token>` remains supported for already issued CLI/CI tokens and verifies them through `/cli/auth/whoami`; `promptframe whoami` shows the current platform identity without printing the token secret; `promptframe logout` revokes the current token and clears the matching local credential. Dev-header flags such as `--auth-roles` and `--auth-permissions` are local smoke helpers only and are rejected before transport for formal non-local endpoints.
 
 The platform derives tenant, user, and project from the browser-approved CLI token or scoped CI token. External authors should not hand-enter internal IDs, and formal endpoints reject dev identity headers. `whoami --json` is the safe way to inspect the current token kind, display identity, endpoint, scopes, upload targets, and project binding without exposing the token secret. `discovery --json` reports endpoint capabilities, and `project list --json` / `project current --json` report accessible projects. Server-side project switching is not a public CLI contract yet, so the CLI does not pretend that local config can override the platform principal. CI tokens are project-scoped automation credentials; store them in secret managers such as GitHub Actions secrets, not in source files.
+
+Project context is a source-safe convenience file, not a credential. After login, run:
+
+```bash
+npx promptframe init . --endpoint "$PROMPTFRAME_API_BASE" --json
+```
+
+This writes `.promptframerc` with schema `promptframe-project-context.v0.1.0`, endpoint, tenant/project identifiers, project namespace, default upload target, and workspace config name. It must not contain token secrets, cookies, passwords, API keys, authorization headers, Auth0 subjects, or CI token material. Tokens stay in the local CLI config or CI secret store.
+
+Project components are explicit declarations owned by the platform Project:
+
+```bash
+npx promptframe component create @project-namespace/my-component --display-name "My Component" --json
+npx promptframe component list --json
+```
+
+`component create` and `component list` use bearer auth and do not send owner override fields. CI upload of an undeclared component can fail with `component_registry.not_declared`; create the component first from Admin Project Setup or with `promptframe component create`.
 
 After browser login, authors can create and manage their own project-scoped CI tokens without asking an administrator:
 
@@ -120,6 +141,9 @@ npx promptframe login --endpoint "$PROMPTFRAME_API_BASE" --json
 npx promptframe whoami --json
 npx promptframe discovery --json
 npx promptframe project list --json
+npx promptframe init . --json
+npx promptframe component list --json
+npx promptframe component create @marketplace/my-component --display-name "My Component" --json
 npx promptframe ci-token list --status active --json
 npx promptframe upload ./component.zip --endpoint "$PROMPTFRAME_API_BASE" --json
 npx promptframe status <buildId> --json
@@ -128,7 +152,7 @@ npx promptframe probe <buildId> --level standard --json
 npx promptframe logout --json
 ```
 
-Every JSON response includes a stable `diagnostic.code`, for example `standard.completed`, `doctor.completed`, `validate.completed`, `check.completed`, `upgrade.dry_run`, `dev.ready`, `preview.ready`, `preview.local_report.written`, `login.completed`, `whoami.completed`, `discovery.completed`, `project.list.completed`, `project.current.completed`, `ci_token.create.completed`, `ci_token.list.completed`, `ci_token.revoke.completed`, `logout.completed`, `upload.completed`, `status.completed`, `reindex.completed`, or `probe.completed`. `standard --json`, `validate --json`, and `check --json` report the active public security policy metadata; use `securityPolicyVersion`, `securityPolicyDigest`, and `securityEvaluatorMode` to compare release cohorts instead of scraping prose. `validate --json` and `check --json` also report `checkedRuleIds` for the public policy checks they ran. `upgrade --dry-run --json` reports package floor changes without writing files. `dev --dry-run --json` reports the local preview command without starting a long-running process. JSON failures include `failureReason` and `retryable`. Missing endpoint failures exit with code `2` and use `<command>.endpoint.missing`; missing credentials use `cli.auth.login_required`.
+Every JSON response includes a stable `diagnostic.code`, for example `standard.completed`, `doctor.completed`, `validate.completed`, `check.completed`, `upgrade.dry_run`, `dev.ready`, `preview.ready`, `preview.local_report.written`, `login.completed`, `whoami.completed`, `discovery.completed`, `project.list.completed`, `project.current.completed`, `project_context.init.completed`, `component.list.completed`, `component.create.completed`, `ci_token.create.completed`, `ci_token.list.completed`, `ci_token.revoke.completed`, `logout.completed`, `upload.completed`, `status.completed`, `reindex.completed`, or `probe.completed`. `standard --json`, `validate --json`, and `check --json` report the active public security policy metadata; use `securityPolicyVersion`, `securityPolicyDigest`, and `securityEvaluatorMode` to compare release cohorts instead of scraping prose. `validate --json` and `check --json` also report `checkedRuleIds` for the public policy checks they ran. `upgrade --dry-run --json` reports package floor changes without writing files. `dev --dry-run --json` reports the local preview command without starting a long-running process. JSON failures include `failureReason` and `retryable`. Missing endpoint failures exit with code `2` and use `<command>.endpoint.missing`; missing credentials use `cli.auth.login_required`.
 
 `standard --json` also returns `authoringStandardRelease` and `freshness`. These fields are the public SSOT for package floors, upload targets, standard source hash, and local freshness decisions:
 

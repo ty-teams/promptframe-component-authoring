@@ -76,6 +76,20 @@ const SECURITY_EVALUATOR_MODE = 'ast';
 const LOCKFILE_EVIDENCE_SCHEMA_VERSION = 'promptframe.lockfile-evidence.v0.1.0';
 const LOCKFILE_EVIDENCE_FILE_NAME = 'promptframe-lockfile-evidence.json';
 const PROMPTFRAME_WORKSPACE_SCHEMA_VERSION = 'promptframe-workspace.v0.1.0';
+const PROMPTFRAME_PROJECT_CONTEXT_SCHEMA_VERSION = 'promptframe-project-context.v0.1.0';
+const PROMPTFRAME_PROJECT_CONTEXT_FILE_NAME = '.promptframerc';
+const PROJECT_CONTEXT_FORBIDDEN_KEY_NAMES = new Set([
+  'apikey',
+  'auth0subject',
+  'authorization',
+  'citokensecret',
+  'clientsecret',
+  'cookie',
+  'oauthcode',
+  'password',
+  'token',
+  'tokensecret',
+]);
 const PACKAGE_MANAGER_LOCKFILE_NAMES = [
   'package-lock.json',
   'npm-shrinkwrap.json',
@@ -149,6 +163,16 @@ interface WorkspaceComponentReport extends WorkspaceComponentDeclaration {
   manifest: Record<string, string | undefined>;
 }
 
+interface PromptFrameProjectContext {
+  schemaVersion: typeof PROMPTFRAME_PROJECT_CONTEXT_SCHEMA_VERSION;
+  endpoint?: string;
+  tenantId?: string;
+  projectId?: string;
+  projectNamespace?: string;
+  defaultUploadTarget?: string;
+  workspaceConfig?: string;
+}
+
 class PromptFrameCliError extends Error {
   constructor(message: string, public readonly code: string, public readonly exitCode = 1) {
     super(message);
@@ -190,11 +214,18 @@ async function run(name: string, argv: string[]): Promise<void> {
     case 'discovery':
       await discovery(argv);
       break;
+    case 'init':
+      await initProjectContext(argv);
+      break;
     case 'project':
       await project(argv);
       break;
     case 'projects':
       await project(['list', ...argv]);
+      break;
+    case 'component':
+    case 'components':
+      await component(argv);
       break;
     case 'ci-token':
     case 'token':
@@ -1154,7 +1185,10 @@ const POSITIONAL_VALUE_FLAGS = new Set([
   '--auth-permissions',
   '--auth-roles',
   '--component-path',
+  '--component-id',
   '--config',
+  '--description',
+  '--display-name',
   '--endpoint',
   '--expires-at',
   '--host',
@@ -1167,6 +1201,9 @@ const POSITIONAL_VALUE_FLAGS = new Set([
   '--provider',
   '--provider-kind',
   '--provider-name',
+  '--project-id',
+  '--project-context',
+  '--project-namespace',
   '--reason',
   '--scope',
   '--session-id',
@@ -1176,6 +1213,7 @@ const POSITIONAL_VALUE_FLAGS = new Set([
   '--token',
   '--upload-target',
   '--user-id',
+  '--workspace-config',
   '--workspace-component',
 ]);
 
@@ -1461,6 +1499,61 @@ async function discovery(argv: string[]): Promise<void> {
   if (uploadTargets.length > 0) console.log(`Upload targets: ${uploadTargets.join(', ')}`);
 }
 
+async function initProjectContext(argv: string[]): Promise<void> {
+  const root = resolve(componentPathArg(argv) ?? '.');
+  const contextPath = join(root, PROMPTFRAME_PROJECT_CONTEXT_FILE_NAME);
+  if (existsSync(contextPath) && !hasFlag(argv, '--force')) {
+    fail(`PromptFrame project context already exists at ${contextPath}. Use --force to overwrite.`, 'project_context.exists', 2);
+  }
+  const endpoint = resolveEndpoint('init', argv);
+  const payload = await fetchProjects(endpoint, argv);
+  const projects = arrayValue(payload.projects).map((item) => asRecord(item)).filter((item): item is Record<string, unknown> => Boolean(item));
+  const requestedProjectId = valueAfter(argv, '--project-id');
+  const currentProjectId = requestedProjectId ?? stringValue(payload.currentProjectId);
+  const project = projects.find((item) =>
+    stringValue(item.projectId) === currentProjectId || (!requestedProjectId && item.isCurrent === true),
+  );
+  if (!project) {
+    fail(
+      requestedProjectId
+        ? `PromptFrame project ${requestedProjectId} is not available for this credential.`
+        : 'PromptFrame did not report an active project for this credential.',
+      'project_context.project_missing',
+      2,
+    );
+  }
+  const projectId = requiredArg(stringValue(project.projectId), 'PromptFrame project response did not include projectId.', 'project_context.project_id_missing');
+  const tenantId = stringValue(project.tenantId);
+  const context = buildProjectContext({
+    endpoint,
+    tenantId,
+    projectId,
+    projectNamespace: valueAfter(argv, '--project-namespace')
+      ?? stringValue(project.projectNamespace)
+      ?? normalizeProjectNamespace(projectId),
+    defaultUploadTarget: valueAfter(argv, '--target')
+      ?? valueAfter(argv, '--upload-target')
+      ?? 'marketplace_authoring',
+    workspaceConfig: valueAfter(argv, '--workspace-config') ?? 'promptframe-workspace.json',
+  });
+  mkdirSync(root, { recursive: true });
+  writeFileSync(contextPath, `${JSON.stringify(context, null, 2)}\n`, 'utf8');
+  const output = {
+    command: 'init',
+    endpoint,
+    contextPath,
+    context,
+    project,
+    diagnostic: diagnostic('project_context.init.completed', 'info', 'PromptFrame project context written.'),
+  };
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
+  console.log(`Wrote PromptFrame project context: ${contextPath}`);
+  console.log(`Project: ${projectId}`);
+}
+
 async function project(argv: string[]): Promise<void> {
   const subcommand = argv[0] && !argv[0].startsWith('--') ? argv[0] : 'list';
   if (subcommand !== 'list' && subcommand !== 'current') {
@@ -1525,6 +1618,89 @@ async function fetchProjects(endpoint: string, argv: string[]): Promise<Record<s
   return fetchJson(`${endpoint}/cli/projects`, {
     headers: buildRemoteHeaders(endpoint, argv),
   }, 'project.http.failed');
+}
+
+async function component(argv: string[]): Promise<void> {
+  const subcommand = argv[0] && !argv[0].startsWith('--') ? argv[0] : 'list';
+  const rest = argv.slice(argv[0] && !argv[0].startsWith('--') ? 1 : 0);
+  switch (subcommand) {
+    case 'list':
+      await componentList(rest);
+      break;
+    case 'create':
+      await componentCreate(rest);
+      break;
+    default:
+      fail(`Unknown component command: ${subcommand}`, 'component.command.unknown', 2);
+  }
+}
+
+async function componentList(argv: string[]): Promise<void> {
+  const endpoint = resolveEndpoint('component', argv);
+  const params = new URLSearchParams();
+  const componentId = valueAfter(argv, '--component-id') ?? positionalArgs(argv)[0];
+  if (componentId) params.set('componentId', assertComponentId(componentId));
+  const query = params.toString();
+  const payload = await fetchJson(`${endpoint}/components/marketplace/self/components${query ? `?${query}` : ''}`, {
+    headers: buildRemoteHeaders(endpoint, argv),
+  }, 'component.list.http.failed');
+  const output = {
+    ...payload,
+    command: 'component.list',
+    endpoint,
+    diagnostic: diagnostic('component.list.completed', 'info', 'PromptFrame project components listed.'),
+  };
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
+  for (const item of arrayValue(payload.declarations)) {
+    const declaration = asRecord(item);
+    if (declaration) printComponentDeclarationLine(declaration);
+  }
+}
+
+async function componentCreate(argv: string[]): Promise<void> {
+  const endpoint = resolveEndpoint('component', argv);
+  const componentId = assertComponentId(requiredArg(positionalArgs(argv)[0], 'component create requires <component-id>.', 'component.id_missing'));
+  const displayName = requiredArg(
+    valueAfter(argv, '--display-name') ?? valueAfter(argv, '--name') ?? displayNameFromComponentId(componentId),
+    'component create requires --display-name <name>.',
+    'component.display_name_missing',
+  );
+  const description = valueAfter(argv, '--description');
+  const payload = compactRecord({
+    componentId,
+    displayName,
+    description,
+  });
+  const response = await fetchJson(`${endpoint}/components/marketplace/self/components`, {
+    method: 'POST',
+    headers: {
+      ...buildRemoteHeaders(endpoint, argv),
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  }, 'component.create.http.failed');
+  const output = {
+    ...response,
+    command: 'component.create',
+    endpoint,
+    diagnostic: diagnostic('component.create.completed', 'info', 'PromptFrame project component declared.'),
+  };
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
+  const declaration = asRecord(response.declaration);
+  if (declaration) printComponentDeclarationLine(declaration);
+}
+
+function printComponentDeclarationLine(declaration: Record<string, unknown>): void {
+  const componentId = stringValue(declaration.componentId) ?? 'unknown';
+  const status = stringValue(declaration.status) ?? 'unknown';
+  const displayName = stringValue(declaration.displayName) ?? componentId;
+  console.log(`${componentId}\t${status}\t${displayName}`);
 }
 
 function printProjectLine(project: Record<string, unknown>, current: boolean): void {
@@ -2075,13 +2251,17 @@ jobs:
 
 function resolveEndpoint(commandName: string, argv: string[]): string {
   const config = readConfig(argv);
+  const credential = asRecord(config.credential);
+  const projectContext = readProjectContext(argv);
   const endpoint = valueAfter(argv, '--endpoint')
     ?? process.env.PROMPTFRAME_API_BASE
     ?? process.env.REMOTION_MEDIA_API_BASE
-    ?? stringValue(config.endpoint);
+    ?? stringValue(config.endpoint)
+    ?? stringValue(credential?.endpoint)
+    ?? projectContext?.endpoint;
   if (!endpoint) {
     fail(
-      `${commandName} requires --endpoint, PROMPTFRAME_API_BASE, REMOTION_MEDIA_API_BASE, or local config. No default production endpoint is embedded in the public CLI.`,
+      `${commandName} requires --endpoint, PROMPTFRAME_API_BASE, REMOTION_MEDIA_API_BASE, local config, or .promptframerc. No default production endpoint is embedded in the public CLI.`,
       `${commandName}.endpoint.missing`,
       2,
     );
@@ -2091,10 +2271,14 @@ function resolveEndpoint(commandName: string, argv: string[]): string {
 
 function resolveOptionalEndpoint(argv: string[]): string | undefined {
   const config = readConfig(argv);
+  const credential = asRecord(config.credential);
+  const projectContext = readProjectContext(argv);
   const endpoint = valueAfter(argv, '--endpoint')
     ?? stringValue(process.env.PROMPTFRAME_API_BASE)
     ?? stringValue(process.env.REMOTION_MEDIA_API_BASE)
-    ?? stringValue(config.endpoint);
+    ?? stringValue(config.endpoint)
+    ?? stringValue(credential?.endpoint)
+    ?? projectContext?.endpoint;
   return endpoint ? normalizeEndpoint(endpoint) : undefined;
 }
 
@@ -2294,6 +2478,131 @@ function writeConfig(argv: string[], config: Record<string, unknown>): void {
 
 function resolveConfigPath(argv: string[]): string {
   return resolve(valueAfter(argv, '--config') ?? process.env.PROMPTFRAME_CONFIG ?? join(os.homedir(), '.promptframe', 'component-authoring.json'));
+}
+
+function readProjectContext(argv: string[]): PromptFrameProjectContext | undefined {
+  const explicitPath = valueAfter(argv, '--project-context');
+  const contextPath = explicitPath
+    ? resolve(explicitPath)
+    : findProjectContextPath(process.cwd());
+  if (!contextPath || !existsSync(contextPath)) return undefined;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(contextPath, 'utf8'));
+  } catch {
+    fail(`PromptFrame project context is not valid JSON: ${contextPath}`, 'project_context.invalid_json', 2);
+  }
+  return parseProjectContext(raw, contextPath);
+}
+
+function findProjectContextPath(startDir: string): string | undefined {
+  let current = resolve(startDir);
+  for (;;) {
+    const candidate = join(current, PROMPTFRAME_PROJECT_CONTEXT_FILE_NAME);
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
+}
+
+function parseProjectContext(value: unknown, sourcePath: string): PromptFrameProjectContext {
+  const record = asRecord(value);
+  if (!record) {
+    fail(`PromptFrame project context must be a JSON object: ${sourcePath}`, 'project_context.invalid', 2);
+  }
+  assertProjectContextSecretFree(record, sourcePath);
+  const schemaVersion = stringValue(record.schemaVersion);
+  if (schemaVersion && schemaVersion !== PROMPTFRAME_PROJECT_CONTEXT_SCHEMA_VERSION) {
+    fail(
+      `Unsupported PromptFrame project context schemaVersion ${schemaVersion}. Expected ${PROMPTFRAME_PROJECT_CONTEXT_SCHEMA_VERSION}.`,
+      'project_context.schema_unsupported',
+      2,
+    );
+  }
+  return {
+    schemaVersion: PROMPTFRAME_PROJECT_CONTEXT_SCHEMA_VERSION,
+    ...(stringValue(record.endpoint) ? { endpoint: normalizeEndpoint(stringValue(record.endpoint)!) } : {}),
+    ...(stringValue(record.tenantId) ? { tenantId: stringValue(record.tenantId)! } : {}),
+    ...(stringValue(record.projectId) ? { projectId: stringValue(record.projectId)! } : {}),
+    ...(stringValue(record.projectNamespace) ? { projectNamespace: stringValue(record.projectNamespace)! } : {}),
+    ...(stringValue(record.defaultUploadTarget) ? { defaultUploadTarget: stringValue(record.defaultUploadTarget)! } : {}),
+    ...(stringValue(record.workspaceConfig) ? { workspaceConfig: stringValue(record.workspaceConfig)! } : {}),
+  };
+}
+
+function buildProjectContext(input: {
+  endpoint: string;
+  tenantId?: string;
+  projectId: string;
+  projectNamespace?: string;
+  defaultUploadTarget?: string;
+  workspaceConfig?: string;
+}): PromptFrameProjectContext {
+  const context: PromptFrameProjectContext = {
+    schemaVersion: PROMPTFRAME_PROJECT_CONTEXT_SCHEMA_VERSION,
+    endpoint: normalizeEndpoint(input.endpoint),
+    ...(input.tenantId ? { tenantId: input.tenantId } : {}),
+    projectId: input.projectId,
+    ...(input.projectNamespace ? { projectNamespace: normalizeProjectNamespace(input.projectNamespace) } : {}),
+    ...(input.defaultUploadTarget ? { defaultUploadTarget: input.defaultUploadTarget } : {}),
+    ...(input.workspaceConfig ? { workspaceConfig: input.workspaceConfig } : {}),
+  };
+  assertProjectContextSecretFree(context as unknown as Record<string, unknown>, PROMPTFRAME_PROJECT_CONTEXT_FILE_NAME);
+  return context;
+}
+
+function assertProjectContextSecretFree(value: unknown, sourcePath: string): void {
+  if (!value || typeof value !== 'object') return;
+  if (Array.isArray(value)) {
+    for (const item of value) assertProjectContextSecretFree(item, sourcePath);
+    return;
+  }
+  for (const [key, child] of Object.entries(value)) {
+    const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (PROJECT_CONTEXT_FORBIDDEN_KEY_NAMES.has(normalizedKey)) {
+      fail(
+        `PromptFrame project context must not contain secret-bearing field "${key}" in ${sourcePath}. Store tokens in the local CLI config or CI secret store instead.`,
+        'project_context.secret_field_forbidden',
+        2,
+      );
+    }
+    assertProjectContextSecretFree(child, sourcePath);
+  }
+}
+
+function assertComponentId(value: string): string {
+  if (!/^@[a-z0-9][a-z0-9-]{1,62}\/[a-z0-9][a-z0-9-]{1,62}$/.test(value)) {
+    fail(
+      `Invalid component id "${value}". Expected @project-namespace/component-slug.`,
+      'component.id_invalid',
+      2,
+    );
+  }
+  return value;
+}
+
+function normalizeProjectNamespace(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/^@/, '')
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 63);
+  if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(normalized)) {
+    fail(`Invalid project namespace "${value}".`, 'project_context.namespace_invalid', 2);
+  }
+  return normalized;
+}
+
+function displayNameFromComponentId(componentId: string): string {
+  const slug = componentId.split('/').at(-1) ?? componentId;
+  return slug
+    .split('-')
+    .filter(Boolean)
+    .map((part) => `${part[0]?.toUpperCase() ?? ''}${part.slice(1)}`)
+    .join(' ');
 }
 
 async function fetchJson(url: string, init: RequestInit, code: string): Promise<Record<string, unknown>> {
@@ -3171,13 +3480,15 @@ Commands:
   whoami                            Show the current PromptFrame CLI identity
   logout                            Revoke the current CLI token and clear local config
   discovery                         Fetch platform endpoint and self-service capabilities
+  init [dir]                        Write secret-free .promptframerc project context
   project list|current              List accessible projects or show the active project
+  component list|create             List or declare Project-scoped components
   ci-token create|list|revoke       Manage self-service CI tokens for the current project
   setup-ci [dir] --provider github   Write a GitHub Actions workflow skeleton
   configure --endpoint <url>       Write local CLI endpoint/context config
 
 Endpoint resolution:
-  --endpoint, PROMPTFRAME_API_BASE, REMOTION_MEDIA_API_BASE, then local config.
+  --endpoint, PROMPTFRAME_API_BASE, REMOTION_MEDIA_API_BASE, local config, then .promptframerc.
   The public CLI embeds no production/private endpoint defaults.
 Auth context:
   promptframe login, PROMPTFRAME_CI_TOKEN, or PROMPTFRAME_CLI_TOKEN for formal endpoints.

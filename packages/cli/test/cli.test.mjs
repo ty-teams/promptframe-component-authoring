@@ -681,6 +681,242 @@ test('discovery and project commands fetch self-service context without owner ov
   }
 });
 
+test('init writes a secret-free promptframe project context from current project', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-project-context-'));
+  const calls = [];
+  const server = await createServer(async (req, res) => {
+    calls.push({
+      method: req.method,
+      url: req.url,
+      authorization: req.headers.authorization,
+      tenantId: req.headers['x-tenant-id'],
+      userId: req.headers['x-user-id'],
+      projectId: req.headers['x-project-id'],
+    });
+    if (req.url === '/cli/projects') {
+      assert.equal(req.method, 'GET');
+      assert.equal(req.headers.authorization, 'Bearer pf_self_secret');
+      writeJson(res, {
+        contractVersion: 'cli-auth.v0.1.0',
+        currentProjectId: 'project-a',
+        selectionRequired: false,
+        projects: [
+          {
+            tenantId: 'tenant-a',
+            projectId: 'project-a',
+            projectNamespace: 'project-a',
+            name: 'Project A',
+            visibility: 'shared',
+            role: 'editor',
+            source: 'invite',
+            status: 'active',
+            isCurrent: true,
+          },
+        ],
+      });
+      return;
+    }
+    writeJson(res, { success: false, error: `unexpected path: ${req.url}` }, 404);
+  });
+  try {
+    const configPath = path.join(dir, 'promptframe-config.json');
+    await writeFile(configPath, JSON.stringify({
+      credential: {
+        contractVersion: 'cli-auth.v0.1.0',
+        endpoint: server.url,
+        tokenId: 'cli_token_self',
+        tokenKind: 'human',
+        tenantId: 'tenant-a',
+        projectId: 'project-a',
+        expiresAt: '2099-06-10T00:00:00.000Z',
+        tokenSecret: 'pf_self_secret',
+      },
+    }, null, 2));
+
+    const payload = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'init',
+      dir,
+      '--endpoint',
+      server.url,
+      '--config',
+      configPath,
+      '--json',
+    ])).stdout);
+
+    assert.equal(payload.command, 'init');
+    assert.equal(payload.contextPath, path.join(dir, '.promptframerc'));
+    assert.equal(payload.project.projectId, 'project-a');
+    assert.equal(payload.diagnostic.code, 'project_context.init.completed');
+
+    const promptframeRc = JSON.parse(await readFile(path.join(dir, '.promptframerc'), 'utf8'));
+    assert.deepEqual(promptframeRc, {
+      schemaVersion: 'promptframe-project-context.v0.1.0',
+      endpoint: server.url,
+      tenantId: 'tenant-a',
+      projectId: 'project-a',
+      projectNamespace: 'project-a',
+      defaultUploadTarget: 'marketplace_authoring',
+      workspaceConfig: 'promptframe-workspace.json',
+    });
+    assert.equal(JSON.stringify(promptframeRc).includes('pf_self_secret'), false);
+    assert.equal(JSON.stringify(promptframeRc).includes('tokenSecret'), false);
+    for (const call of calls) {
+      assert.equal(call.tenantId, undefined);
+      assert.equal(call.userId, undefined);
+      assert.equal(call.projectId, undefined);
+    }
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('component commands use promptframerc endpoint and avoid owner override fields', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-component-commands-'));
+  const calls = [];
+  const server = await createServer(async (req, res) => {
+    const body = await readRequestBody(req);
+    calls.push({
+      method: req.method,
+      url: req.url,
+      authorization: req.headers.authorization,
+      tenantId: req.headers['x-tenant-id'],
+      userId: req.headers['x-user-id'],
+      projectId: req.headers['x-project-id'],
+      body,
+    });
+    if (req.url === '/components/marketplace/self/components' && req.method === 'POST') {
+      assert.equal(req.headers.authorization, 'Bearer pf_self_secret');
+      const payload = JSON.parse(body.toString('utf8'));
+      assert.deepEqual(payload, {
+        componentId: '@project-a/hero-panel',
+        displayName: 'Hero Panel',
+        description: 'Reusable hero panel for launch videos.',
+      });
+      writeJson(res, {
+        success: true,
+        declaration: {
+          contractVersion: 'component-project-registry.v0.1.0',
+          tenantId: 'tenant-a',
+          projectId: 'project-a',
+          userId: 'user-a',
+          projectNamespace: 'project-a',
+          componentId: '@project-a/hero-panel',
+          componentSlug: 'hero-panel',
+          displayName: 'Hero Panel',
+          description: 'Reusable hero panel for launch videos.',
+          status: 'declared',
+          createdAt: '2026-06-17T00:00:00.000Z',
+          updatedAt: '2026-06-17T00:00:00.000Z',
+        },
+      }, 201);
+      return;
+    }
+    if (req.url === '/components/marketplace/self/components' && req.method === 'GET') {
+      assert.equal(req.headers.authorization, 'Bearer pf_self_secret');
+      writeJson(res, {
+        success: true,
+        declarations: [
+          {
+            contractVersion: 'component-project-registry.v0.1.0',
+            tenantId: 'tenant-a',
+            projectId: 'project-a',
+            userId: 'user-a',
+            projectNamespace: 'project-a',
+            componentId: '@project-a/hero-panel',
+            componentSlug: 'hero-panel',
+            displayName: 'Hero Panel',
+            status: 'declared',
+            createdAt: '2026-06-17T00:00:00.000Z',
+            updatedAt: '2026-06-17T00:00:00.000Z',
+          },
+        ],
+        components: [],
+        items: [],
+        builds: [],
+        page: {
+          cursor: null,
+          nextCursor: null,
+          hasNextPage: false,
+          pageSize: 25,
+          totalCount: 0,
+        },
+      });
+      return;
+    }
+    writeJson(res, { success: false, error: `unexpected path: ${req.method} ${req.url}` }, 404);
+  });
+  try {
+    const configPath = path.join(dir, 'promptframe-config.json');
+    await writeFile(configPath, JSON.stringify({
+      credential: {
+        contractVersion: 'cli-auth.v0.1.0',
+        endpoint: server.url,
+        tokenId: 'cli_token_self',
+        tokenKind: 'human',
+        tenantId: 'tenant-a',
+        projectId: 'project-a',
+        expiresAt: '2099-06-10T00:00:00.000Z',
+        tokenSecret: 'pf_self_secret',
+      },
+    }, null, 2));
+    await writeFile(path.join(dir, '.promptframerc'), JSON.stringify({
+      schemaVersion: 'promptframe-project-context.v0.1.0',
+      endpoint: server.url,
+      tenantId: 'tenant-a',
+      projectId: 'project-a',
+      projectNamespace: 'project-a',
+      defaultUploadTarget: 'marketplace_authoring',
+      workspaceConfig: 'promptframe-workspace.json',
+    }, null, 2));
+
+    const created = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'component',
+      'create',
+      '@project-a/hero-panel',
+      '--display-name',
+      'Hero Panel',
+      '--description',
+      'Reusable hero panel for launch videos.',
+      '--config',
+      configPath,
+      '--json',
+    ], { cwd: dir })).stdout);
+    assert.equal(created.command, 'component.create');
+    assert.equal(created.endpoint, server.url);
+    assert.equal(created.declaration.componentId, '@project-a/hero-panel');
+    assert.equal(JSON.stringify(created).includes('pf_self_secret'), false);
+
+    const listed = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'component',
+      'list',
+      '--config',
+      configPath,
+      '--json',
+    ], { cwd: dir })).stdout);
+    assert.equal(listed.command, 'component.list');
+    assert.equal(listed.endpoint, server.url);
+    assert.deepEqual(listed.declarations.map((item) => item.componentId), ['@project-a/hero-panel']);
+    assert.equal(JSON.stringify(listed).includes('pf_self_secret'), false);
+
+    assert.deepEqual(calls.map((call) => `${call.method} ${call.url}`), [
+      'POST /components/marketplace/self/components',
+      'GET /components/marketplace/self/components',
+    ]);
+    for (const call of calls) {
+      assert.equal(call.tenantId, undefined);
+      assert.equal(call.userId, undefined);
+      assert.equal(call.projectId, undefined);
+    }
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('ci-token self-service commands create list and revoke without owner override fields', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-self-ci-token-'));
   const calls = [];

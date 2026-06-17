@@ -61,11 +61,17 @@ To upload, the caller must provide the current platform endpoint:
 ```bash
 npx promptframe login --endpoint <promptframe-api-base>
 npx promptframe whoami
+npx promptframe init . --endpoint <promptframe-api-base>
+npx promptframe component create @project-namespace/my-component --display-name "My Component"
 npx promptframe upload . --endpoint <promptframe-api-base>
 npx promptframe status <buildId> --endpoint <promptframe-api-base>
 ```
 
-Do not guess private service addresses. Endpoint resolution is explicit: command `--endpoint`, then `PROMPTFRAME_API_BASE`, then `REMOTION_MEDIA_API_BASE`, then local config from `promptframe configure --endpoint <url>`. If no endpoint is provided, finish local video preview, validation, and local preview envelope checks, then report the missing endpoint.
+Do not guess private service addresses. Endpoint resolution is explicit: command `--endpoint`, then `PROMPTFRAME_API_BASE`, then `REMOTION_MEDIA_API_BASE`, then local config from `promptframe configure --endpoint <url>`, then secret-free `.promptframerc`. If no endpoint is provided, finish local video preview, validation, and local preview envelope checks, then report the missing endpoint.
+
+`promptframe init . --endpoint <promptframe-api-base>` writes `.promptframerc` with schema `promptframe-project-context.v0.1.0`: endpoint, tenant/project ids, project namespace, default upload target, and workspace config name. This file is not a credential. Never put token secrets, cookies, passwords, API keys, authorization headers, Auth0 subjects, or CI token material into `.promptframerc`; use local CLI config or CI secrets for credentials.
+
+Project components are explicit platform declarations. Before CI upload, run `promptframe component create @project-namespace/component-slug --display-name "Name" --json` or use Admin Project Setup. `component create` / `component list` use bearer auth and do not send `tenantId`, `userId`, or `projectId` override fields. If upload returns `component_registry.not_declared`, declare the component first and retry.
 
 Formal platform identity comes from browser Device Code login or a scoped token. Do not hand-fill `tenantId`, `userId`, or `projectId`; formal endpoints reject dev identity headers. Use `promptframe whoami --json` to inspect the current token kind, endpoint, scopes, and project binding without printing the token secret. Store CI token secrets only in secret managers such as GitHub Actions secrets.
 
@@ -89,6 +95,8 @@ npm install
 npx promptframe check . --json
 npx promptframe preview .
 npx promptframe login --endpoint <promptframe-api-base>
+npx promptframe init . --endpoint <promptframe-api-base>
+npx promptframe component create @project-namespace/my-component --display-name "My Component" --json
 npx promptframe upload . --endpoint <promptframe-api-base> --json
 npx promptframe status <buildId> --endpoint <promptframe-api-base> --json
 ```
@@ -127,6 +135,7 @@ npx -y create-promptframe-component@latest ./component-workspace \
 cd component-workspace
 npx promptframe workspace validate . --json
 npx promptframe check . --workspace-component @marketplace/image-particle-remotion --json
+npx promptframe component create @marketplace/image-particle-remotion --display-name "Image Particle Remotion" --json
 npx promptframe setup-ci . --provider github --workspace
 npx promptframe upload . --workspace-component @marketplace/image-particle-remotion --endpoint <promptframe-api-base> --json
 ```
