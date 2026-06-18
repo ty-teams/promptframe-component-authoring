@@ -2919,16 +2919,29 @@ function assertPreviewPropsMatchStaticSchema(
 }
 
 function extractStaticZodObjectKeys(source: string): Set<string> {
-  const marker = 'z.object';
-  const markerIndex = source.indexOf(marker);
-  if (markerIndex < 0) return new Set();
-  const openParen = source.indexOf('(', markerIndex + marker.length);
-  if (openParen < 0) return new Set();
-  const openBrace = nextNonWhitespaceIndex(source, openParen + 1);
-  if (openBrace < 0 || source[openBrace] !== '{') return new Set();
+  const openBrace = findPropsSchemaZodObjectOpenBrace(source) ?? findFirstZodObjectOpenBrace(source);
+  if (openBrace < 0) return new Set();
   const closeBrace = findMatchingBrace(source, openBrace);
   if (closeBrace < 0) return new Set();
   return collectTopLevelObjectKeys(source.slice(openBrace + 1, closeBrace));
+}
+
+function findPropsSchemaZodObjectOpenBrace(source: string): number | undefined {
+  const propsSchemaMatch = /\bpropsSchema\s*=\s*z\s*\.\s*object\s*\(/.exec(source);
+  if (!propsSchemaMatch) return undefined;
+  const openParen = source.indexOf('(', propsSchemaMatch.index);
+  if (openParen < 0) return undefined;
+  const openBrace = nextNonWhitespaceIndex(source, openParen + 1);
+  return openBrace >= 0 && source[openBrace] === '{' ? openBrace : undefined;
+}
+
+function findFirstZodObjectOpenBrace(source: string): number {
+  const objectCallMatch = /\bz\s*\.\s*object\s*\(/.exec(source);
+  if (!objectCallMatch) return -1;
+  const openParen = source.indexOf('(', objectCallMatch.index);
+  if (openParen < 0) return -1;
+  const openBrace = nextNonWhitespaceIndex(source, openParen + 1);
+  return openBrace >= 0 && source[openBrace] === '{' ? openBrace : -1;
 }
 
 function nextNonWhitespaceIndex(source: string, start: number): number {

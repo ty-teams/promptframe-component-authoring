@@ -2970,6 +2970,50 @@ test('validate rejects preview props fields that are not declared in schema.ts',
   }
 });
 
+test('validate compares preview props against propsSchema when helper z.object definitions appear first', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-preview-schema-root-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(componentDir, 'src/schema.ts'), [
+      "import { z } from 'zod';",
+      'const dataPoint = z.object({',
+      '  label: z.string(),',
+      '  value: z.number(),',
+      '});',
+      'export const propsSchema = z.object({',
+      '  title: z.string(),',
+      '  dataPoints: z.array(dataPoint),',
+      '});',
+      'export type ComponentProps = z.infer<typeof propsSchema>;',
+    ].join('\n'));
+    await writeFile(path.join(componentDir, 'src/preview-props.json'), JSON.stringify({
+      durationFrames: 60,
+      fps: 30,
+      width: 1280,
+      height: 720,
+      props: {
+        title: 'Known title',
+        dataPoints: [
+          { label: 'A', value: 1 },
+        ],
+      },
+    }, null, 2));
+
+    const result = await execFileAsync('node', [
+      cliPath,
+      'validate',
+      componentDir,
+      '--json',
+    ]);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.command, 'validate');
+    assert.equal(payload.diagnostic.code, 'validate.completed');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('validate rejects deterministic source and security policy violations', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-source-policy-'));
   try {
