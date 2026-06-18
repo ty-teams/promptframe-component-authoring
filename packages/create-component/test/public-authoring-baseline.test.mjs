@@ -49,6 +49,9 @@ test('public templates include GitHub CI workflow skeleton without private endpo
     assert.match(workflow, /\$\{\{ vars\.PROMPTFRAME_API_BASE \}\}/, workflowPath);
     assert.match(workflow, /promptframe check \. --json/, workflowPath);
     assert.match(workflow, /promptframe upload \. --endpoint "\$PROMPTFRAME_API_BASE" --json/, workflowPath);
+    assert.match(workflow, /promptframe status "\$BUILD_ID" --endpoint "\$PROMPTFRAME_API_BASE" --json --fail-on-build-failed/, workflowPath);
+    assert.match(workflow, /::error title=PromptFrame platform build failed::/, workflowPath);
+    assert.match(workflow, /exit "\$STATUS_EXIT"/, workflowPath);
     assert.match(workflow, /promptframe status "\$BUILD_ID" --endpoint "\$PROMPTFRAME_API_BASE" --json/, workflowPath);
     assert.doesNotMatch(workflow, /pf_(?:ci|human|cli)_[A-Za-z0-9_-]+/, workflowPath);
     assert.doesNotMatch(workflow, /promptframe-beta|tail0fae3a|100\.\d+\.\d+\.\d+/, workflowPath);

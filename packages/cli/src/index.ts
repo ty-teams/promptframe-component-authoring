@@ -1255,9 +1255,12 @@ async function showStatus(argv: string[]): Promise<void> {
   };
   if (hasFlag(argv, '--json')) {
     printJson(output);
-    return;
+  } else {
+    printBuildSummary(output);
   }
-  printBuildSummary(output);
+  if (hasFlag(argv, '--fail-on-build-failed')) {
+    failIfBuildFailed(output);
+  }
 }
 
 async function reindexEvidence(argv: string[]): Promise<void> {
@@ -2089,11 +2092,28 @@ ${matrixItems}
             echo "PromptFrame upload response did not include a build id." >&2
             exit 1
           fi
-          npx promptframe status "$BUILD_ID" --endpoint "$PROMPTFRAME_API_BASE" --json | tee promptframe-status.json
+          set +e
+          npx promptframe status "$BUILD_ID" --endpoint "$PROMPTFRAME_API_BASE" --json --fail-on-build-failed | tee promptframe-status.json
+          STATUS_EXIT=\${PIPESTATUS[0]}
+          set -e
           node <<'NODE'
           const fs = require('node:fs');
           const payload = JSON.parse(fs.readFileSync('promptframe-upload.json', 'utf8'));
           const status = JSON.parse(fs.readFileSync('promptframe-status.json', 'utf8'));
+          const build = status.build || {};
+          const buildId = payload.jobId || payload.buildId || build.buildId || 'unknown';
+          const buildStatus = String(build.status || status.status || payload.status || 'queued');
+          const diagnostics = Array.isArray(build.diagnostics) ? build.diagnostics : [];
+          const firstError = diagnostics.find((item) => item && item.severity === 'error') || diagnostics[0] || {};
+          if (['failed', 'cancelled', 'canceled'].includes(buildStatus.toLowerCase())) {
+            const message = [
+              \`buildId=\${buildId}\`,
+              \`status=\${buildStatus}\`,
+              firstError.code ? \`code=\${firstError.code}\` : '',
+              firstError.message ? \`message=\${String(firstError.message).replace(/\\r?\\n/g, ' ').slice(0, 300)}\` : '',
+            ].filter(Boolean).join(' ');
+            console.log(\`::error title=PromptFrame platform build failed::\${message}\`);
+          }
           const summary = process.env.GITHUB_STEP_SUMMARY;
           if (summary) {
             fs.appendFileSync(summary, [
@@ -2102,12 +2122,15 @@ ${matrixItems}
               \`- Component ID: \\\`\${process.env.COMPONENT_ID || payload.source?.workspaceComponentId || 'unknown'}\\\`\`,
               \`- Component path: \\\`\${process.env.COMPONENT_PATH || payload.source?.componentPath || 'unknown'}\\\`\`,
               \`- Diagnostic: \\\`\${payload.diagnostic?.code || 'unknown'}\\\`\`,
-              \`- Build ID: \\\`\${payload.jobId || payload.buildId || 'unknown'}\\\`\`,
-              \`- Admission status: \\\`\${status.build?.status || status.status || payload.status || 'queued'}\\\`\`,
+              \`- Build ID: \\\`\${buildId}\\\`\`,
+              \`- Platform build status: \\\`\${buildStatus}\\\`\`,
+              firstError.code ? \`- Top diagnostic: \\\`\${firstError.code}\\\`\` : '- Top diagnostic: none',
+              firstError.message ? \`- Message: \${String(firstError.message).replace(/\\r?\\n/g, ' ').slice(0, 300)}\` : '',
               '',
-            ].join('\\n'));
+            ].filter(Boolean).join('\\n'));
           }
           NODE
+          exit "$STATUS_EXIT"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -2222,23 +2245,43 @@ jobs:
             echo "PromptFrame upload response did not include a build id." >&2
             exit 1
           fi
-          npx promptframe status "$BUILD_ID" --endpoint "$PROMPTFRAME_API_BASE" --json | tee promptframe-status.json
+          set +e
+          npx promptframe status "$BUILD_ID" --endpoint "$PROMPTFRAME_API_BASE" --json --fail-on-build-failed | tee promptframe-status.json
+          STATUS_EXIT=\${PIPESTATUS[0]}
+          set -e
           node <<'NODE'
           const fs = require('node:fs');
           const payload = JSON.parse(fs.readFileSync('promptframe-upload.json', 'utf8'));
           const status = JSON.parse(fs.readFileSync('promptframe-status.json', 'utf8'));
+          const build = status.build || {};
+          const buildId = payload.jobId || payload.buildId || build.buildId || 'unknown';
+          const buildStatus = String(build.status || status.status || payload.status || 'queued');
+          const diagnostics = Array.isArray(build.diagnostics) ? build.diagnostics : [];
+          const firstError = diagnostics.find((item) => item && item.severity === 'error') || diagnostics[0] || {};
+          if (['failed', 'cancelled', 'canceled'].includes(buildStatus.toLowerCase())) {
+            const message = [
+              \`buildId=\${buildId}\`,
+              \`status=\${buildStatus}\`,
+              firstError.code ? \`code=\${firstError.code}\` : '',
+              firstError.message ? \`message=\${String(firstError.message).replace(/\\r?\\n/g, ' ').slice(0, 300)}\` : '',
+            ].filter(Boolean).join(' ');
+            console.log(\`::error title=PromptFrame platform build failed::\${message}\`);
+          }
           const summary = process.env.GITHUB_STEP_SUMMARY;
           if (summary) {
             fs.appendFileSync(summary, [
               '### PromptFrame upload',
               '',
               \`- Diagnostic: \\\`\${payload.diagnostic?.code || 'unknown'}\\\`\`,
-              \`- Build ID: \\\`\${payload.jobId || payload.buildId || 'unknown'}\\\`\`,
-              \`- Admission status: \\\`\${status.build?.status || status.status || payload.status || 'queued'}\\\`\`,
+              \`- Build ID: \\\`\${buildId}\\\`\`,
+              \`- Platform build status: \\\`\${buildStatus}\\\`\`,
+              firstError.code ? \`- Top diagnostic: \\\`\${firstError.code}\\\`\` : '- Top diagnostic: none',
+              firstError.message ? \`- Message: \${String(firstError.message).replace(/\\r?\\n/g, ' ').slice(0, 300)}\` : '',
               '',
-            ].join('\\n'));
+            ].filter(Boolean).join('\\n'));
           }
           NODE
+          exit "$STATUS_EXIT"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -3420,6 +3463,32 @@ function printBuildSummary(payload: Record<string, unknown>): void {
   }
 }
 
+function failIfBuildFailed(payload: Record<string, unknown>): void {
+  const status = getBuildStatus(payload);
+  if (!status || !['failed', 'cancelled', 'canceled'].includes(status.toLowerCase())) return;
+  const buildId = getBuildId(payload) ?? 'unknown';
+  const diagnosticItem = firstBuildDiagnostic(payload);
+  const diagnosticText = diagnosticItem
+    ? `${stringValue(diagnosticItem.code) ?? 'unknown'}: ${stringValue(diagnosticItem.message) ?? ''}`.trim()
+    : 'no diagnostic';
+  fail(
+    `PromptFrame platform build failed: buildId=${buildId} status=${status} diagnostic=${diagnosticText}`,
+    'status.build.failed',
+    1,
+  );
+}
+
+function getBuildStatus(payload: Record<string, unknown>): string | undefined {
+  return stringValue(asRecord(payload.build)?.status) ?? stringValue(payload.status);
+}
+
+function firstBuildDiagnostic(payload: Record<string, unknown>): Record<string, unknown> | undefined {
+  const diagnostics = arrayValue(asRecord(payload.build)?.diagnostics)
+    .map((item) => asRecord(item))
+    .filter((item): item is Record<string, unknown> => Boolean(item));
+  return diagnostics.find((item) => item.severity === 'error') ?? diagnostics[0];
+}
+
 function printStatusUrl(endpoint: string, payload: Record<string, unknown>): void {
   const statusUrl = stringValue(payload.statusUrl) ?? stringValue(asRecord(payload.build)?.statusUrl);
   if (!statusUrl) return;
@@ -3473,6 +3542,7 @@ Commands:
     --target <target>              marketplace_authoring or project_private_generation
     --target marketplace --strict  Alias for strict external marketplace authoring
   status <buildId>                 Fetch component build status
+    --fail-on-build-failed         Exit nonzero when platform build status is failed/cancelled
   reindex <buildId>                Rebuild component search/evidence indexes
   probe <buildId> --level <level>  Rerun component layout/security probe
   login --endpoint <url>             Start browser login code flow and store a CLI token

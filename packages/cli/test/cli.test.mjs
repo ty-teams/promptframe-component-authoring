@@ -55,6 +55,63 @@ test('status resolves endpoint from local config and returns platform payload JS
   }
 });
 
+test('status fail-on-build-failed gates failed platform builds without changing default read-only status', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-status-gate-'));
+  const server = await createServer(async (req, res) => {
+    assert.equal(req.method, 'GET');
+    assert.equal(req.url, '/components/marketplace/builds/build-failed');
+    writeJson(res, {
+      success: true,
+      build: {
+        buildId: 'build-failed',
+        status: 'failed',
+        diagnostics: [{
+          code: 'component_market.build.preview_failed',
+          severity: 'error',
+          message: 'preview probe failed',
+        }],
+      },
+    });
+  });
+  try {
+    const configPath = path.join(dir, 'promptframe-config.json');
+    await writeFile(configPath, JSON.stringify({ endpoint: server.url }));
+
+    const readOnly = await execFileAsync('node', [
+      cliPath,
+      'status',
+      'build-failed',
+      '--json',
+      '--config',
+      configPath,
+    ]);
+    const readOnlyPayload = JSON.parse(readOnly.stdout);
+    assert.equal(readOnlyPayload.build.status, 'failed');
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'status',
+        'build-failed',
+        '--json',
+        '--fail-on-build-failed',
+        '--config',
+        configPath,
+      ]),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.equal(JSON.parse(error.stdout).build.status, 'failed');
+        assert.match(error.stderr, /status\.build\.failed/);
+        assert.match(error.stderr, /component_market\.build\.preview_failed/);
+        return true;
+      },
+    );
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('missing endpoint emits a stable diagnostic code and nonzero exit', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-missing-endpoint-'));
   try {
@@ -1211,7 +1268,10 @@ test('setup-ci writes a GitHub workflow without embedding endpoint or token secr
     assert.match(workflow, /\$\{\{ vars\.PROMPTFRAME_API_BASE \}\}/);
     assert.match(workflow, /promptframe check \. --json/);
     assert.match(workflow, /promptframe upload \. --endpoint "\$PROMPTFRAME_API_BASE" --json/);
-    assert.match(workflow, /promptframe status "\$BUILD_ID" --endpoint "\$PROMPTFRAME_API_BASE" --json/);
+    assert.match(workflow, /promptframe status "\$BUILD_ID" --endpoint "\$PROMPTFRAME_API_BASE" --json --fail-on-build-failed/);
+    assert.match(workflow, /STATUS_EXIT=\$\{PIPESTATUS\[0\]\}/);
+    assert.match(workflow, /::error title=PromptFrame platform build failed::/);
+    assert.match(workflow, /exit "\$STATUS_EXIT"/);
     assert.match(workflow, /GITHUB_STEP_SUMMARY/);
     assert.match(workflow, /::warning title=/);
     assert.doesNotMatch(workflow, /pf_(?:ci|human|cli)_[A-Za-z0-9_-]+/);

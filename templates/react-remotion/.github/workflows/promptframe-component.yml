@@ -91,23 +91,43 @@ jobs:
             echo "PromptFrame upload response did not include a build id." >&2
             exit 1
           fi
-          npx promptframe status "$BUILD_ID" --endpoint "$PROMPTFRAME_API_BASE" --json | tee promptframe-status.json
+          set +e
+          npx promptframe status "$BUILD_ID" --endpoint "$PROMPTFRAME_API_BASE" --json --fail-on-build-failed | tee promptframe-status.json
+          STATUS_EXIT=${PIPESTATUS[0]}
+          set -e
           node <<'NODE'
           const fs = require('node:fs');
           const payload = JSON.parse(fs.readFileSync('promptframe-upload.json', 'utf8'));
           const status = JSON.parse(fs.readFileSync('promptframe-status.json', 'utf8'));
+          const build = status.build || {};
+          const buildId = payload.jobId || payload.buildId || build.buildId || 'unknown';
+          const buildStatus = String(build.status || status.status || payload.status || 'queued');
+          const diagnostics = Array.isArray(build.diagnostics) ? build.diagnostics : [];
+          const firstError = diagnostics.find((item) => item && item.severity === 'error') || diagnostics[0] || {};
+          if (['failed', 'cancelled', 'canceled'].includes(buildStatus.toLowerCase())) {
+            const message = [
+              `buildId=${buildId}`,
+              `status=${buildStatus}`,
+              firstError.code ? `code=${firstError.code}` : '',
+              firstError.message ? `message=${String(firstError.message).replace(/\r?\n/g, ' ').slice(0, 300)}` : '',
+            ].filter(Boolean).join(' ');
+            console.log(`::error title=PromptFrame platform build failed::${message}`);
+          }
           const summary = process.env.GITHUB_STEP_SUMMARY;
           if (summary) {
             fs.appendFileSync(summary, [
               '### PromptFrame upload',
               '',
               `- Diagnostic: \`${payload.diagnostic?.code || 'unknown'}\``,
-              `- Build ID: \`${payload.jobId || payload.buildId || 'unknown'}\``,
-              `- Admission status: \`${status.build?.status || status.status || payload.status || 'queued'}\``,
+              `- Build ID: \`${buildId}\``,
+              `- Platform build status: \`${buildStatus}\``,
+              firstError.code ? `- Top diagnostic: \`${firstError.code}\`` : '- Top diagnostic: none',
+              firstError.message ? `- Message: ${String(firstError.message).replace(/\r?\n/g, ' ').slice(0, 300)}` : '',
               '',
-            ].join('\n'));
+            ].filter(Boolean).join('\n'));
           }
           NODE
+          exit "$STATUS_EXIT"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
