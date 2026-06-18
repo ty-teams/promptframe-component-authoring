@@ -1971,9 +1971,9 @@ function setupCiTargetDir(argv: string[]): string {
 function promptFrameGithubWorkspaceWorkflow(_components: WorkspaceComponentReport[]): string {
   const apiBaseVariable = '$' + '{{ vars.PROMPTFRAME_API_BASE }}';
   const ciTokenSecret = '$' + '{{ secrets.PROMPTFRAME_CI_TOKEN }}';
-  const matrixComponentId = '$' + '{{ matrix.component.componentId }}';
-  const matrixComponentPath = '$' + '{{ matrix.component.componentPath }}';
-  const matrixArtifactName = '$' + '{{ matrix.component.artifactName }}';
+  const matrixComponentId = '$' + '{{ matrix.componentId }}';
+  const matrixComponentPath = '$' + '{{ matrix.componentPath }}';
+  const matrixArtifactName = '$' + '{{ matrix.artifactName }}';
   const runnerLabels = '$' + '{{ vars.RUNNER_LABELS && fromJSON(vars.RUNNER_LABELS) || fromJSON(\'["ubuntu-latest"]\') }}';
   const workspaceMatrixOutput = '$' + '{{ steps.workspace.outputs.matrix }}';
   const workspaceCountOutput = '$' + '{{ steps.workspace.outputs.count }}';

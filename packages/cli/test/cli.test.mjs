@@ -1386,6 +1386,8 @@ test('setup-ci --workspace writes a matrix workflow with explicit component path
     assert.match(workflow, /Discover PromptFrame components/);
     assert.match(workflow, /promptframe-workspace\.json/);
     assert.match(workflow, /matrix: \$\{\{ fromJSON\(needs\.discover\.outputs\.matrix\) \}\}/);
+    assert.match(workflow, /COMPONENT_ID: \$\{\{ matrix\.componentId \}\}/);
+    assert.match(workflow, /COMPONENT_PATH: \$\{\{ matrix\.componentPath \}\}/);
     assert.match(workflow, /vars\.RUNNER_LABELS/);
     assert.match(workflow, /npm install -g pnpm@10/);
     assert.match(workflow, /pnpm install --no-frozen-lockfile/);
@@ -1393,8 +1395,8 @@ test('setup-ci --workspace writes a matrix workflow with explicit component path
     assert.match(workflow, /promptframe check \. --workspace-component "\$COMPONENT_ID" --json/);
     assert.match(workflow, /promptframe upload \. --workspace-component "\$COMPONENT_ID" --endpoint "\$PROMPTFRAME_API_BASE" --json/);
     assert.match(workflow, /promptframe status "\$BUILD_ID" --endpoint "\$PROMPTFRAME_API_BASE" --json --fail-on-build-failed/);
-    assert.match(workflow, /promptframe-check-\$\{\{ matrix\.component\.artifactName \}\}/);
-    assert.match(workflow, /promptframe-upload-\$\{\{ matrix\.component\.artifactName \}\}/);
+    assert.match(workflow, /promptframe-check-\$\{\{ matrix\.artifactName \}\}/);
+    assert.match(workflow, /promptframe-upload-\$\{\{ matrix\.artifactName \}\}/);
     assert.doesNotMatch(workflow, /Link lockfile for workspace components/);
     assert.doesNotMatch(workflow, /pf_(?:ci|human|cli)_[A-Za-z0-9_-]+/);
     assert.doesNotMatch(workflow, /promptframe-beta|tail0fae3a|100\.\d+\.\d+\.\d+/);

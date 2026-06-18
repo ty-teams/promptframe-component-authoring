@@ -81,7 +81,7 @@ function writeWorkspaceRootFiles(root: string, options: {
       'setup-ci': 'promptframe setup-ci . --provider github --workspace',
     },
     devDependencies: {
-      '@promptframe/cli': '^0.1.33',
+      '@promptframe/cli': '^0.1.34',
     },
   }, null, 2)}\n`, 'utf8');
   const workspaceGlobs = [...new Set([workspaceGlobForPath(options.componentPath), 'packages/*'])];
