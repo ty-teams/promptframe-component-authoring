@@ -23,4 +23,6 @@ npx promptframe setup-ci . --provider github --workspace
 
 The generated workspace writes `promptframe-workspace.json`, a root `package.json`, and `pnpm-workspace.yaml`. Use this mode only when the repository intentionally owns multiple independent components; otherwise keep one component per repository.
 
+Running the same `--workspace` command against an existing workspace appends the new component and merges root files. It preserves existing component registrations and root package scripts, and CI workflows stay managed from the repository root through `promptframe setup-ci . --provider github --workspace`.
+
 Use `--force` only when intentionally refreshing template files in an existing target directory.

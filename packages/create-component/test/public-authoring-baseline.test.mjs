@@ -20,7 +20,7 @@ test('public templates use the current PromptFrame authoring package baseline', 
 
 test('create package version is bumped for the next template release', async () => {
   const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'packages/create-component/package.json'), 'utf8'));
-  assert.equal(packageJson.version, '0.1.23');
+  assert.equal(packageJson.version, '0.1.24');
 });
 
 test('public templates expose PromptFrame CLI lifecycle scripts', async () => {
@@ -120,7 +120,7 @@ test('public authoring docs document the current npm registry baseline', async (
     'packages/create-component/templates/react-remotion/README.md',
   ]) {
     const text = await readFile(path.join(repoRoot, docPath), 'utf8');
-    assert.match(text, /Current npm registry baseline is[\s\S]*@promptframe\/cli@0\.1\.34[\s\S]*create-promptframe-component@0\.1\.23/, docPath);
+    assert.match(text, /Current npm registry baseline is[\s\S]*@promptframe\/cli@0\.1\.34[\s\S]*create-promptframe-component@0\.1\.24/, docPath);
     assert.match(text, /workspace root lockfile|workspace root lockfile evidence|pnpm workspace root lockfile/, docPath);
     assert.doesNotMatch(text, /source candidate|source tree prepares|until Trusted Publishing completes/, docPath);
   }

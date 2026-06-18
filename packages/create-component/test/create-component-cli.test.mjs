@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -100,7 +100,77 @@ test('create CLI scaffolds an advanced workspace with one component', async () =
     assert.equal(manifest.name, 'image-particle-remotion');
     assert.equal(manifest.displayName, 'Image Particle Remotion');
     assert.equal(manifest.description, 'Image particle workspace fixture');
+    assert.equal(await fileExists(path.join(target, 'components/image-particle-remotion/.github/workflows/promptframe-component.yml')), false);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('create CLI appends workspace components without overwriting root state', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-create-workspace-append-'));
+  const target = path.join(dir, 'component-workspace');
+  try {
+    await execFileAsync('node', [
+      cliPath,
+      target,
+      '--workspace',
+      '--component',
+      'text-reveal-motion',
+      '--display-name',
+      'Text Reveal Motion',
+      '--description',
+      'Text reveal fixture',
+    ]);
+
+    const packagePath = path.join(target, 'package.json');
+    const rootPackage = JSON.parse(await readFile(packagePath, 'utf8'));
+    rootPackage.scripts.custom = 'echo keep-me';
+    rootPackage.devDependencies['left-alone'] = '1.0.0';
+    await writeFile(packagePath, `${JSON.stringify(rootPackage, null, 2)}\n`, 'utf8');
+
+    await execFileAsync('node', [
+      cliPath,
+      target,
+      '--workspace',
+      '--component',
+      'media-rich-showcase',
+      '--display-name',
+      'Media Rich Showcase',
+      '--description',
+      'Media rich fixture',
+    ]);
+
+    const workspace = JSON.parse(await readFile(path.join(target, 'promptframe-workspace.json'), 'utf8'));
+    assert.deepEqual(workspace.components, [
+      {
+        id: '@marketplace/text-reveal-motion',
+        path: 'components/text-reveal-motion',
+      },
+      {
+        id: '@marketplace/media-rich-showcase',
+        path: 'components/media-rich-showcase',
+      },
+    ]);
+
+    const nextPackage = JSON.parse(await readFile(packagePath, 'utf8'));
+    assert.equal(nextPackage.scripts.check, 'promptframe workspace validate . && promptframe check . --workspace-component @marketplace/text-reveal-motion');
+    assert.equal(nextPackage.scripts.upload, 'promptframe upload . --workspace-component @marketplace/text-reveal-motion');
+    assert.equal(nextPackage.scripts.custom, 'echo keep-me');
+    assert.equal(nextPackage.devDependencies['left-alone'], '1.0.0');
+    assert.equal(nextPackage.devDependencies['@promptframe/cli'], '^0.1.34');
+
+    assert.equal(await fileExists(path.join(target, 'components/text-reveal-motion/.github/workflows/promptframe-component.yml')), false);
+    assert.equal(await fileExists(path.join(target, 'components/media-rich-showcase/.github/workflows/promptframe-component.yml')), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+async function fileExists(pathname) {
+  try {
+    await access(pathname);
+    return true;
+  } catch {
+    return false;
+  }
+}
