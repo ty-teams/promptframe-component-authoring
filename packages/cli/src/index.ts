@@ -132,6 +132,12 @@ interface ComponentPackageArtifact {
   publicResources?: PublicResourceReport;
 }
 
+interface PreparedComponentUpload {
+  artifact: ComponentPackageArtifact;
+  localReusability?: ReturnType<typeof evaluateDirectoryReusability>;
+  diagnostics?: Array<LocalReusabilityDiagnostic | ComponentDiagnostic>;
+}
+
 type ComponentSourceMetadata =
   | {
       mode: 'single_component';
@@ -352,12 +358,82 @@ function validate(argv: string[]): void {
 }
 
 async function check(argv: string[]): Promise<void> {
+  const workspaceRoot = autoWorkspaceRoot(argv);
+  if (workspaceRoot) {
+    await checkWorkspace(argv, workspaceRoot);
+    return;
+  }
   const input = resolveComponentInput(argv);
-  const dir = input.dir;
   const target = resolveUploadTarget(argv);
+  const freshness = await resolveSoftRemoteStandardFreshness(argv, target, 'check');
+  const output = buildCheckOutput(input, target, freshness);
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
+  console.log(`check passed: ${input.dir}`);
+  console.log(`Target: ${target}`);
+  console.log(`Freshness: ${output.freshness.status}`);
+  printDiagnostics(output.diagnostics);
+}
+
+async function checkWorkspace(argv: string[], root: string): Promise<void> {
+  const target = resolveUploadTarget(argv);
+  const freshness = await resolveSoftRemoteStandardFreshness(argv, target, 'check');
+  const reports = collectWorkspaceComponentReports(root);
+  const components = reports.map((report) => ({
+    id: report.id,
+    path: report.path,
+    ...buildCheckOutput(workspaceComponentInput(report), target, freshness),
+  }));
+  const diagnostics = components.flatMap((component) => component.diagnostics);
+  const output = {
+    command: 'check' as const,
+    workspace: true,
+    workspaceRoot: root,
+    source: {
+      mode: 'workspace',
+      workspaceConfig: 'promptframe-workspace.json',
+    },
+    target,
+    freshness,
+    components,
+    diagnostics,
+    diagnostic: diagnostic('check.workspace.completed', 'info', 'Workspace component authoring checks completed.'),
+  };
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
+  console.log(`workspace check passed: ${root}`);
+  console.log(`Components: ${components.length}`);
+  console.log(`Freshness: ${freshness.status}`);
+  printDiagnostics(diagnostics);
+}
+
+function buildCheckOutput(
+  input: ResolvedComponentInput,
+  target: AuthoringUploadTarget,
+  freshness: AuthoringStandardFreshnessDecision,
+): {
+  command: 'check';
+  dir: string;
+  source: ComponentSourceMetadata;
+  manifest: Record<string, string | undefined>;
+  checkedRuleIds: PublicPolicyRuleId[];
+  securityPolicyVersion: string;
+  securityPolicyDigest: string;
+  securityEvaluatorMode: string;
+  freshness: AuthoringStandardFreshnessDecision;
+  localReusability: ReturnType<typeof evaluateDirectoryReusability>;
+  dependencyPolicy: PromptFrameDependencyPolicyReceipt;
+  publicResources: PublicResourceReport;
+  diagnostics: Array<LocalReusabilityDiagnostic | ComponentDiagnostic>;
+  diagnostic: { code: string; severity: 'info' | 'warning' | 'error'; message: string };
+} {
+  const dir = input.dir;
   const manifest = validateComponentDirectory(dir);
   assertAuthoringPackageFreshness(dir, target);
-  const freshness = await resolveSoftRemoteStandardFreshness(argv, target, 'check');
   const localReusability = evaluateDirectoryReusability(dir, manifest, target);
   const dependencyPolicy = evaluateDirectoryDependencyPolicy(dir);
   const publicResources = evaluateDirectoryPublicResources(dir);
@@ -370,7 +446,7 @@ async function check(argv: string[]): Promise<void> {
     ...publicResources.diagnostics,
   ];
   const output = {
-    command: 'check',
+    command: 'check' as const,
     dir,
     source: input.source,
     manifest: manifestSummary(manifest),
@@ -385,14 +461,7 @@ async function check(argv: string[]): Promise<void> {
     diagnostics,
     diagnostic: diagnostic('check.completed', 'info', 'Component authoring checks completed.'),
   };
-  if (hasFlag(argv, '--json')) {
-    printJson(output);
-    return;
-  }
-  console.log(`check passed: ${dir}`);
-  console.log(`Target: ${target}`);
-  console.log(`Freshness: ${output.freshness.status}`);
-  printDiagnostics(diagnostics);
+  return output;
 }
 
 function upgrade(argv: string[]): void {
@@ -632,32 +701,118 @@ async function uploadComponent(argv: string[]): Promise<void> {
   const workspaceComponent = valueAfter(argv, '--workspace-component');
   const target = resolve(componentPathArg(argv) ?? '.');
   const uploadTarget = resolveUploadTarget(argv);
-  let localReusability: ReturnType<typeof evaluateDirectoryReusability> | undefined;
   if (workspaceComponent && target.endsWith('.zip')) {
     fail('upload --workspace-component requires a workspace root, not a zip file.', 'workspace.component.zip_unsupported', 2);
+  }
+  const workspaceRoot = autoWorkspaceRoot(argv);
+  if (workspaceRoot) {
+    await uploadWorkspace(argv, workspaceRoot, uploadTarget);
+    return;
   }
   const input: ResolvedComponentInput = target.endsWith('.zip')
     ? { dir: target, source: { mode: 'zip' } }
     : resolveComponentInput(argv);
-  const artifact = target.endsWith('.zip')
-    ? packageZipForUpload(target, uploadTarget)
+  const prepared = prepareComponentUpload(input, uploadTarget, valueAfter(argv, '--out'));
+  const endpoint = resolveEndpoint('upload', argv);
+  await assertRemoteStandardFreshness(endpoint, argv);
+  const output = await uploadPreparedComponent(input, argv, endpoint, uploadTarget, prepared);
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
+  console.log('Upload accepted by PromptFrame platform.');
+  console.log(`Build: ${output.jobId ?? 'unknown'}`);
+  console.log(`Status: ${stringValue(output.status) ?? stringValue(asRecord(output.build)?.status) ?? 'queued'}`);
+  if (output.jobId) {
+    console.log(`Next: promptframe status ${output.jobId} --endpoint ${endpoint}`);
+  }
+  printDiagnostics(arrayValue(output.diagnostics) as Array<LocalReusabilityDiagnostic | ComponentDiagnostic>);
+  printStatusUrl(endpoint, output);
+}
+
+async function uploadWorkspace(
+  argv: string[],
+  root: string,
+  uploadTarget: AuthoringUploadTarget,
+): Promise<void> {
+  if (valueAfter(argv, '--out')) {
+    fail(
+      'upload --out is only supported for a single component. Use --workspace-component <id> or omit --out when uploading a workspace root.',
+      'workspace.upload.out_unsupported',
+      2,
+    );
+  }
+  const reports = collectWorkspaceComponentReports(root);
+  const preparedUploads = reports.map((report) => {
+    const input = workspaceComponentInput(report);
+    return {
+      input,
+      prepared: prepareComponentUpload(input, uploadTarget, undefined),
+    };
+  });
+  const endpoint = resolveEndpoint('upload', argv);
+  await assertRemoteStandardFreshness(endpoint, argv);
+  const uploads = [];
+  for (const item of preparedUploads) {
+    uploads.push(await uploadPreparedComponent(item.input, argv, endpoint, uploadTarget, item.prepared));
+  }
+  const output = {
+    command: 'upload',
+    workspace: true,
+    workspaceRoot: root,
+    source: {
+      mode: 'workspace',
+      workspaceConfig: 'promptframe-workspace.json',
+    },
+    uploadTarget,
+    uploads,
+    diagnostic: diagnostic('upload.workspace.completed', 'info', 'Workspace component uploads accepted by platform.'),
+  };
+  if (hasFlag(argv, '--json')) {
+    printJson(output);
+    return;
+  }
+  console.log(`Workspace upload accepted: ${root}`);
+  for (const upload of uploads) {
+    const source = asRecord(upload.source);
+    console.log(`${stringValue(source?.workspaceComponentId) ?? 'component'} -> ${upload.jobId ?? 'unknown'}`);
+  }
+}
+
+function prepareComponentUpload(
+  input: ResolvedComponentInput,
+  uploadTarget: AuthoringUploadTarget,
+  outArg: string | undefined,
+): PreparedComponentUpload {
+  let localReusability: ReturnType<typeof evaluateDirectoryReusability> | undefined;
+  const artifact = input.source.mode === 'zip'
+    ? packageZipForUpload(input.dir, uploadTarget)
     : packageDirectoryForUploadWithLocalReusability(
         input.dir,
         uploadTarget,
-        valueAfter(argv, '--out'),
+        outArg,
         (reusability) => {
           localReusability = reusability;
         },
       );
-  const localDiagnostics = localReusability
+  const diagnostics = localReusability
     ? [
         ...reusabilityDiagnostics(localReusability),
         ...stylePropDiagnostics(input.dir),
         ...(artifact.publicResources?.diagnostics ?? []),
       ]
     : undefined;
-  const endpoint = resolveEndpoint('upload', argv);
-  await assertRemoteStandardFreshness(endpoint, argv);
+  return { artifact, localReusability, diagnostics };
+}
+
+async function uploadPreparedComponent(
+  input: ResolvedComponentInput,
+  argv: string[],
+  endpoint: string,
+  uploadTarget: AuthoringUploadTarget,
+  prepared: PreparedComponentUpload,
+): Promise<Record<string, unknown>> {
+  const { artifact, localReusability, diagnostics } = prepared;
   const file = readFileSync(artifact.out);
   const form = new FormData();
   form.set('file', new Blob([new Uint8Array(file)], { type: 'application/zip' }), basename(artifact.out));
@@ -680,21 +835,10 @@ async function uploadComponent(argv: string[]): Promise<void> {
     jobId: getBuildId(payload),
     package: artifact,
     source: input.source,
-    ...(localReusability ? { localReusability, diagnostics: localDiagnostics } : {}),
+    ...(localReusability ? { localReusability, diagnostics } : {}),
     diagnostic: diagnostic('upload.completed', 'info', 'Component upload accepted by platform.'),
   });
-  if (hasFlag(argv, '--json')) {
-    printJson(output);
-    return;
-  }
-  console.log('Upload accepted by PromptFrame platform.');
-  console.log(`Build: ${output.jobId ?? 'unknown'}`);
-  console.log(`Status: ${stringValue(payload.status) ?? stringValue(asRecord(payload.build)?.status) ?? 'queued'}`);
-  if (output.jobId) {
-    console.log(`Next: promptframe status ${output.jobId} --endpoint ${endpoint}`);
-  }
-  if (localDiagnostics) printDiagnostics(localDiagnostics);
-  printStatusUrl(endpoint, payload);
+  return output;
 }
 
 const PUBLIC_UPLOAD_JSON_OMIT_KEYS = new Set([
@@ -971,6 +1115,26 @@ function resolveComponentInput(argv: string[]): ResolvedComponentInput {
   }
   const root = resolve(componentPathArg(argv) ?? '.');
   const report = resolveWorkspaceComponent(root, workspaceComponentId);
+  return {
+    dir: report.absolutePath,
+    source: {
+      mode: 'workspace',
+      workspaceConfig: 'promptframe-workspace.json',
+      workspaceComponentId: report.id,
+      componentPath: report.path,
+      manifestId: stringValue(report.manifest.id) ?? report.id,
+    },
+  };
+}
+
+function autoWorkspaceRoot(argv: string[]): string | undefined {
+  if (valueAfter(argv, '--workspace-component')) return undefined;
+  const target = resolve(componentPathArg(argv) ?? '.');
+  if (target.endsWith('.zip')) return undefined;
+  return existsSync(workspaceConfigPath(target)) ? target : undefined;
+}
+
+function workspaceComponentInput(report: WorkspaceComponentReport): ResolvedComponentInput {
   return {
     dir: report.absolutePath,
     source: {

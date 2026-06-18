@@ -1469,6 +1469,109 @@ test('upload --workspace-component sends explicit source metadata headers', asyn
   }
 });
 
+test('check auto-detects a workspace root and checks configured components', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-check-workspace-root-'));
+  try {
+    await writeWorkspaceFixtureComponent(path.join(dir, 'components/alpha-motion'), '@demo/alpha-motion');
+    await writeWorkspaceFixtureComponent(path.join(dir, 'components/beta-motion'), '@demo/beta-motion');
+    await writeFile(path.join(dir, 'promptframe-workspace.json'), JSON.stringify({
+      schemaVersion: 'promptframe-workspace.v0.1.0',
+      components: [
+        { id: '@demo/alpha-motion', path: 'components/alpha-motion' },
+        { id: '@demo/beta-motion', path: 'components/beta-motion' },
+      ],
+    }, null, 2));
+
+    const payload = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'check',
+      dir,
+      '--json',
+    ])).stdout);
+
+    assert.equal(payload.command, 'check');
+    assert.equal(payload.workspace, true);
+    assert.equal(payload.source.mode, 'workspace');
+    assert.equal(payload.diagnostic.code, 'check.workspace.completed');
+    assert.deepEqual(payload.components.map((component) => component.id), [
+      '@demo/alpha-motion',
+      '@demo/beta-motion',
+    ]);
+    assert.deepEqual(payload.components.map((component) => component.source.componentPath), [
+      'components/alpha-motion',
+      'components/beta-motion',
+    ]);
+    assert.ok(payload.components.every((component) => component.diagnostic.code === 'check.completed'));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('upload auto-detects a workspace root and uploads configured components', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-upload-workspace-root-'));
+  const calls = [];
+  const server = await createServer(async (req, res) => {
+    const body = await readRequestBody(req);
+    calls.push({ method: req.method, url: req.url, headers: req.headers, body });
+    if (req.url === '/components/standard') {
+      writeJson(res, {
+        success: true,
+        sourceVersion: 'component-standard.v0.1.0',
+        sourceHash: 'sha256:8c1e01c36155b4b646981064d24df9bd8cda501fd9cd9da93e5b62f40db22d52',
+      });
+      return;
+    }
+    if (req.url === '/components/marketplace/upload') {
+      const componentId = req.headers['x-promptframe-source-workspace-component-id'];
+      writeJson(res, {
+        success: true,
+        buildId: componentId === '@demo/alpha-motion' ? 'build-alpha' : 'build-beta',
+        status: 'queued',
+      });
+      return;
+    }
+    res.statusCode = 404;
+    writeJson(res, { success: false, error: `unexpected ${req.method} ${req.url}` });
+  });
+  try {
+    await writeWorkspaceFixtureComponent(path.join(dir, 'components/alpha-motion'), '@demo/alpha-motion');
+    await writeWorkspaceFixtureComponent(path.join(dir, 'components/beta-motion'), '@demo/beta-motion');
+    await writeFile(path.join(dir, 'promptframe-workspace.json'), JSON.stringify({
+      schemaVersion: 'promptframe-workspace.v0.1.0',
+      components: [
+        { id: '@demo/alpha-motion', path: 'components/alpha-motion' },
+        { id: '@demo/beta-motion', path: 'components/beta-motion' },
+      ],
+    }, null, 2));
+
+    const payload = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'upload',
+      dir,
+      '--endpoint',
+      server.url,
+      '--json',
+    ])).stdout);
+
+    const uploadCalls = calls.filter((call) => call.url === '/components/marketplace/upload');
+    assert.equal(payload.command, 'upload');
+    assert.equal(payload.workspace, true);
+    assert.equal(payload.diagnostic.code, 'upload.workspace.completed');
+    assert.deepEqual(payload.uploads.map((upload) => upload.jobId), ['build-alpha', 'build-beta']);
+    assert.deepEqual(uploadCalls.map((call) => call.headers['x-promptframe-source-workspace-component-id']), [
+      '@demo/alpha-motion',
+      '@demo/beta-motion',
+    ]);
+    assert.deepEqual(uploadCalls.map((call) => call.headers['x-promptframe-source-component-path']), [
+      'components/alpha-motion',
+      'components/beta-motion',
+    ]);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('upload rejects unknown public authoring targets before network transport', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-upload-target-'));
   try {
@@ -3281,6 +3384,17 @@ async function writeFixtureComponent(componentDir) {
     'src/index.ts': 'export { default } from "./Component";\n',
     'src/preview-props.json': JSON.stringify({ durationFrames: 60, fps: 30, width: 1280, height: 720, props: {} }),
   });
+}
+
+async function writeWorkspaceFixtureComponent(componentDir, componentId) {
+  await writeFixtureComponent(componentDir);
+  const manifestPath = path.join(componentDir, 'manifest.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  const slug = componentId.split('/').at(-1);
+  manifest.id = componentId;
+  manifest.name = slug;
+  manifest.displayName = slug.split('-').map((part) => `${part[0].toUpperCase()}${part.slice(1)}`).join(' ');
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
 async function writeFileTree(root, files) {
