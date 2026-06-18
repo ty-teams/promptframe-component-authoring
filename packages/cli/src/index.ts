@@ -813,6 +813,7 @@ async function uploadPreparedComponent(
   prepared: PreparedComponentUpload,
 ): Promise<Record<string, unknown>> {
   const { artifact, localReusability, diagnostics } = prepared;
+  const versionNotes = resolveVersionNotes(argv);
   const file = readFileSync(artifact.out);
   const form = new FormData();
   form.set('file', new Blob([new Uint8Array(file)], { type: 'application/zip' }), basename(artifact.out));
@@ -823,6 +824,7 @@ async function uploadPreparedComponent(
       ...buildRemoteHeaders(endpoint, argv),
       ...buildSecurityPolicyHeaders(),
       ...buildSourceMetadataHeaders(input.source),
+      ...buildVersionNotesHeaders(versionNotes),
       'x-promptframe-upload-target': uploadTarget,
     },
   }, 'upload.http.failed');
@@ -833,6 +835,7 @@ async function uploadPreparedComponent(
     endpoint,
     uploadTarget,
     jobId: getBuildId(payload),
+    ...(versionNotes ? { versionNotes } : {}),
     package: artifact,
     source: input.source,
     ...(localReusability ? { localReusability, diagnostics } : {}),
@@ -1344,6 +1347,29 @@ function buildSourceMetadataHeaders(source: ComponentSourceMetadata): Record<str
   };
 }
 
+const VERSION_NOTES_MAX_LENGTH = 1000;
+
+function resolveVersionNotes(argv: string[]): string | undefined {
+  return normalizeVersionNotes(
+    valueAfter(argv, '--release-notes')
+    ?? valueAfter(argv, '--version-notes')
+    ?? process.env.PROMPTFRAME_VERSION_NOTES,
+  );
+}
+
+function normalizeVersionNotes(value: string | undefined): string | undefined {
+  const trimmed = value
+    ?.replace(/\r?\n/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!trimmed) return undefined;
+  return trimmed.slice(0, VERSION_NOTES_MAX_LENGTH);
+}
+
+function buildVersionNotesHeaders(versionNotes: string | undefined): Record<string, string> {
+  return versionNotes ? { 'x-promptframe-version-notes': versionNotes } : {};
+}
+
 const POSITIONAL_VALUE_FLAGS = new Set([
   '--allowed-upload-target',
   '--auth-permissions',
@@ -1369,6 +1395,7 @@ const POSITIONAL_VALUE_FLAGS = new Set([
   '--project-context',
   '--project-namespace',
   '--reason',
+  '--release-notes',
   '--scope',
   '--session-id',
   '--target',
@@ -1377,6 +1404,7 @@ const POSITIONAL_VALUE_FLAGS = new Set([
   '--token',
   '--upload-target',
   '--user-id',
+  '--version-notes',
   '--workspace-config',
   '--workspace-component',
 ]);
@@ -2310,7 +2338,23 @@ jobs:
           ARTIFACT_NAME: ${matrixArtifactName}
         run: |
           set -euo pipefail
-          npx promptframe upload . --workspace-component "$COMPONENT_ID" --endpoint "$PROMPTFRAME_API_BASE" --json | tee "promptframe-upload-$ARTIFACT_NAME.json"
+          PROMPTFRAME_VERSION_NOTES=$(node <<'NODE'
+          const fs = require('node:fs');
+          let notes = process.env.PROMPTFRAME_VERSION_NOTES || '';
+          if (!notes && process.env.GITHUB_EVENT_PATH) {
+            try {
+              const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+              notes = event.head_commit?.message || event.pull_request?.title || '';
+            } catch {}
+          }
+          notes = String(notes || process.env.GITHUB_REF_NAME || process.env.GITHUB_SHA || 'PromptFrame component upload')
+            .split(/\\r?\\n/)[0]
+            .trim()
+            .slice(0, 1000);
+          process.stdout.write(notes);
+          NODE
+          )
+          npx promptframe upload . --workspace-component "$COMPONENT_ID" --endpoint "$PROMPTFRAME_API_BASE" --release-notes "$PROMPTFRAME_VERSION_NOTES" --json | tee "promptframe-upload-$ARTIFACT_NAME.json"
           BUILD_ID=$(node <<'NODE'
           const fs = require('node:fs');
           const payload = JSON.parse(fs.readFileSync('promptframe-upload-' + process.env.ARTIFACT_NAME + '.json', 'utf8'));
@@ -2332,6 +2376,7 @@ jobs:
           const build = status.build || {};
           const buildId = payload.jobId || payload.buildId || build.buildId || 'unknown';
           const buildStatus = String(build.status || status.status || payload.status || 'queued');
+          const versionNotes = String(payload.versionNotes || build.versionNotes || process.env.PROMPTFRAME_VERSION_NOTES || '').replace(/\\r?\\n/g, ' ').slice(0, 300);
           const diagnostics = Array.isArray(build.diagnostics) ? build.diagnostics : [];
           const firstError = diagnostics.find((item) => item && item.severity === 'error') || diagnostics[0] || {};
           if (['failed', 'cancelled', 'canceled'].includes(buildStatus.toLowerCase())) {
@@ -2351,6 +2396,7 @@ jobs:
               \`- Component ID: \\\`\${process.env.COMPONENT_ID || payload.source?.workspaceComponentId || 'unknown'}\\\`\`,
               \`- Component path: \\\`\${process.env.COMPONENT_PATH || payload.source?.componentPath || 'unknown'}\\\`\`,
               \`- Diagnostic: \\\`\${payload.diagnostic?.code || 'unknown'}\\\`\`,
+              versionNotes ? \`- Version notes: \${versionNotes}\` : '',
               \`- Build ID: \\\`\${buildId}\\\`\`,
               \`- Platform build status: \\\`\${buildStatus}\\\`\`,
               firstError.code ? \`- Top diagnostic: \\\`\${firstError.code}\\\`\` : '- Top diagnostic: none',
@@ -2455,7 +2501,23 @@ jobs:
           PROMPTFRAME_CI_TOKEN: ${ciTokenSecret}
         run: |
           set -euo pipefail
-          npx promptframe upload . --endpoint "$PROMPTFRAME_API_BASE" --json | tee promptframe-upload.json
+          PROMPTFRAME_VERSION_NOTES=$(node <<'NODE'
+          const fs = require('node:fs');
+          let notes = process.env.PROMPTFRAME_VERSION_NOTES || '';
+          if (!notes && process.env.GITHUB_EVENT_PATH) {
+            try {
+              const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+              notes = event.head_commit?.message || event.pull_request?.title || '';
+            } catch {}
+          }
+          notes = String(notes || process.env.GITHUB_REF_NAME || process.env.GITHUB_SHA || 'PromptFrame component upload')
+            .split(/\\r?\\n/)[0]
+            .trim()
+            .slice(0, 1000);
+          process.stdout.write(notes);
+          NODE
+          )
+          npx promptframe upload . --endpoint "$PROMPTFRAME_API_BASE" --release-notes "$PROMPTFRAME_VERSION_NOTES" --json | tee promptframe-upload.json
           BUILD_ID=$(node <<'NODE'
           const fs = require('node:fs');
           const payload = JSON.parse(fs.readFileSync('promptframe-upload.json', 'utf8'));
@@ -2477,6 +2539,7 @@ jobs:
           const build = status.build || {};
           const buildId = payload.jobId || payload.buildId || build.buildId || 'unknown';
           const buildStatus = String(build.status || status.status || payload.status || 'queued');
+          const versionNotes = String(payload.versionNotes || build.versionNotes || process.env.PROMPTFRAME_VERSION_NOTES || '').replace(/\\r?\\n/g, ' ').slice(0, 300);
           const diagnostics = Array.isArray(build.diagnostics) ? build.diagnostics : [];
           const firstError = diagnostics.find((item) => item && item.severity === 'error') || diagnostics[0] || {};
           if (['failed', 'cancelled', 'canceled'].includes(buildStatus.toLowerCase())) {
@@ -2494,6 +2557,7 @@ jobs:
               '### PromptFrame upload',
               '',
               \`- Diagnostic: \\\`\${payload.diagnostic?.code || 'unknown'}\\\`\`,
+              versionNotes ? \`- Version notes: \${versionNotes}\` : '',
               \`- Build ID: \\\`\${buildId}\\\`\`,
               \`- Platform build status: \\\`\${buildStatus}\\\`\`,
               firstError.code ? \`- Top diagnostic: \\\`\${firstError.code}\\\`\` : '- Top diagnostic: none',

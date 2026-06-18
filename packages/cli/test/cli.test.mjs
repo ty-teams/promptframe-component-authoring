@@ -159,6 +159,7 @@ test('upload, probe, and reindex call platform transport paths with stable JSON'
     if (req.url === '/components/marketplace/upload') {
       assert.equal(req.method, 'POST');
       assert.equal(req.headers['x-promptframe-upload-target'], 'project_private_generation');
+      assert.equal(req.headers['x-promptframe-version-notes'], 'Initial visual polish');
       assert.equal(req.headers['x-promptframe-security-policy-version'], PROMPTFRAME_PUBLIC_SECURITY_POLICY.policyVersion);
       assert.equal(req.headers['x-promptframe-security-policy-digest'], PROMPTFRAME_PUBLIC_SECURITY_POLICY_DIGEST);
       assert.equal(req.headers['x-promptframe-security-evaluator-mode'], 'ast');
@@ -192,10 +193,13 @@ test('upload, probe, and reindex call platform transport paths with stable JSON'
       server.url,
       '--target',
       'project_private_generation',
+      '--release-notes',
+      'Initial visual polish',
       '--json',
     ])).stdout);
     assert.equal(upload.command, 'upload');
     assert.equal(upload.jobId, 'build-uploaded');
+    assert.equal(upload.versionNotes, 'Initial visual polish');
     assert.equal(upload.diagnostic.code, 'upload.completed');
 
     const probe = JSON.parse((await execFileAsync('node', [
@@ -231,6 +235,55 @@ test('upload, probe, and reindex call platform transport paths with stable JSON'
       '/components/marketplace/builds/build-uploaded/probes/run',
       '/components/marketplace/builds/build-uploaded/evidence/reindex',
     ]);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('upload forwards sanitized version notes from environment fallback', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-version-notes-env-'));
+  const expectedNotes = 'Release heading second line with spacing';
+  const server = await createServer(async (req, res) => {
+    const body = await readRequestBody(req);
+    if (req.url === '/components/standard') {
+      writeJson(res, {
+        success: true,
+        sourceVersion: 'component-standard.v0.1.0',
+        sourceHash: 'sha256:8c1e01c36155b4b646981064d24df9bd8cda501fd9cd9da93e5b62f40db22d52',
+      });
+      return;
+    }
+    if (req.url === '/components/marketplace/upload') {
+      assert.equal(req.method, 'POST');
+      assert.equal(req.headers['x-promptframe-version-notes'], expectedNotes);
+      assert.match(body.toString('latin1'), /fake component zip/);
+      writeJson(res, { success: true, jobId: 'build-uploaded', status: 'queued' });
+      return;
+    }
+    res.statusCode = 404;
+    writeJson(res, { success: false, error: `unexpected ${req.method} ${req.url}` });
+  });
+  try {
+    const zipPath = path.join(dir, 'component.zip');
+    await writeFile(zipPath, 'fake component zip');
+    const upload = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'upload',
+      zipPath,
+      '--endpoint',
+      server.url,
+      '--target',
+      'project_private_generation',
+      '--json',
+    ], {
+      env: {
+        ...process.env,
+        PROMPTFRAME_VERSION_NOTES: 'Release heading\nsecond line   with   spacing',
+      },
+    })).stdout);
+    assert.equal(upload.command, 'upload');
+    assert.equal(upload.versionNotes, expectedNotes);
   } finally {
     await server.close();
     await rm(dir, { recursive: true, force: true });
@@ -1267,7 +1320,8 @@ test('setup-ci writes a GitHub workflow without embedding endpoint or token secr
     assert.match(workflow, /\$\{\{ secrets\.PROMPTFRAME_CI_TOKEN \}\}/);
     assert.match(workflow, /\$\{\{ vars\.PROMPTFRAME_API_BASE \}\}/);
     assert.match(workflow, /promptframe check \. --json/);
-    assert.match(workflow, /promptframe upload \. --endpoint "\$PROMPTFRAME_API_BASE" --json/);
+    assert.match(workflow, /PROMPTFRAME_VERSION_NOTES=/);
+    assert.match(workflow, /promptframe upload \. --endpoint "\$PROMPTFRAME_API_BASE" --release-notes "\$PROMPTFRAME_VERSION_NOTES" --json/);
     assert.match(workflow, /promptframe status "\$BUILD_ID" --endpoint "\$PROMPTFRAME_API_BASE" --json --fail-on-build-failed/);
     assert.match(workflow, /STATUS_EXIT=\$\{PIPESTATUS\[0\]\}/);
     assert.match(workflow, /::error title=PromptFrame platform build failed::/);
@@ -1393,7 +1447,8 @@ test('setup-ci --workspace writes a matrix workflow with explicit component path
     assert.match(workflow, /pnpm install --no-frozen-lockfile/);
     assert.match(workflow, /promptframe workspace validate \. --json/);
     assert.match(workflow, /promptframe check \. --workspace-component "\$COMPONENT_ID" --json/);
-    assert.match(workflow, /promptframe upload \. --workspace-component "\$COMPONENT_ID" --endpoint "\$PROMPTFRAME_API_BASE" --json/);
+    assert.match(workflow, /PROMPTFRAME_VERSION_NOTES=/);
+    assert.match(workflow, /promptframe upload \. --workspace-component "\$COMPONENT_ID" --endpoint "\$PROMPTFRAME_API_BASE" --release-notes "\$PROMPTFRAME_VERSION_NOTES" --json/);
     assert.match(workflow, /promptframe status "\$BUILD_ID" --endpoint "\$PROMPTFRAME_API_BASE" --json --fail-on-build-failed/);
     assert.match(workflow, /promptframe-check-\$\{\{ matrix\.artifactName \}\}/);
     assert.match(workflow, /promptframe-upload-\$\{\{ matrix\.artifactName \}\}/);
