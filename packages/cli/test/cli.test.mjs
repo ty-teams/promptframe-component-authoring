@@ -1379,15 +1379,23 @@ test('setup-ci --workspace writes a matrix workflow with explicit component path
       id: '@demo/fixture-component',
       path: 'components/motion-intro/image-particle-remotion',
     }]);
+    assert.deepEqual(payload.optionalVariables, ['RUNNER_LABELS']);
 
     const workflow = await readFile(payload.workflowPath, 'utf8');
-    assert.match(workflow, /componentId:/);
-    assert.match(workflow, /@demo\/fixture-component/);
-    assert.match(workflow, /componentPath:/);
-    assert.match(workflow, /components\/motion-intro\/image-particle-remotion/);
+    assert.match(workflow, /# promptframe-workflow-version: 1/);
+    assert.match(workflow, /Discover PromptFrame components/);
+    assert.match(workflow, /promptframe-workspace\.json/);
+    assert.match(workflow, /matrix: \$\{\{ fromJSON\(needs\.discover\.outputs\.matrix\) \}\}/);
+    assert.match(workflow, /vars\.RUNNER_LABELS/);
+    assert.match(workflow, /npm install -g pnpm@10/);
+    assert.match(workflow, /pnpm install --no-frozen-lockfile/);
     assert.match(workflow, /promptframe workspace validate \. --json/);
     assert.match(workflow, /promptframe check \. --workspace-component "\$COMPONENT_ID" --json/);
     assert.match(workflow, /promptframe upload \. --workspace-component "\$COMPONENT_ID" --endpoint "\$PROMPTFRAME_API_BASE" --json/);
+    assert.match(workflow, /promptframe status "\$BUILD_ID" --endpoint "\$PROMPTFRAME_API_BASE" --json --fail-on-build-failed/);
+    assert.match(workflow, /promptframe-check-\$\{\{ matrix\.component\.artifactName \}\}/);
+    assert.match(workflow, /promptframe-upload-\$\{\{ matrix\.component\.artifactName \}\}/);
+    assert.doesNotMatch(workflow, /Link lockfile for workspace components/);
     assert.doesNotMatch(workflow, /pf_(?:ci|human|cli)_[A-Za-z0-9_-]+/);
     assert.doesNotMatch(workflow, /promptframe-beta|tail0fae3a|100\.\d+\.\d+\.\d+/);
   } finally {
@@ -2208,6 +2216,52 @@ test('package excludes raw package manager lockfiles but includes sanitized lock
     assert.match(zipText, /"sha256":"sha256:[a-f0-9]{64}"/);
     assert.doesNotMatch(zipText, /registry\.npmjs\.org/);
     assert.doesNotMatch(zipText, /resolution: \{integrity:/);
+    assert.doesNotMatch(zipText, /lockfileVersion: "9\.0"/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('package accepts pnpm workspace root lockfile evidence without component symlink', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-package-workspace-lockfile-'));
+  try {
+    const componentDir = path.join(dir, 'components/fixture-component');
+    await writeFixtureComponent(componentDir);
+    await rm(path.join(componentDir, 'pnpm-lock.yaml'), { force: true });
+    await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "components/*"\n');
+    await writeFile(path.join(dir, 'pnpm-lock.yaml'), [
+      'lockfileVersion: "9.0"',
+      'packages:',
+      '  remotion@4.0.0:',
+      '    resolution: {integrity: sha512-workspace-demo}',
+    ].join('\n'));
+
+    const validate = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'validate',
+      componentDir,
+      '--json',
+    ])).stdout);
+    assert.equal(validate.command, 'validate');
+    assert.equal(validate.diagnostic.code, 'validate.completed');
+
+    const out = path.join(dir, 'component.zip');
+    await execFileAsync('node', [
+      cliPath,
+      'package',
+      componentDir,
+      '--out',
+      out,
+    ]);
+    const zip = await readFile(out);
+    const zipText = zip.toString('latin1');
+    const names = zipEntryNames(zip);
+    assert.equal(names.includes('pnpm-lock.yaml'), false);
+    assert.equal(names.includes('promptframe-lockfile-evidence.json'), true);
+    assert.match(zipText, /"fileName":"pnpm-lock\.yaml"/);
+    assert.match(zipText, /"source":"workspace_root"/);
+    assert.match(zipText, /"relativePath":"\.\.\/\.\.\/pnpm-lock\.yaml"/);
+    assert.doesNotMatch(zipText, /workspace-demo/);
     assert.doesNotMatch(zipText, /lockfileVersion: "9\.0"/);
   } finally {
     await rm(dir, { recursive: true, force: true });

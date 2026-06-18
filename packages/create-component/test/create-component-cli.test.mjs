@@ -85,10 +85,15 @@ test('create CLI scaffolds an advanced workspace with one component', async () =
 
     const rootPackage = JSON.parse(await readFile(path.join(target, 'package.json'), 'utf8'));
     assert.equal(rootPackage.private, true);
+    assert.equal(rootPackage.packageManager, 'pnpm@10.0.0');
+    assert.equal(rootPackage.devDependencies?.['@promptframe/cli'], '^0.1.33');
     assert.equal(rootPackage.scripts.check, 'promptframe workspace validate . && promptframe check . --workspace-component @marketplace/image-particle-remotion');
+    assert.equal(rootPackage.scripts.upload, 'promptframe upload . --workspace-component @marketplace/image-particle-remotion');
+    assert.equal(rootPackage.scripts['setup-ci'], 'promptframe setup-ci . --provider github --workspace');
 
     const pnpmWorkspace = await readFile(path.join(target, 'pnpm-workspace.yaml'), 'utf8');
     assert.match(pnpmWorkspace, /components\/\*/);
+    assert.match(pnpmWorkspace, /packages\/\*/);
 
     const manifest = JSON.parse(await readFile(path.join(target, 'components/image-particle-remotion/manifest.json'), 'utf8'));
     assert.equal(manifest.id, '@marketplace/image-particle-remotion');

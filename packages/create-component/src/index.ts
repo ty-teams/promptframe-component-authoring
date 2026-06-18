@@ -74,18 +74,20 @@ function writeWorkspaceRootFiles(root: string, options: {
     version: '0.0.0',
     private: true,
     type: 'module',
+    packageManager: 'pnpm@10.0.0',
     scripts: {
       check: `promptframe workspace validate . && promptframe check . --workspace-component ${options.componentId}`,
       upload: `promptframe upload . --workspace-component ${options.componentId}`,
       'setup-ci': 'promptframe setup-ci . --provider github --workspace',
     },
     devDependencies: {
-      '@promptframe/cli': '^0.1.31',
+      '@promptframe/cli': '^0.1.33',
     },
   }, null, 2)}\n`, 'utf8');
+  const workspaceGlobs = [...new Set([workspaceGlobForPath(options.componentPath), 'packages/*'])];
   writeFileSync(join(root, 'pnpm-workspace.yaml'), [
     'packages:',
-    `  - "${workspaceGlobForPath(options.componentPath)}"`,
+    ...workspaceGlobs.map((glob) => `  - "${glob}"`),
     '',
   ].join('\n'), 'utf8');
   writeFileSync(join(root, 'promptframe-workspace.json'), `${JSON.stringify({
