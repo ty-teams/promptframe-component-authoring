@@ -3215,6 +3215,56 @@ test('validate rejects high-risk browser capability policy violations with stabl
       source: 'new MutationObserver(() => undefined).observe(document.body, { childList: true });',
     },
     {
+      code: 'browser.image_beacon',
+      keyword: /Image|beacon/i,
+      source: "const img = new Image(); img.src = 'https://exfil.example/pixel';",
+    },
+    {
+      code: 'browser.audio_beacon',
+      keyword: /Audio|beacon/i,
+      source: "const audio = new Audio('https://exfil.example/audio.mp3'); void audio;",
+    },
+    {
+      code: 'browser.worker_context',
+      keyword: /Worker/i,
+      source: "const worker = new Worker('/worker.js'); worker.terminate();",
+    },
+    {
+      code: 'browser.window_open',
+      keyword: /window\.open|new browsing context/i,
+      source: "window.open('https://evil.example', '_blank');",
+    },
+    {
+      code: 'browser.cross_context_message',
+      keyword: /postMessage|cross-context/i,
+      source: "parent.postMessage({ ok: true }, '*');",
+    },
+    {
+      code: 'browser.dynamic_script',
+      keyword: /script/i,
+      source: "document.createElement('script');",
+    },
+    {
+      code: 'browser.iframe_escape',
+      keyword: /iframe/i,
+      source: "document.createElement('iframe');",
+    },
+    {
+      code: 'browser.fingerprint',
+      keyword: /fingerprint|navigator|viewport/i,
+      source: 'const fp = navigator.userAgent + window.innerWidth; void fp;',
+    },
+    {
+      code: 'storage.browser_storage',
+      keyword: /storage|cookie/i,
+      source: 'void document.cookie;',
+    },
+    {
+      code: 'dom.dangerous_html',
+      keyword: /HTML|innerHTML/i,
+      source: "document.body.innerHTML = '<strong>unsafe</strong>';",
+    },
+    {
       code: 'remotion.delay_render',
       keyword: /delayRender/i,
       source: 'const handle = delayRender(); void handle;',

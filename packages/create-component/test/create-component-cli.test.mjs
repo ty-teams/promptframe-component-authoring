@@ -86,7 +86,7 @@ test('create CLI scaffolds an advanced workspace with one component', async () =
     const rootPackage = JSON.parse(await readFile(path.join(target, 'package.json'), 'utf8'));
     assert.equal(rootPackage.private, true);
     assert.equal(rootPackage.packageManager, 'pnpm@10.0.0');
-    assert.equal(rootPackage.devDependencies?.['@promptframe/cli'], '^0.1.38');
+    assert.equal(rootPackage.devDependencies?.['@promptframe/cli'], '^0.1.39');
     assert.equal(rootPackage.scripts.check, 'promptframe workspace validate . && promptframe check . --workspace-component @marketplace/image-particle-remotion');
     assert.equal(rootPackage.scripts.upload, 'promptframe upload . --workspace-component @marketplace/image-particle-remotion');
     assert.equal(rootPackage.scripts['setup-ci'], 'promptframe setup-ci . --provider github --workspace');
@@ -157,7 +157,7 @@ test('create CLI appends workspace components without overwriting root state', a
     assert.equal(nextPackage.scripts.upload, 'promptframe upload . --workspace-component @marketplace/text-reveal-motion');
     assert.equal(nextPackage.scripts.custom, 'echo keep-me');
     assert.equal(nextPackage.devDependencies['left-alone'], '1.0.0');
-    assert.equal(nextPackage.devDependencies['@promptframe/cli'], '^0.1.38');
+    assert.equal(nextPackage.devDependencies['@promptframe/cli'], '^0.1.39');
 
     assert.equal(await fileExists(path.join(target, 'components/text-reveal-motion/.github/workflows/promptframe-component.yml')), false);
     assert.equal(await fileExists(path.join(target, 'components/media-rich-showcase/.github/workflows/promptframe-component.yml')), false);

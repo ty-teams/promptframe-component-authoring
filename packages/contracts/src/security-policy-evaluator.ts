@@ -47,6 +47,10 @@ export interface PromptFrameSecurityPolicyEvaluationReceipt {
 interface AstMatchers {
   globals?: readonly string[];
   memberPaths?: readonly string[];
+  memberPathSuffixes?: readonly string[];
+  documentCreateElementTags?: readonly string[];
+  jsxElements?: readonly string[];
+  jsxAttributes?: readonly string[];
   dynamicImport?: boolean;
   stringTimer?: boolean;
   fpsHardcodedTiming?: boolean;
@@ -184,9 +188,43 @@ function matchAstRule(
   const memberPaths = matcher.memberPaths ?? [];
   if (memberPaths.length > 0 && (ts.isCallExpression(node) || ts.isNewExpression(node) || ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node))) {
     const expression = ts.isCallExpression(node) || ts.isNewExpression(node) ? node.expression : node;
-    const path = memberPath(expression, sourceFile);
+    const path = resolvedMemberPath(expression, sourceFile, localDeclarations, aliases);
     const matchedPath = memberPaths.find((candidate) => path === candidate || path.startsWith(`${candidate}.`));
     if (matchedPath) return { node, confidence: 'high', trace: [`member:${matchedPath}`] };
+  }
+
+  const memberPathSuffixes = matcher.memberPathSuffixes ?? [];
+  if (memberPathSuffixes.length > 0 && (ts.isCallExpression(node) || ts.isNewExpression(node) || ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node))) {
+    const expression = ts.isCallExpression(node) || ts.isNewExpression(node) ? node.expression : node;
+    const path = resolvedMemberPath(expression, sourceFile, localDeclarations, aliases);
+    const matchedPath = memberPathSuffixes.find((candidate) => path === candidate || path.endsWith(`.${candidate}`));
+    if (matchedPath) return { node, confidence: 'high', trace: [`memberSuffix:${matchedPath}`] };
+  }
+
+  const documentCreateElementTags = matcher.documentCreateElementTags ?? [];
+  if (documentCreateElementTags.length > 0 && ts.isCallExpression(node)) {
+    const path = resolvedMemberPath(node.expression, sourceFile, localDeclarations, aliases);
+    const tag = stringLiteralValue(node.arguments[0])?.toLowerCase();
+    const normalizedTags = new Set(documentCreateElementTags.map((item) => item.toLowerCase()));
+    if ((path === 'document.createElement' || path === 'window.document.createElement' || path === 'globalThis.document.createElement') && tag && normalizedTags.has(tag)) {
+      return { node, confidence: 'high', trace: [`documentCreateElement:${tag}`] };
+    }
+  }
+
+  const jsxElements = matcher.jsxElements ?? [];
+  if (jsxElements.length > 0 && (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node))) {
+    const name = jsxElementName(node.tagName, sourceFile)?.toLowerCase();
+    if (name && jsxElements.map((item) => item.toLowerCase()).includes(name)) {
+      return { node, confidence: 'high', trace: [`jsxElement:${name}`] };
+    }
+  }
+
+  const jsxAttributes = matcher.jsxAttributes ?? [];
+  if (jsxAttributes.length > 0 && ts.isJsxAttribute(node)) {
+    const name = jsxAttributeName(node.name);
+    if (name && jsxAttributes.includes(name)) {
+      return { node, confidence: 'high', trace: [`jsxAttribute:${name}`] };
+    }
   }
 
   return undefined;
@@ -271,6 +309,22 @@ function memberPath(node: ts.Node, sourceFile: ts.SourceFile): string {
     return parent && key ? `${parent}.${key}` : '';
   }
   return '';
+}
+
+function resolvedMemberPath(
+  node: ts.Node,
+  sourceFile: ts.SourceFile,
+  localDeclarations: Set<string>,
+  aliases: Map<string, string>,
+): string {
+  const path = memberPath(node, sourceFile);
+  if (!path) return '';
+  const parts = path.split('.');
+  const root = parts[0];
+  if (!root) return path;
+  if (localDeclarations.has(root) && !aliases.has(root)) return '';
+  const resolvedRoot = aliases.get(root) ?? root;
+  return [resolvedRoot, ...parts.slice(1)].join('.');
 }
 
 function stringLiteralValue(node: ts.Expression | undefined): string | undefined {
@@ -368,6 +422,12 @@ function propertyNameText(name: ts.PropertyName): string | undefined {
 
 function jsxAttributeName(name: ts.JsxAttributeName): string | undefined {
   if (ts.isIdentifier(name)) return name.text;
+  return undefined;
+}
+
+function jsxElementName(name: ts.JsxTagNameExpression, sourceFile: ts.SourceFile): string | undefined {
+  if (ts.isIdentifier(name)) return name.text;
+  if (ts.isPropertyAccessExpression(name)) return memberPath(name, sourceFile);
   return undefined;
 }
 

@@ -10,7 +10,7 @@ PromptFrame 标准视频组件模板。
 
 CodingAI 不能读取 PromptFrame 平台源码、内部协作看板、REQ/TASK/QA、内部协作收件箱、secret、内部部署脚本或私有 endpoint 默认值。
 
-版本事实：Current npm registry baseline is `@promptframe/cli@0.1.38`, `@promptframe/contracts@0.1.13`, `@promptframe/component-kit@0.1.11`, and `create-promptframe-component@0.1.28`. The published CLI consumes the contracts AST-aware public security policy evaluator, supports pnpm workspace root lockfile evidence, workspace root check/upload, and preview props/schema unknown-prop diagnostics, and reports `securityPolicyDigest` / `securityEvaluatorMode` / `publicResources` in JSON output.
+版本事实：Current npm registry baseline is `@promptframe/cli@0.1.39`, `@promptframe/contracts@0.1.14`, `@promptframe/component-kit@0.1.11`, and `create-promptframe-component@0.1.29`. The published CLI consumes the contracts AST-aware public security policy evaluator, blocks red-team browser capability vectors, supports pnpm workspace root lockfile evidence, workspace root check/upload, and preview props/schema unknown-prop diagnostics, and reports `securityPolicyDigest` / `securityEvaluatorMode` / `publicResources` in JSON output.
 
 ## 本地开发
 
@@ -84,7 +84,7 @@ npx promptframe status <buildId> --endpoint <promptframe-api-base>
 - `runtime.deterministic.fps_hardcoded_timing` 是 warning-first（先警告）规则；看到它时把硬编码帧数改成 `secondsToFrames(seconds, fps)` 或 `createDurationTimeline()` / `timeline.at()`。
 - 不要直接使用 `fetch()` / XHR / WebSocket / Beacon。
 - 即使使用 `componentRuntime.fetchJson()`，也必须等待平台提供白名单配置；未配置时会进入 `manual_review`。
-- 不要读取 `localStorage` / `sessionStorage` / cookie。当前可能只是 warning，但不建议保留。
+- 不要读取 `localStorage` / `sessionStorage` / cookie；当前公开 CLI 会作为 `storage.browser_storage` 阻断。
 - 需要小型随组件分发的图片、音频、视频、字体、JSON 或文本时，放在 `public/`，并用 `promptFramePublicResource(props, '/sample-data.json', fallback)` 读取平台注入的 runtime URL。CLI 会在 `validate/check/package/upload --json` 里报告 `publicResources`；平台 build admission（构建准入）接受后会给 preview/render 注入平台托管 URL，`status` / build 诊断仍是已接收文件、托管 URL 和拒绝原因的最终依据。不要绕过平台去写裸外部 URL 或组件侧 `fetch()`。
 
 ## 上传与状态
