@@ -14,13 +14,19 @@ test('public templates use the current PromptFrame authoring package baseline', 
     assert.equal(packageJson.dependencies?.['@promptframe/component-kit'], '^0.1.11', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.13', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@remotion/player'], '^4.0.0', templatePackagePath);
-    assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.36', templatePackagePath);
+    assert.equal(packageJson.devDependencies?.['@vitejs/plugin-react'], '^6.0.1', templatePackagePath);
+    assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.37', templatePackagePath);
+    assert.equal(packageJson.devDependencies?.typescript, '~6.0.2', templatePackagePath);
+    assert.equal(packageJson.devDependencies?.vite, '^8.0.10', templatePackagePath);
+    assert.equal(packageJson.dependencies?.['@vitejs/plugin-react'], undefined, templatePackagePath);
+    assert.equal(packageJson.dependencies?.typescript, undefined, templatePackagePath);
+    assert.equal(packageJson.dependencies?.vite, undefined, templatePackagePath);
   }
 });
 
 test('create package version is bumped for the next template release', async () => {
   const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'packages/create-component/package.json'), 'utf8'));
-  assert.equal(packageJson.version, '0.1.26');
+  assert.equal(packageJson.version, '0.1.27');
 });
 
 test('public templates expose PromptFrame CLI lifecycle scripts', async () => {
@@ -120,7 +126,7 @@ test('public authoring docs document the current npm registry baseline', async (
     'packages/create-component/templates/react-remotion/README.md',
   ]) {
     const text = await readFile(path.join(repoRoot, docPath), 'utf8');
-    assert.match(text, /Current npm registry baseline is[\s\S]*@promptframe\/cli@0\.1\.36[\s\S]*create-promptframe-component@0\.1\.26/, docPath);
+    assert.match(text, /Current npm registry baseline is[\s\S]*@promptframe\/cli@0\.1\.37[\s\S]*create-promptframe-component@0\.1\.27/, docPath);
     assert.match(text, /workspace root lockfile|workspace root lockfile evidence|pnpm workspace root lockfile/, docPath);
     assert.doesNotMatch(text, /source candidate|source tree prepares|until Trusted Publishing completes/, docPath);
   }

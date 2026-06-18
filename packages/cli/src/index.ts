@@ -605,7 +605,7 @@ function validateComponentDirectory(dir: string): ComponentManifest {
   const manifestPath = join(dir, 'manifest.json');
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
   const parsed = parseComponentManifest(normalizeLegacyManifest(manifest));
-  validatePreviewProps(dir);
+  validatePreviewProps(dir, parsed);
   validateSourceSafety(dir);
   validateSecurityPolicy(dir);
   checkImportBoundary(dir);
@@ -2885,8 +2885,10 @@ function assertRequiredFiles(dir: string): void {
   }
 }
 
-function validatePreviewProps(dir: string): void {
-  assertPreviewEnvelope(readPreviewProps(dir), 'src/preview-props.json', fail);
+function validatePreviewProps(dir: string, manifest: ComponentManifest): void {
+  const preview = readPreviewProps(dir);
+  assertPreviewEnvelope(preview, 'src/preview-props.json', fail);
+  assertPreviewPropsMatchStaticSchema(dir, manifest, preview);
 }
 
 function readPreviewProps(dir: string): Record<string, unknown> {
@@ -2896,6 +2898,186 @@ function readPreviewProps(dir: string): Record<string, unknown> {
     fail('src/preview-props.json must be a JSON object.', 'component_standard.preview.object');
   }
   return preview;
+}
+
+function assertPreviewPropsMatchStaticSchema(
+  dir: string,
+  manifest: ComponentManifest,
+  preview: Record<string, unknown>,
+): void {
+  const previewProps = asRecord(preview.props) ?? {};
+  const previewPropNames = Object.keys(previewProps);
+  if (previewPropNames.length === 0) return;
+  const schemaKeys = extractStaticZodObjectKeys(readIfExists(join(dir, manifest.entry.propsSchemaPath)));
+  if (schemaKeys.size === 0) return;
+  const unknown = previewPropNames.filter((name) => !schemaKeys.has(name));
+  if (unknown.length === 0) return;
+  fail(
+    `src/preview-props.json props include fields not declared in ${manifest.entry.propsSchemaPath}: ${unknown.join(', ')}`,
+    'component_standard.preview_props.unknown_prop',
+  );
+}
+
+function extractStaticZodObjectKeys(source: string): Set<string> {
+  const marker = 'z.object';
+  const markerIndex = source.indexOf(marker);
+  if (markerIndex < 0) return new Set();
+  const openParen = source.indexOf('(', markerIndex + marker.length);
+  if (openParen < 0) return new Set();
+  const openBrace = nextNonWhitespaceIndex(source, openParen + 1);
+  if (openBrace < 0 || source[openBrace] !== '{') return new Set();
+  const closeBrace = findMatchingBrace(source, openBrace);
+  if (closeBrace < 0) return new Set();
+  return collectTopLevelObjectKeys(source.slice(openBrace + 1, closeBrace));
+}
+
+function nextNonWhitespaceIndex(source: string, start: number): number {
+  for (let index = start; index < source.length; index += 1) {
+    if (!/\s/.test(source[index])) return index;
+  }
+  return -1;
+}
+
+function findMatchingBrace(source: string, openIndex: number): number {
+  let depth = 0;
+  let quote: string | undefined;
+  let escaped = false;
+  for (let index = openIndex; index < source.length; index += 1) {
+    const char = source[index];
+    const next = source[index + 1];
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === quote) {
+        quote = undefined;
+      }
+      continue;
+    }
+    if (char === '/' && next === '/') {
+      index = skipLineComment(source, index + 2);
+      continue;
+    }
+    if (char === '/' && next === '*') {
+      index = skipBlockComment(source, index + 2);
+      continue;
+    }
+    if (char === '"' || char === '\'' || char === '`') {
+      quote = char;
+      continue;
+    }
+    if (char === '{') depth += 1;
+    if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+}
+
+function collectTopLevelObjectKeys(body: string): Set<string> {
+  const keys = new Set<string>();
+  let index = 0;
+  while (index < body.length) {
+    index = skipWhitespaceAndCommas(body, index);
+    if (index >= body.length) break;
+    if (body.startsWith('...', index)) {
+      index = skipTopLevelValue(body, index + 3);
+      continue;
+    }
+    const keyResult = readObjectKey(body, index);
+    if (!keyResult) {
+      index += 1;
+      continue;
+    }
+    index = skipWhitespaceAndCommas(body, keyResult.nextIndex);
+    if (body[index] === ':') {
+      keys.add(keyResult.key);
+      index = skipTopLevelValue(body, index + 1);
+      continue;
+    }
+    index = keyResult.nextIndex;
+  }
+  return keys;
+}
+
+function skipWhitespaceAndCommas(source: string, start: number): number {
+  let index = start;
+  while (index < source.length && (/[\s,]/.test(source[index]))) index += 1;
+  return index;
+}
+
+function readObjectKey(source: string, start: number): { key: string; nextIndex: number } | undefined {
+  const char = source[start];
+  if (char === '"' || char === '\'') {
+    let escaped = false;
+    let value = '';
+    for (let index = start + 1; index < source.length; index += 1) {
+      const current = source[index];
+      if (escaped) {
+        value += current;
+        escaped = false;
+        continue;
+      }
+      if (current === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (current === char) return { key: value, nextIndex: index + 1 };
+      value += current;
+    }
+    return undefined;
+  }
+  const identifier = /^[A-Za-z_$][\w$]*/.exec(source.slice(start));
+  if (!identifier) return undefined;
+  return { key: identifier[0], nextIndex: start + identifier[0].length };
+}
+
+function skipTopLevelValue(source: string, start: number): number {
+  let depth = 0;
+  let quote: string | undefined;
+  let escaped = false;
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index];
+    const next = source[index + 1];
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === quote) {
+        quote = undefined;
+      }
+      continue;
+    }
+    if (char === '/' && next === '/') {
+      index = skipLineComment(source, index + 2);
+      continue;
+    }
+    if (char === '/' && next === '*') {
+      index = skipBlockComment(source, index + 2);
+      continue;
+    }
+    if (char === '"' || char === '\'' || char === '`') {
+      quote = char;
+      continue;
+    }
+    if (char === '(' || char === '[' || char === '{') depth += 1;
+    if (char === ')' || char === ']' || char === '}') depth -= 1;
+    if (char === ',' && depth <= 0) return index + 1;
+  }
+  return source.length;
+}
+
+function skipLineComment(source: string, start: number): number {
+  const nextLine = source.indexOf('\n', start);
+  return nextLine < 0 ? source.length : nextLine;
+}
+
+function skipBlockComment(source: string, start: number): number {
+  const end = source.indexOf('*/', start);
+  return end < 0 ? source.length : end + 1;
 }
 
 function evaluateDirectoryReusability(

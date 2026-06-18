@@ -2924,6 +2924,52 @@ test('validate rejects preview props that exceed the public standard limits', as
   }
 });
 
+test('validate rejects preview props fields that are not declared in schema.ts', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-preview-schema-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(componentDir, 'src/schema.ts'), [
+      "import { z } from 'zod';",
+      'export const propsSchema = z.object({',
+      '  title: z.string(),',
+      '  background: z.string().optional(),',
+      '});',
+      'export type ComponentProps = z.infer<typeof propsSchema>;',
+    ].join('\n'));
+    await writeFile(path.join(componentDir, 'src/preview-props.json'), JSON.stringify({
+      durationFrames: 60,
+      fps: 30,
+      width: 1280,
+      height: 720,
+      props: {
+        title: 'Known title',
+        unexpectedMediaUrl: 'https://example.invalid/video.mp4',
+      },
+    }, null, 2));
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'validate',
+        componentDir,
+        '--json',
+      ]),
+      (error) => {
+        assert.equal(error.code, 1);
+        const payload = JSON.parse(error.stderr);
+        assert.equal(payload.success, false);
+        assert.equal(payload.command, 'validate');
+        assert.equal(payload.diagnostic.code, 'component_standard.preview_props.unknown_prop');
+        assert.match(payload.failureReason, /unexpectedMediaUrl/);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('validate rejects deterministic source and security policy violations', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-source-policy-'));
   try {
