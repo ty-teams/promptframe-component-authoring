@@ -76,6 +76,7 @@ const SECURITY_EVALUATOR_MODE = 'ast';
 const LOCKFILE_EVIDENCE_SCHEMA_VERSION = 'promptframe.lockfile-evidence.v0.1.0';
 const LOCKFILE_EVIDENCE_FILE_NAME = 'promptframe-lockfile-evidence.json';
 const PROMPTFRAME_WORKSPACE_SCHEMA_VERSION = 'promptframe-workspace.v0.1.0';
+const PROMPTFRAME_WORKFLOW_VERSION = 2;
 const PROMPTFRAME_PROJECT_CONTEXT_SCHEMA_VERSION = 'promptframe-project-context.v0.1.0';
 const PROMPTFRAME_PROJECT_CONTEXT_FILE_NAME = '.promptframerc';
 const PROJECT_CONTEXT_FORBIDDEN_KEY_NAMES = new Set([
@@ -167,6 +168,13 @@ interface WorkspaceComponentDeclaration {
 interface WorkspaceComponentReport extends WorkspaceComponentDeclaration {
   absolutePath: string;
   manifest: Record<string, string | undefined>;
+}
+
+interface WorkspaceSharedPackageReport {
+  name: string;
+  path: string;
+  absolutePath: string;
+  packageJson: ComponentPackageJson;
 }
 
 interface PackageManagerLockfileEvidence {
@@ -386,7 +394,10 @@ async function checkWorkspace(argv: string[], root: string): Promise<void> {
     path: report.path,
     ...buildCheckOutput(workspaceComponentInput(report), target, freshness),
   }));
-  const diagnostics = components.flatMap((component) => component.diagnostics);
+  const diagnostics = [
+    ...workflowTemplateDiagnostics(workflowPathForMode(root, true), true, root),
+    ...components.flatMap((component) => component.diagnostics),
+  ];
   const output = {
     command: 'check' as const,
     workspace: true,
@@ -444,6 +455,7 @@ function buildCheckOutput(
     ...securityPolicyWarningDiagnostics(dir),
     ...dependencyPolicy.diagnostics,
     ...publicResources.diagnostics,
+    ...workflowTemplateDiagnosticsForInput(input),
   ];
   const output = {
     command: 'check' as const,
@@ -1020,10 +1032,12 @@ function workspace(argv: string[]): void {
 function workspaceValidate(argv: string[]): void {
   const root = resolve(componentPathArg(argv) ?? '.');
   const reports = collectWorkspaceComponentReports(root);
+  const diagnostics = workflowTemplateDiagnostics(workflowPathForMode(root, true), true, root);
   const output = {
     command: 'workspace.validate',
     workspace: workspaceSummary(root),
     components: reports.map(workspaceReportForOutput),
+    diagnostics,
     diagnostic: diagnostic('workspace.validate.completed', 'info', 'PromptFrame workspace configuration is valid.'),
   };
   if (hasFlag(argv, '--json')) {
@@ -1172,6 +1186,7 @@ function collectWorkspaceComponentReports(root: string): WorkspaceComponentRepor
       2,
     );
   }
+  const sharedPackages = collectWorkspaceSharedPackages(root);
   return workspace.components.map((component) => {
     const absolutePath = resolve(root, component.path);
     assertWorkspacePathInsideRoot(root, absolutePath, component.path);
@@ -1182,6 +1197,7 @@ function collectWorkspaceComponentReports(root: string): WorkspaceComponentRepor
         2,
       );
     }
+    assertWorkspaceSharedPackageDependencies(component, absolutePath, sharedPackages);
     const manifest = validateComponentDirectory(absolutePath);
     if (manifest.id !== component.id) {
       fail(
@@ -1334,6 +1350,169 @@ function assertWorkspacePathInsideRoot(root: string, absolutePath: string, displ
       2,
     );
   }
+}
+
+function collectWorkspaceSharedPackages(root: string): Map<string, WorkspaceSharedPackageReport> {
+  const packages = new Map<string, WorkspaceSharedPackageReport>();
+  for (const candidateDir of workspacePackageCandidateDirs(root)) {
+    const packagePath = join(candidateDir, 'package.json');
+    if (!existsSync(packagePath)) continue;
+    let packageJson: ComponentPackageJson;
+    try {
+      packageJson = JSON.parse(readFileSync(packagePath, 'utf8')) as ComponentPackageJson;
+    } catch {
+      fail(
+        `工作区共享包 package.json 必须是合法 JSON: ${relative(root, packagePath).replace(/\\/g, '/')}`,
+        'workspace.shared_package.package_json_invalid',
+        2,
+      );
+    }
+    const name = typeof packageJson.name === 'string' ? packageJson.name : undefined;
+    if (!name) continue;
+    packages.set(name, {
+      name,
+      path: relative(root, candidateDir).replace(/\\/g, '/'),
+      absolutePath: candidateDir,
+      packageJson,
+    });
+  }
+  return packages;
+}
+
+function workspacePackageCandidateDirs(root: string): string[] {
+  const globs = new Set<string>(['packages/*']);
+  for (const pattern of readPnpmWorkspacePatterns(root)) globs.add(pattern);
+  for (const pattern of readPackageWorkspacePatterns(root)) globs.add(pattern);
+  const candidates = new Set<string>();
+  for (const pattern of globs) {
+    if (pattern.startsWith('!')) continue;
+    const normalized = normalizeWorkspaceGlobPattern(pattern);
+    if (!normalized) continue;
+    const base = join(root, normalized.base);
+    if (!existsSync(base)) continue;
+    for (const entry of readdirSync(base, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      candidates.add(join(base, entry.name));
+    }
+  }
+  return [...candidates].sort((left, right) => left.localeCompare(right));
+}
+
+function normalizeWorkspaceGlobPattern(pattern: string): { base: string } | undefined {
+  const cleaned = pattern.trim().replace(/^['"]|['"]$/g, '').replace(/\\/g, '/').replace(/^\.\/+/, '');
+  if (!cleaned || cleaned.includes('..') || cleaned.startsWith('/')) return undefined;
+  const match = cleaned.match(/^([A-Za-z0-9._~!$&'()+,;=@/-]+)\/\*$/);
+  if (!match) return undefined;
+  return { base: match[1]! };
+}
+
+function readPnpmWorkspacePatterns(root: string): string[] {
+  const path = join(root, 'pnpm-workspace.yaml');
+  if (!existsSync(path)) return [];
+  return readFileSync(path, 'utf8')
+    .split(/\r?\n/)
+    .map((line) => line.match(/^\s*-\s*['"]?([^'"]+)['"]?\s*$/)?.[1])
+    .filter((value): value is string => Boolean(value));
+}
+
+function readPackageWorkspacePatterns(root: string): string[] {
+  const path = join(root, 'package.json');
+  if (!existsSync(path)) return [];
+  let packageJson: Record<string, unknown>;
+  try {
+    packageJson = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+  } catch {
+    return [];
+  }
+  const workspaces = packageJson.workspaces;
+  if (Array.isArray(workspaces)) {
+    return workspaces.filter((value): value is string => typeof value === 'string');
+  }
+  const workspaceRecord = asRecord(workspaces);
+  const packages = workspaceRecord ? arrayValue(workspaceRecord.packages) : [];
+  return packages.filter((value): value is string => typeof value === 'string');
+}
+
+function assertWorkspaceSharedPackageDependencies(
+  component: WorkspaceComponentDeclaration,
+  componentDir: string,
+  sharedPackages: Map<string, WorkspaceSharedPackageReport>,
+): void {
+  const packageJson = readPackageManifest(join(componentDir, 'package.json'));
+  for (const dependency of workspaceDependencyRows(packageJson)) {
+    const sharedPackage = sharedPackages.get(dependency.name);
+    if (!sharedPackage) {
+      const expectedPath = `packages/${packageNameSlug(dependency.name)}/package.json`;
+      fail(
+        `共享包 ${dependency.name} 在组件 ${component.id} 中使用 ${dependency.version}，但工作区没有找到同名 package.json。请创建 ${expectedPath}（name 必须为 ${dependency.name}），或把共享代码移动到组件 src/，或改用已审查的 registry semver 依赖。`,
+        'workspace.shared_package.missing',
+      );
+    }
+    const cycle = workspaceDependencyCycle(dependency.name, sharedPackages);
+    if (cycle) {
+      fail(
+        `共享包 ${dependency.name} 存在 workspace:* 循环依赖：${cycle.join(' -> ')}。请拆除循环后再上传。`,
+        'workspace.shared_package.cycle',
+      );
+    }
+    fail(
+      `共享包 ${dependency.name} 已解析到 ${sharedPackage.path}，但 PromptFrame CLI 暂不支持自动内联 workspace:* 共享包到组件 source zip。请把共享代码生成/复制到组件 src/，或发布为已审查的 registry semver 依赖后再使用。`,
+      'workspace.shared_package.inline_unsupported',
+    );
+  }
+}
+
+function workspaceDependencyRows(packageJson: ComponentPackageJson): Array<{ name: string; version: string; dependencySet: string }> {
+  const rows: Array<{ name: string; version: string; dependencySet: string }> = [];
+  for (const dependencySet of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
+    const dependencies = stringRecord((packageJson as Record<string, unknown>)[dependencySet]);
+    for (const [name, version] of Object.entries(dependencies)) {
+      if (version.trim().toLowerCase().startsWith('workspace:')) {
+        rows.push({ name, version, dependencySet });
+      }
+    }
+  }
+  return rows.sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function stringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
+}
+
+function workspaceDependencyCycle(
+  startName: string,
+  sharedPackages: Map<string, WorkspaceSharedPackageReport>,
+): string[] | undefined {
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const stack: string[] = [];
+
+  function visit(name: string): string[] | undefined {
+    if (visiting.has(name)) {
+      const startIndex = stack.indexOf(name);
+      return [...stack.slice(startIndex), name];
+    }
+    if (visited.has(name)) return undefined;
+    const sharedPackage = sharedPackages.get(name);
+    if (!sharedPackage) return undefined;
+    visiting.add(name);
+    stack.push(name);
+    for (const dependency of workspaceDependencyRows(sharedPackage.packageJson)) {
+      const cycle = visit(dependency.name);
+      if (cycle) return cycle;
+    }
+    stack.pop();
+    visiting.delete(name);
+    visited.add(name);
+    return undefined;
+  }
+
+  return visit(startName);
+}
+
+function packageNameSlug(name: string): string {
+  return name.replace(/^@/, '').split('/').at(-1)?.replace(/[^A-Za-z0-9._-]+/g, '-') || 'shared-package';
 }
 
 function buildSourceMetadataHeaders(source: ComponentSourceMetadata): Record<string, string> {
@@ -2105,25 +2284,59 @@ function setupCi(argv: string[]): void {
   }
   const targetDir = resolve(setupCiTargetDir(argv));
   const workspaceMode = hasFlag(argv, '--workspace');
+  const upgradeMode = hasFlag(argv, '--upgrade');
+  const dryRun = hasFlag(argv, '--dry-run');
   const workspaceReports = workspaceMode ? collectWorkspaceComponentReports(targetDir) : [];
-  const workflowPath = join(
-    targetDir,
-    '.github',
-    'workflows',
-    workspaceMode ? 'promptframe-workspace.yml' : 'promptframe-component.yml',
-  );
+  const workflowPath = workflowPathForMode(targetDir, workspaceMode);
+  const workflow = workspaceMode ? promptFrameGithubWorkspaceWorkflow(workspaceReports) : promptFrameGithubWorkflow();
+  if (existsSync(workflowPath) && upgradeMode) {
+    const existing = readFileSync(workflowPath, 'utf8');
+    const upgrade = inspectPromptFrameWorkflow(existing, targetDir, workspaceMode);
+    if (!upgrade.managed) {
+      fail(
+        `Existing workflow at ${workflowPath} does not look like a PromptFrame-managed workflow. Use --force only after reviewing it manually.`,
+        'setup_ci.workflow.unmanaged',
+      );
+    }
+    const workflowReport = {
+      ...upgrade,
+      ...(!dryRun && upgrade.stale ? { previousVersion: upgrade.currentVersion } : {}),
+    };
+    const output = {
+      success: true,
+      command: 'setup-ci',
+      provider,
+      ...(workspaceMode ? {
+        workspace: true,
+        components: workspaceReports.map(({ id, path }) => ({ id, path })),
+      } : {}),
+      workflowPath,
+      dryRun,
+      workflow: workflowReport,
+      diagnostic: upgrade.stale
+        ? diagnostic(dryRun ? 'setup_ci.workflow.upgrade_available' : 'setup_ci.workflow.upgraded', dryRun ? 'warning' : 'info', upgrade.message)
+        : diagnostic('setup_ci.workflow.current', 'info', 'PromptFrame GitHub Actions workflow is already current.'),
+    };
+    if (upgrade.stale && !dryRun) {
+      mkdirSync(dirname(workflowPath), { recursive: true });
+      writeFileSync(workflowPath, workflow, 'utf8');
+    }
+    if (hasFlag(argv, '--json')) {
+      printJson(output);
+      return;
+    }
+    console.log(upgrade.message);
+    if (upgrade.stale) console.log(`Repair: ${upgrade.repairCommand}`);
+    return;
+  }
   if (existsSync(workflowPath) && !hasFlag(argv, '--force')) {
     fail(
-      `PromptFrame GitHub workflow already exists at ${workflowPath}. Use --force to overwrite.`,
+      `PromptFrame GitHub workflow already exists at ${workflowPath}. Use --upgrade to refresh a PromptFrame-managed workflow or --force to overwrite.`,
       'setup_ci.workflow.exists',
     );
   }
   mkdirSync(dirname(workflowPath), { recursive: true });
-  writeFileSync(
-    workflowPath,
-    workspaceMode ? promptFrameGithubWorkspaceWorkflow(workspaceReports) : promptFrameGithubWorkflow(),
-    'utf8',
-  );
+  if (!dryRun) writeFileSync(workflowPath, workflow, 'utf8');
   const output = {
     success: true,
     command: 'setup-ci',
@@ -2136,9 +2349,19 @@ function setupCi(argv: string[]): void {
     requiredSecrets: ['PROMPTFRAME_CI_TOKEN'],
     requiredVariables: ['PROMPTFRAME_API_BASE'],
     ...(workspaceMode ? { optionalVariables: ['RUNNER_LABELS'] } : {}),
+    dryRun,
+    workflow: {
+      currentVersion: null,
+      latestVersion: PROMPTFRAME_WORKFLOW_VERSION,
+      stale: false,
+      message: 'PromptFrame GitHub Actions workflow template is current.',
+      repairCommand: setupCiUpgradeCommand(targetDir, workspaceMode),
+    },
     pullRequestMode: 'check_only',
     pushMode: 'upload',
-    diagnostic: diagnostic('setup_ci.github.completed', 'info', 'PromptFrame GitHub Actions workflow written.'),
+    diagnostic: diagnostic(dryRun ? 'setup_ci.github.dry_run' : 'setup_ci.github.completed', 'info', dryRun
+      ? 'PromptFrame GitHub Actions workflow dry-run completed.'
+      : 'PromptFrame GitHub Actions workflow written.'),
   };
   if (hasFlag(argv, '--json')) {
     printJson(output);
@@ -2160,6 +2383,97 @@ function setupCiTargetDir(argv: string[]): string {
   return '.';
 }
 
+function workflowPathForMode(root: string, workspaceMode: boolean): string {
+  return join(
+    root,
+    '.github',
+    'workflows',
+    workspaceMode ? 'promptframe-workspace.yml' : 'promptframe-component.yml',
+  );
+}
+
+function promptFrameWorkflowHeader(modeFlag: '' | '--workspace'): string {
+  const command = modeFlag ? `promptframe setup-ci ${modeFlag}` : 'promptframe setup-ci';
+  return `# promptframe-workflow-version: ${PROMPTFRAME_WORKFLOW_VERSION}
+# Generated by ${command}. Keep this header when editing manually.`;
+}
+
+function setupCiUpgradeCommand(targetDir: string, workspaceMode: boolean): string {
+  const displayDir = targetDir || '.';
+  return [
+    'npx promptframe setup-ci',
+    shellQuote(displayDir),
+    '--provider github',
+    workspaceMode ? '--workspace' : '',
+    '--upgrade',
+  ].filter(Boolean).join(' ');
+}
+
+function shellQuote(value: string): string {
+  if (/^[A-Za-z0-9_./:@-]+$/.test(value)) return value;
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function inspectPromptFrameWorkflow(
+  content: string,
+  targetDir: string,
+  workspaceMode: boolean,
+): {
+  managed: boolean;
+  currentVersion: number | null;
+  latestVersion: number;
+  stale: boolean;
+  message: string;
+  repairCommand: string;
+} {
+  const currentVersion = promptFrameWorkflowVersion(content);
+  const managed = currentVersion !== undefined
+    || /PromptFrame Component(?: Workspace)?/i.test(content)
+    || /\bpromptframe\b/i.test(content);
+  const stale = currentVersion === undefined || currentVersion < PROMPTFRAME_WORKFLOW_VERSION;
+  const repairCommand = setupCiUpgradeCommand(targetDir, workspaceMode);
+  const displayVersion = currentVersion === undefined ? 'missing' : String(currentVersion);
+  return {
+    managed,
+    currentVersion: currentVersion ?? null,
+    latestVersion: PROMPTFRAME_WORKFLOW_VERSION,
+    stale,
+    message: stale
+      ? `PromptFrame workflow 模板已过期：当前版本 ${displayVersion}，最新版本 ${PROMPTFRAME_WORKFLOW_VERSION}。`
+      : `PromptFrame workflow 模板已是最新版本 ${PROMPTFRAME_WORKFLOW_VERSION}。`,
+    repairCommand,
+  };
+}
+
+function promptFrameWorkflowVersion(content: string): number | undefined {
+  const match = content.match(/^#\s*promptframe-workflow-version:\s*(\d+)\s*$/m);
+  if (!match) return undefined;
+  const version = Number(match[1]);
+  return Number.isInteger(version) ? version : undefined;
+}
+
+function workflowTemplateDiagnosticsForInput(input: ResolvedComponentInput): ComponentDiagnostic[] {
+  if (input.source.mode !== 'single_component') return [];
+  return workflowTemplateDiagnostics(workflowPathForMode(input.dir, false), false, input.dir);
+}
+
+function workflowTemplateDiagnostics(
+  workflowPath: string,
+  workspaceMode: boolean,
+  targetDir: string,
+): ComponentDiagnostic[] {
+  if (!existsSync(workflowPath)) return [];
+  const inspection = inspectPromptFrameWorkflow(readFileSync(workflowPath, 'utf8'), targetDir, workspaceMode);
+  if (!inspection.managed || !inspection.stale) return [];
+  return [{
+    code: 'setup_ci.workflow.stale',
+    severity: 'warning',
+    stage: 'validate',
+    message: inspection.message,
+    repairHint: inspection.repairCommand,
+  }];
+}
+
 function promptFrameGithubWorkspaceWorkflow(_components: WorkspaceComponentReport[]): string {
   const apiBaseVariable = '$' + '{{ vars.PROMPTFRAME_API_BASE }}';
   const ciTokenSecret = '$' + '{{ secrets.PROMPTFRAME_CI_TOKEN }}';
@@ -2170,8 +2484,7 @@ function promptFrameGithubWorkspaceWorkflow(_components: WorkspaceComponentRepor
   const workspaceMatrixOutput = '$' + '{{ steps.workspace.outputs.matrix }}';
   const workspaceCountOutput = '$' + '{{ steps.workspace.outputs.count }}';
   const discoverMatrix = '$' + '{{ fromJSON(needs.discover.outputs.matrix) }}';
-  return `# promptframe-workflow-version: 1
-# Generated by promptframe setup-ci --workspace. Keep this header when editing manually.
+  return `${promptFrameWorkflowHeader('--workspace')}
 
 name: PromptFrame Component Workspace
 
@@ -2419,7 +2732,9 @@ jobs:
 function promptFrameGithubWorkflow(): string {
   const apiBaseVariable = '$' + '{{ vars.PROMPTFRAME_API_BASE }}';
   const ciTokenSecret = '$' + '{{ secrets.PROMPTFRAME_CI_TOKEN }}';
-  return `name: PromptFrame Component
+  return `${promptFrameWorkflowHeader('')}
+
+name: PromptFrame Component
 
 on:
   pull_request:
@@ -4068,6 +4383,8 @@ Commands:
   component list|create             List or declare Project-scoped components
   ci-token create|list|revoke       Manage self-service CI tokens for the current project
   setup-ci [dir] --provider github   Write a GitHub Actions workflow skeleton
+    --upgrade                        Refresh a PromptFrame-managed workflow when its version header is stale
+    --dry-run                        Report the workflow action without writing files
   configure --endpoint <url>       Write local CLI endpoint/context config
 
 Endpoint resolution:

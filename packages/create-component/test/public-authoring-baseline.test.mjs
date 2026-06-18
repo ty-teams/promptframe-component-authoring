@@ -15,7 +15,7 @@ test('public templates use the current PromptFrame authoring package baseline', 
     assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.14', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@remotion/player'], '^4.0.0', templatePackagePath);
     assert.equal(packageJson.devDependencies?.['@vitejs/plugin-react'], '^6.0.1', templatePackagePath);
-    assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.39', templatePackagePath);
+    assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.41', templatePackagePath);
     assert.equal(packageJson.devDependencies?.typescript, '~6.0.2', templatePackagePath);
     assert.equal(packageJson.devDependencies?.vite, '^8.0.10', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@vitejs/plugin-react'], undefined, templatePackagePath);
@@ -26,7 +26,7 @@ test('public templates use the current PromptFrame authoring package baseline', 
 
 test('create package version is bumped for the next template release', async () => {
   const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'packages/create-component/package.json'), 'utf8'));
-  assert.equal(packageJson.version, '0.1.29');
+  assert.equal(packageJson.version, '0.1.30');
 });
 
 test('public templates expose PromptFrame CLI lifecycle scripts', async () => {
@@ -49,12 +49,15 @@ test('public templates include GitHub CI workflow skeleton without private endpo
     'packages/create-component/templates/react-remotion/.github/workflows/promptframe-component.yml',
   ]) {
     const workflow = await readFile(path.join(repoRoot, workflowPath), 'utf8');
+    assert.match(workflow, /# promptframe-workflow-version: 2/, workflowPath);
     assert.match(workflow, /pull_request:/, workflowPath);
     assert.match(workflow, /branches: \[main\]/, workflowPath);
     assert.match(workflow, /\$\{\{ secrets\.PROMPTFRAME_CI_TOKEN \}\}/, workflowPath);
     assert.match(workflow, /\$\{\{ vars\.PROMPTFRAME_API_BASE \}\}/, workflowPath);
     assert.match(workflow, /promptframe check \. --json/, workflowPath);
-    assert.match(workflow, /promptframe upload \. --endpoint "\$PROMPTFRAME_API_BASE" --json/, workflowPath);
+    assert.match(workflow, /PROMPTFRAME_VERSION_NOTES=/, workflowPath);
+    assert.match(workflow, /promptframe upload \. --endpoint "\$PROMPTFRAME_API_BASE" --release-notes "\$PROMPTFRAME_VERSION_NOTES" --json/, workflowPath);
+    assert.match(workflow, /Version notes:/, workflowPath);
     assert.match(workflow, /promptframe status "\$BUILD_ID" --endpoint "\$PROMPTFRAME_API_BASE" --json --fail-on-build-failed/, workflowPath);
     assert.match(workflow, /::error title=PromptFrame platform build failed::/, workflowPath);
     assert.match(workflow, /exit "\$STATUS_EXIT"/, workflowPath);
@@ -126,7 +129,7 @@ test('public authoring docs document the current npm registry baseline', async (
     'packages/create-component/templates/react-remotion/README.md',
   ]) {
     const text = await readFile(path.join(repoRoot, docPath), 'utf8');
-    assert.match(text, /Current npm registry baseline is[\s\S]*@promptframe\/cli@0\.1\.39[\s\S]*create-promptframe-component@0\.1\.29/, docPath);
+    assert.match(text, /Current npm registry baseline is[\s\S]*@promptframe\/cli@0\.1\.41[\s\S]*create-promptframe-component@0\.1\.30/, docPath);
     assert.match(text, /workspace root lockfile|workspace root lockfile evidence|pnpm workspace root lockfile/, docPath);
     assert.doesNotMatch(text, /source candidate|source tree prepares|until Trusted Publishing completes/, docPath);
   }
