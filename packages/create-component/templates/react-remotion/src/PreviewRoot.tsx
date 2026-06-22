@@ -32,6 +32,88 @@ type PreviewCase = {
 
 type PropPath = Array<string | number>;
 
+type PreviewLocale = 'en' | 'zh';
+
+type PreviewMessageKey =
+  | 'advancedJson'
+  | 'aspect'
+  | 'autoCases'
+  | 'custom'
+  | 'exportCase'
+  | 'invalidJson'
+  | 'invalidProps'
+  | 'item'
+  | 'jsonParseFallback'
+  | 'noItems'
+  | 'preview'
+  | 'previewCaseName'
+  | 'previewControlsAria'
+  | 'props'
+  | 'schemaValidationFailed';
+
+const previewMessages: Record<PreviewLocale, Record<PreviewMessageKey, string>> = {
+  en: {
+    advancedJson: 'Advanced JSON',
+    aspect: 'Aspect',
+    autoCases: 'Auto cases',
+    custom: 'Custom',
+    exportCase: 'Export case',
+    invalidJson: 'Invalid JSON',
+    invalidProps: 'Invalid props',
+    item: 'Item',
+    jsonParseFallback: 'Unable to parse JSON.',
+    noItems: 'No items',
+    preview: 'Preview',
+    previewCaseName: 'Preview case name',
+    previewControlsAria: 'PromptFrame preview controls',
+    props: 'Props',
+    schemaValidationFailed: 'Schema validation failed.',
+  },
+  zh: {
+    advancedJson: '高级 JSON',
+    aspect: '画幅',
+    autoCases: '自动案例',
+    custom: '自定义',
+    exportCase: '导出案例',
+    invalidJson: 'JSON 无效',
+    invalidProps: '参数无效',
+    item: '项目',
+    jsonParseFallback: '无法解析 JSON。',
+    noItems: '暂无项目',
+    preview: '预览',
+    previewCaseName: '预览案例名称',
+    previewControlsAria: 'PromptFrame 预览控制台',
+    props: '属性',
+    schemaValidationFailed: 'Schema 校验失败。',
+  },
+};
+
+function resolvePreviewLocale(): PreviewLocale {
+  const language = typeof navigator === 'undefined' ? '' : navigator.language.toLowerCase();
+  return language.startsWith('zh') ? 'zh' : 'en';
+}
+
+const previewLocale = resolvePreviewLocale();
+const isZh = previewLocale === 'zh';
+
+function t(key: PreviewMessageKey): string {
+  return previewMessages[previewLocale][key];
+}
+
+function formatPropLabel(rawKey: string): string {
+  const spaced = rawKey
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!spaced) {
+    return rawKey;
+  }
+
+  return spaced.replace(/\b[a-z]/g, (character) => character.toUpperCase());
+}
+
 const initialPropsParse = propsSchema.safeParse(preview.props ?? {});
 const initialProps: ComponentProps = initialPropsParse.success
   ? initialPropsParse.data
@@ -48,7 +130,7 @@ const matchedInitialSize = previewAspectPresets.find(
 );
 const initialSize: PreviewSize = matchedInitialSize
   ? { ...matchedInitialSize }
-  : { label: 'Custom', width: preview.width, height: preview.height };
+  : { label: t('custom'), width: preview.width, height: preview.height };
 const defaultPreviewCaseName = 'local-preview-case';
 const generatedPreviewCases = createPreviewCaseMatrix<ComponentProps>({
   basePreview: {
@@ -162,15 +244,15 @@ function parseJsonDraft(rawValue: string): { success: true; value: unknown } | {
   try {
     return { success: true, value: JSON.parse(rawValue) };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unable to parse JSON.';
-    return { success: false, message: `Invalid JSON: ${message}` };
+    const message = error instanceof Error ? error.message : t('jsonParseFallback');
+    return { success: false, message: `${t('invalidJson')}: ${message}` };
   }
 }
 
 function formatPropsParseError(error: { issues?: Array<{ path?: Array<string | number>; message?: string }> }): string {
   const firstIssue = error.issues?.[0];
   const path = firstIssue?.path?.length ? `${firstIssue.path.join('.')}: ` : '';
-  return `${path}${firstIssue?.message ?? 'Schema validation failed.'}`;
+  return `${path}${firstIssue?.message ?? t('schemaValidationFailed')}`;
 }
 
 function normalizePreviewCaseName(name: string): string {
@@ -251,7 +333,7 @@ function PreviewApp() {
     if (!parsed.success) {
       setJsonDraftErrors((current) => ({
         ...current,
-        [draftKey]: `Invalid props: ${formatPropsParseError(parsed.error)}`,
+        [draftKey]: `${t('invalidProps')}: ${formatPropsParseError(parsed.error)}`,
       }));
       return;
     }
@@ -270,7 +352,9 @@ function PreviewApp() {
   const exportPreviewCase = () => {
     const previewCase = buildPreviewCase({ name: previewCaseName, inputProps, previewSize });
     const fileName = downloadPreviewCase(previewCase);
-    setExportStatus(`Exported ${fileName}. Save it under .promptframe/local-previews/.`);
+    setExportStatus(isZh
+      ? `已导出 ${fileName}。请保存到 .promptframe/local-previews/。`
+      : `Exported ${fileName}. Save it under .promptframe/local-previews/.`);
   };
 
   const applyGeneratedPreviewCase = (previewCase: PromptFramePreviewCase<ComponentProps>) => {
@@ -283,7 +367,9 @@ function PreviewApp() {
       height: previewCase.height,
     });
     setPreviewCaseName(previewCase.id);
-    setExportStatus(`Loaded ${previewCase.name}. Adjust props if needed, then export it as a local preview case.`);
+    setExportStatus(isZh
+      ? `已载入 ${previewCase.name}。如有需要可继续调整属性，然后导出为本地预览案例。`
+      : `Loaded ${previewCase.name}. Adjust props if needed, then export it as a local preview case.`);
   };
 
   const renderDraftError = (draftKey: string): ReactNode => {
@@ -304,7 +390,7 @@ function PreviewApp() {
     return (
       <details style={{ display: 'grid', gap: 8 }}>
         <summary style={{ color: '#475569', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
-          Advanced JSON
+          {t('advancedJson')}
         </summary>
         <textarea
           data-promptframe-prop-json={draftKey}
@@ -398,12 +484,12 @@ function PreviewApp() {
                   key={`${draftKey}.${index}`}
                   style={{ display: 'grid', gap: 8, borderLeft: '2px solid #cbd5e1', paddingLeft: 10 }}
                 >
-                  {renderPropControl([...path, index], `Item ${index + 1}`, item, depth + 1)}
+                  {renderPropControl([...path, index], `${t('item')} ${index + 1}`, item, depth + 1)}
                 </div>
               ))}
             </div>
           ) : (
-            <span style={{ color: '#64748b', fontSize: 12 }}>No items</span>
+            <span style={{ color: '#64748b', fontSize: 12 }}>{t('noItems')}</span>
           )}
           {renderJsonFallback(path, value)}
         </div>
@@ -427,7 +513,7 @@ function PreviewApp() {
           <span style={{ color: '#334155', fontSize: 13, fontWeight: 700 }}>{label}</span>
           {Object.entries(value).map(([childKey, childValue]) => (
             <div key={`${draftKey}.${childKey}`} style={{ display: 'grid', gap: 6, paddingLeft: depth > 0 ? 8 : 0 }}>
-              {renderPropControl([...path, childKey], childKey, childValue, depth + 1)}
+              {renderPropControl([...path, childKey], formatPropLabel(childKey), childValue, depth + 1)}
             </div>
           ))}
           {renderJsonFallback(path, value)}
@@ -511,7 +597,7 @@ function PreviewApp() {
       </section>
 
       <aside
-        aria-label="PromptFrame preview controls"
+        aria-label={t('previewControlsAria')}
         style={{
           alignSelf: 'stretch',
           background: '#f8fafc',
@@ -524,9 +610,9 @@ function PreviewApp() {
         }}
       >
         <section>
-          <h2 style={{ fontSize: 16, margin: '0 0 12px', letterSpacing: 0 }}>Preview</h2>
+          <h2 style={{ fontSize: 16, margin: '0 0 12px', letterSpacing: 0 }}>{t('preview')}</h2>
           <div
-            aria-label="Aspect ratio"
+            aria-label={t('aspect')}
             style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}
           >
             {previewAspectPresets.map((preset) => (
@@ -558,7 +644,7 @@ function PreviewApp() {
             }}
           >
             <label style={{ display: 'grid', gap: 6, fontSize: 13 }}>
-              <span style={{ color: '#334155', fontWeight: 700 }}>Preview case name</span>
+              <span style={{ color: '#334155', fontWeight: 700 }}>{t('previewCaseName')}</span>
               <input
                 data-promptframe-preview-case-name
                 type="text"
@@ -590,7 +676,7 @@ function PreviewApp() {
                 cursor: 'pointer',
               }}
             >
-              Export case
+              {t('exportCase')}
             </button>
             {exportStatus ? (
               <p aria-live="polite" style={{ margin: 0, color: '#475569', fontSize: 12 }}>
@@ -598,7 +684,7 @@ function PreviewApp() {
               </p>
             ) : null}
             <div style={{ display: 'grid', gap: 8 }}>
-              <strong style={{ color: '#334155', fontSize: 13 }}>Auto cases</strong>
+              <strong style={{ color: '#334155', fontSize: 13 }}>{t('autoCases')}</strong>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
                 {generatedPreviewCases.map((previewCase) => (
                   <button
@@ -627,9 +713,9 @@ function PreviewApp() {
         </section>
 
         <section style={{ marginTop: 22 }}>
-          <h2 style={{ fontSize: 16, margin: '0 0 12px', letterSpacing: 0 }}>Props</h2>
+          <h2 style={{ fontSize: 16, margin: '0 0 12px', letterSpacing: 0 }}>{t('props')}</h2>
           <div style={{ display: 'grid', gap: 12 }}>
-            {Object.entries(inputProps).map(([key, value]) => renderPropControl([key], key, value))}
+            {Object.entries(inputProps).map(([key, value]) => renderPropControl([key], formatPropLabel(key), value))}
           </div>
         </section>
       </aside>

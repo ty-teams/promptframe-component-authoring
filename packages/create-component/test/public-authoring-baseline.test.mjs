@@ -26,7 +26,7 @@ test('public templates use the current PromptFrame authoring package baseline', 
 
 test('create package version is bumped for the next template release', async () => {
   const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'packages/create-component/package.json'), 'utf8'));
-  assert.equal(packageJson.version, '0.1.30');
+  assert.equal(packageJson.version, '0.1.31');
 });
 
 test('public templates expose PromptFrame CLI lifecycle scripts', async () => {
@@ -129,7 +129,7 @@ test('public authoring docs document the current npm registry baseline', async (
     'packages/create-component/templates/react-remotion/README.md',
   ]) {
     const text = await readFile(path.join(repoRoot, docPath), 'utf8');
-    assert.match(text, /Current npm registry baseline is[\s\S]*@promptframe\/cli@0\.1\.41[\s\S]*create-promptframe-component@0\.1\.30/, docPath);
+    assert.match(text, /Current npm registry baseline is[\s\S]*@promptframe\/cli@0\.1\.41[\s\S]*create-promptframe-component@0\.1\.31/, docPath);
     assert.match(text, /workspace root lockfile|workspace root lockfile evidence|pnpm workspace root lockfile/, docPath);
     assert.doesNotMatch(text, /source candidate|source tree prepares|until Trusted Publishing completes/, docPath);
   }
@@ -239,6 +239,30 @@ test('public templates expose component-kit generated preview case matrix', asyn
     assert.match(previewRoot, /Auto cases/, templateRoot);
     assert.match(previewRoot, /propsSchema\.safeParse/, templateRoot);
     assert.match(readme, /自动生成.*preview cases|preview cases.*自动生成/, templateRoot);
+  }
+});
+
+test('public templates localize PreviewRoot controls and derive readable prop labels', async () => {
+  for (const templateRoot of [
+    'templates/react-remotion',
+    'packages/create-component/templates/react-remotion',
+  ]) {
+    const previewRoot = await readFile(path.join(repoRoot, templateRoot, 'src/PreviewRoot.tsx'), 'utf8');
+
+    assert.match(previewRoot, /type PreviewLocale = 'en' \| 'zh'/, templateRoot);
+    assert.match(previewRoot, /previewMessages/, templateRoot);
+    assert.match(previewRoot, /resolvePreviewLocale/, templateRoot);
+    assert.match(previewRoot, /formatPropLabel/, templateRoot);
+    assert.match(previewRoot, /isZh/, templateRoot);
+    assert.match(previewRoot, /Aspect/, templateRoot);
+    assert.match(previewRoot, /画幅/, templateRoot);
+    assert.match(previewRoot, /Props/, templateRoot);
+    assert.match(previewRoot, /属性/, templateRoot);
+    assert.match(previewRoot, /Advanced JSON/, templateRoot);
+    assert.match(previewRoot, /高级 JSON/, templateRoot);
+    assert.match(previewRoot, /Object\.entries\(inputProps\)\.map\(\(\[key, value\]\) => renderPropControl\(\[key\], formatPropLabel\(key\), value\)\)/, templateRoot);
+    assert.doesNotMatch(previewRoot, /renderPropControl\(\[key\], key, value\)/, templateRoot);
+    assert.doesNotMatch(previewRoot, /renderPropControl\(\[\.\.\.path, childKey\], childKey, childValue/, templateRoot);
   }
 });
 
