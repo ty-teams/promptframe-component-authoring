@@ -195,7 +195,12 @@ interface PromptFrameProjectContext {
 }
 
 class PromptFrameCliError extends Error {
-  constructor(message: string, public readonly code: string, public readonly exitCode = 1) {
+  constructor(
+    message: string,
+    public readonly code: string,
+    public readonly exitCode = 1,
+    public readonly repairHint?: string,
+  ) {
     super(message);
   }
 }
@@ -3268,6 +3273,7 @@ function validatePreviewProps(dir: string, manifest: ComponentManifest): void {
   const preview = readPreviewProps(dir);
   assertPreviewEnvelope(preview, 'src/preview-props.json', fail);
   assertPreviewPropsMatchStaticSchema(dir, manifest, preview);
+  assertStaticPropsHaveDescriptions(readIfExists(join(dir, manifest.entry.propsSchemaPath)), manifest.entry.propsSchemaPath);
 }
 
 function readPreviewProps(dir: string): Record<string, unknown> {
@@ -3298,11 +3304,33 @@ function assertPreviewPropsMatchStaticSchema(
 }
 
 function extractStaticZodObjectKeys(source: string): Set<string> {
+  return new Set(extractStaticZodObjectProps(source).map((prop) => prop.key));
+}
+
+function extractStaticZodObjectProps(source: string): Array<{ key: string; valueSource: string }> {
   const openBrace = findPropsSchemaZodObjectOpenBrace(source) ?? findFirstZodObjectOpenBrace(source);
-  if (openBrace < 0) return new Set();
+  if (openBrace < 0) return [];
   const closeBrace = findMatchingBrace(source, openBrace);
-  if (closeBrace < 0) return new Set();
-  return collectTopLevelObjectKeys(source.slice(openBrace + 1, closeBrace));
+  if (closeBrace < 0) return [];
+  return collectTopLevelObjectProps(source.slice(openBrace + 1, closeBrace));
+}
+
+function assertStaticPropsHaveDescriptions(source: string, sourcePath: string): void {
+  const missingProps = extractStaticZodObjectProps(source)
+    .filter((prop) => !hasStaticZodDescription(prop.valueSource))
+    .map((prop) => prop.key);
+  if (missingProps.length === 0) return;
+  const missingText = missingProps.join(', ');
+  fail(
+    `${sourcePath} props must include readable descriptions for: ${missingText}.`,
+    'component_standard.props.description_missing',
+    1,
+    'Add .describe("...") to each public propsSchema field, or provide equivalent metadata.parameterDescriptions before upload.',
+  );
+}
+
+function hasStaticZodDescription(source: string): boolean {
+  return /\.describe\s*\(\s*(?:"[^"]+"|'[^']+'|`[^`]+`)\s*\)/m.test(source);
 }
 
 function findPropsSchemaZodObjectOpenBrace(source: string): number | undefined {
@@ -3368,8 +3396,8 @@ function findMatchingBrace(source: string, openIndex: number): number {
   return -1;
 }
 
-function collectTopLevelObjectKeys(body: string): Set<string> {
-  const keys = new Set<string>();
+function collectTopLevelObjectProps(body: string): Array<{ key: string; valueSource: string }> {
+  const props: Array<{ key: string; valueSource: string }> = [];
   let index = 0;
   while (index < body.length) {
     index = skipWhitespaceAndCommas(body, index);
@@ -3385,13 +3413,18 @@ function collectTopLevelObjectKeys(body: string): Set<string> {
     }
     index = skipWhitespaceAndCommas(body, keyResult.nextIndex);
     if (body[index] === ':') {
-      keys.add(keyResult.key);
-      index = skipTopLevelValue(body, index + 1);
+      const valueStart = index + 1;
+      const valueEnd = skipTopLevelValue(body, valueStart);
+      props.push({
+        key: keyResult.key,
+        valueSource: body.slice(valueStart, valueEnd),
+      });
+      index = valueEnd;
       continue;
     }
     index = keyResult.nextIndex;
   }
-  return keys;
+  return props;
 }
 
 function skipWhitespaceAndCommas(source: string, start: number): number {
@@ -3651,7 +3684,23 @@ function normalizeLegacyManifest(input: Record<string, unknown>): Record<string,
 
 function packageZipForUpload(path: string, uploadTarget: AuthoringUploadTarget): ComponentPackageArtifact {
   assertAuthoringZipPackageFreshness(path, uploadTarget);
+  assertZipPropsHaveDescriptions(path);
   return packageArtifactFromZip(path);
+}
+
+function assertZipPropsHaveDescriptions(path: string): void {
+  const zip = readFileSync(path);
+  const manifestEntry = readZipEntry(zip, isManifestZipEntry);
+  if (!manifestEntry) return;
+  let manifest: ComponentManifest;
+  try {
+    manifest = parseComponentManifest(normalizeLegacyManifest(JSON.parse(manifestEntry.toString('utf8')) as Record<string, unknown>));
+  } catch {
+    return;
+  }
+  const schemaEntry = readZipEntry(zip, (entryName) => isComponentSourceZipEntry(entryName, manifest.entry.propsSchemaPath));
+  if (!schemaEntry) return;
+  assertStaticPropsHaveDescriptions(schemaEntry.toString('utf8'), manifest.entry.propsSchemaPath);
 }
 
 function packageArtifactFromZip(path: string): ComponentPackageArtifact {
@@ -3946,6 +3995,10 @@ function readPackageManifestFromZip(path: string): ComponentPackageJson {
 }
 
 function readPackageJsonEntryFromZip(zip: Buffer): Buffer | undefined {
+  return readZipEntry(zip, isPackageJsonZipEntry);
+}
+
+function readZipEntry(zip: Buffer, predicate: (entryName: string) => boolean): Buffer | undefined {
   let offset = 0;
   let selected: Buffer | undefined;
   let selectedName: string | undefined;
@@ -3968,7 +4021,7 @@ function readPackageJsonEntryFromZip(zip: Buffer): Buffer | undefined {
     if (nameStart > zip.length || dataStart > zip.length || dataEnd > zip.length) break;
 
     const entryName = zip.subarray(nameStart, nameStart + nameLength).toString('utf8').replace(/\\/g, '/');
-    if ((flags & 0x08) === 0 && isPackageJsonZipEntry(entryName)) {
+    if ((flags & 0x08) === 0 && predicate(entryName)) {
       const data = decodeZipEntry(zip.subarray(dataStart, dataEnd), method);
       if (!selectedName || entryName.length < selectedName.length) {
         selected = data;
@@ -3980,11 +4033,19 @@ function readPackageJsonEntryFromZip(zip: Buffer): Buffer | undefined {
   return selected;
 }
 
+function isManifestZipEntry(entryName: string): boolean {
+  return isComponentSourceZipEntry(entryName, 'manifest.json');
+}
+
 function isPackageJsonZipEntry(entryName: string): boolean {
+  return isComponentSourceZipEntry(entryName, 'package.json');
+}
+
+function isComponentSourceZipEntry(entryName: string, expectedPath: string): boolean {
   const normalized = entryName.replace(/^\/+/, '');
-  return normalized === 'package.json'
+  return normalized === expectedPath
     || (
-      normalized.endsWith('/package.json')
+      normalized.endsWith(`/${expectedPath}`)
       && !normalized.includes('/node_modules/')
       && !normalized.includes('/dist/')
       && !normalized.includes('/.git/')
@@ -4236,8 +4297,9 @@ function diagnostic(
   code: string,
   severity: 'info' | 'warning' | 'error',
   message: string,
-): { code: string; severity: 'info' | 'warning' | 'error'; message: string } {
-  return { code, severity, message };
+  repairHint?: string,
+): { code: string; severity: 'info' | 'warning' | 'error'; message: string; repairHint?: string } {
+  return { code, severity, message, ...(repairHint ? { repairHint } : {}) };
 }
 
 function printDiagnostics(diagnostics: Array<LocalReusabilityDiagnostic | ComponentDiagnostic>): void {
@@ -4349,8 +4411,8 @@ function printJson(value: unknown): void {
   console.log(JSON.stringify(value, null, 2));
 }
 
-function fail(message: string, code: string, exitCode = 1): never {
-  throw new PromptFrameCliError(message, code, exitCode);
+function fail(message: string, code: string, exitCode = 1, repairHint?: string): never {
+  throw new PromptFrameCliError(message, code, exitCode, repairHint);
 }
 
 function help(): void {
@@ -4405,7 +4467,7 @@ try {
       console.error(JSON.stringify({
         success: false,
         command,
-        diagnostic: diagnostic(error.code, 'error', error.message),
+        diagnostic: diagnostic(error.code, 'error', error.message, error.repairHint),
         failureReason: error.message,
         retryable: false,
       }, null, 2));

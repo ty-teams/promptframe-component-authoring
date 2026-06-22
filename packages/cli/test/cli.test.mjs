@@ -2103,12 +2103,12 @@ test('validate and check report unknown private style props as authoring diagnos
     await writeFile(path.join(componentDir, 'src/schema.ts'), [
       "import { z } from 'zod';",
       'export const propsSchema = z.object({',
-      '  title: z.string(),',
-      '  theme: z.string().optional(),',
-      '  foregroundColor: z.string().optional(),',
+      "  title: z.string().describe('Primary title text shown in the scene.'),",
+      "  theme: z.string().describe('Custom visual theme name for the component.').optional(),",
+      "  foregroundColor: z.string().describe('Custom foreground color override.').optional(),",
       '  styleIntent: z.object({',
       '    accentColor: z.string().optional(),',
-      '  }).optional(),',
+      "  }).describe('Nested style intent object used by the component.').optional(),",
       '});',
       'export type ComponentProps = z.infer<typeof propsSchema>;',
     ].join('\n'));
@@ -3206,8 +3206,8 @@ test('validate rejects preview props fields that are not declared in schema.ts',
     await writeFile(path.join(componentDir, 'src/schema.ts'), [
       "import { z } from 'zod';",
       'export const propsSchema = z.object({',
-      '  title: z.string(),',
-      '  background: z.string().optional(),',
+      "  title: z.string().describe('Primary title text shown in the scene.'),",
+      "  background: z.string().describe('Background color for the scene.').optional(),",
       '});',
       'export type ComponentProps = z.infer<typeof propsSchema>;',
     ].join('\n'));
@@ -3244,6 +3244,53 @@ test('validate rejects preview props fields that are not declared in schema.ts',
   }
 });
 
+test('validate rejects public props without schema descriptions', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-prop-description-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(componentDir, 'src/schema.ts'), [
+      "import { z } from 'zod';",
+      'export const propsSchema = z.object({',
+      "  title: z.string().default('Hero'),",
+      "  foreground: z.string().default('#ffffff'),",
+      '});',
+      'export type ComponentProps = z.infer<typeof propsSchema>;',
+    ].join('\n'));
+    await writeFile(path.join(componentDir, 'src/preview-props.json'), JSON.stringify({
+      durationFrames: 60,
+      fps: 30,
+      width: 1280,
+      height: 720,
+      props: {
+        title: 'Hero',
+        foreground: '#ffffff',
+      },
+    }, null, 2));
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'validate',
+        componentDir,
+        '--json',
+      ]),
+      (error) => {
+        assert.equal(error.code, 1);
+        const payload = JSON.parse(error.stderr);
+        assert.equal(payload.success, false);
+        assert.equal(payload.command, 'validate');
+        assert.equal(payload.diagnostic.code, 'component_standard.props.description_missing');
+        assert.match(payload.failureReason, /title, foreground/);
+        assert.match(payload.diagnostic.repairHint ?? '', /describe|parameterDescriptions/);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('validate compares preview props against propsSchema when helper z.object definitions appear first', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-preview-schema-root-'));
   try {
@@ -3256,8 +3303,8 @@ test('validate compares preview props against propsSchema when helper z.object d
       '  value: z.number(),',
       '});',
       'export const propsSchema = z.object({',
-      '  title: z.string(),',
-      '  dataPoints: z.array(dataPoint),',
+      "  title: z.string().describe('Primary title text shown above the chart.'),",
+      "  dataPoints: z.array(dataPoint).describe('Data points rendered by the chart component.'),",
       '});',
       'export type ComponentProps = z.infer<typeof propsSchema>;',
     ].join('\n'));
