@@ -1315,6 +1315,14 @@ export type ComponentDiagnostic = z.infer<typeof componentDiagnosticSchema>;
 export const publicPolicyRuleIdSchema = z.enum([
   'manifest.identity.version',
   'manifest.component_type.supported',
+  'component.layout.manifest_required',
+  'component.layout.manifest_invalid',
+  'component.layout.root_fixed_size',
+  'component.layout.root_viewport_unit',
+  'component.layout.naked_px_high_risk',
+  'component.layout.naked_px_medium_risk',
+  'component.style.global_css_forbidden',
+  'component.animation.css_timeline_forbidden',
   'schema.props.explicit',
   'runtime.deterministic.remotion',
   'runtime.deterministic.fps_hardcoded_timing',
@@ -1329,6 +1337,35 @@ export const publicPolicyRuleIdSchema = z.enum([
   'component.style.unknown_custom_style_prop',
 ]);
 export type PublicPolicyRuleId = z.infer<typeof publicPolicyRuleIdSchema>;
+
+export const PROMPTFRAME_LAYOUT_POLICY_RULE_IDS = [
+  'component.layout.manifest_required',
+  'component.layout.manifest_invalid',
+  'component.layout.root_fixed_size',
+  'component.layout.root_viewport_unit',
+  'component.layout.naked_px_high_risk',
+  'component.layout.naked_px_medium_risk',
+  'component.style.global_css_forbidden',
+  'component.animation.css_timeline_forbidden',
+] as const satisfies readonly PublicPolicyRuleId[];
+
+export interface PromptFrameLayoutPolicyFile {
+  path: string;
+  sourceText: string;
+}
+
+export interface PromptFrameLayoutPolicyInput {
+  manifest?: unknown;
+  componentSourceText?: string;
+  styleSourceText?: string;
+  files?: PromptFrameLayoutPolicyFile[];
+}
+
+export interface PromptFrameLayoutPolicyReport {
+  accepted: boolean;
+  checkedRuleIds: PublicPolicyRuleId[];
+  diagnostics: ComponentDiagnostic[];
+}
 
 export const layoutAdaptivitySchema = z.enum(['responsive', 'scales_down', 'reflows', 'clips', 'fixed']);
 export type LayoutAdaptivity = z.infer<typeof layoutAdaptivitySchema>;
@@ -1359,6 +1396,142 @@ export const layoutCapabilitySchema = z.object({
   diagnostics: z.array(componentDiagnosticSchema).default([]),
 });
 export type LayoutCapability = z.infer<typeof layoutCapabilitySchema>;
+
+export function evaluatePromptFrameLayoutPolicy(input: PromptFrameLayoutPolicyInput): PromptFrameLayoutPolicyReport {
+  const diagnostics: ComponentDiagnostic[] = [];
+  const seenCodes = new Set<string>();
+  const addDiagnostic = (
+    code: PublicPolicyRuleId,
+    severity: 'warning' | 'error',
+    stage: ComponentDiagnostic['stage'],
+    message: string,
+    repairHint: string,
+  ): void => {
+    if (seenCodes.has(code)) return;
+    seenCodes.add(code);
+    diagnostics.push({
+      code,
+      severity,
+      stage,
+      message,
+      repairHint,
+    });
+  };
+
+  const manifest = asRecord(input.manifest);
+  const layout = manifest ? manifest.layout : undefined;
+  if (!layout) {
+    addDiagnostic(
+      'component.layout.manifest_required',
+      'error',
+      'manifest',
+      'Component manifest must declare layout capability for new uploads and new versions.',
+      'Add manifest.layout with recommendedSlot, minReadableSize, supportedAspectRatios, layoutAdaptivity, overflowPolicy and safeAreaPolicy.',
+    );
+  } else {
+    const parsedLayout = layoutCapabilitySchema.safeParse(layout);
+    if (!parsedLayout.success) {
+      addDiagnostic(
+        'component.layout.manifest_invalid',
+        'error',
+        'manifest',
+        'Component manifest layout capability is incomplete or invalid.',
+        'Fill every required layout field and keep historical manifests tolerant only on read paths, not new admission.',
+      );
+    }
+  }
+
+  for (const file of normalizeLayoutPolicyFiles(input)) {
+    const text = file.sourceText;
+    if (hasRootFixedSize(text)) {
+      addDiagnostic(
+        'component.layout.root_fixed_size',
+        'error',
+        'authoring',
+        `Component root appears to define a fixed final width/height in ${file.path}.`,
+        'Let the platform/Director own the outer slot. The root should fill its parent; move design-space sizing through @promptframe/component-kit/layout.',
+      );
+    }
+    if (/\b100v[wh]\b/i.test(text)) {
+      addDiagnostic(
+        'component.layout.root_viewport_unit',
+        'error',
+        'authoring',
+        `Component source uses viewport units that can escape the platform slot in ${file.path}.`,
+        'Use parent-slot-relative sizing and layout.px()/layout.clamp() instead of 100vw/100vh.',
+      );
+    }
+    if (isCssFile(file.path) && /(?:^|\n)\s*(?::global\s*\(|(?:html|body|#root)\b)/.test(text)) {
+      addDiagnostic(
+        'component.style.global_css_forbidden',
+        'error',
+        'policy',
+        `External component CSS must not target global document selectors in ${file.path}.`,
+        'Use CSS Module scoped class names inside the component boundary.',
+      );
+    }
+    if (isCssFile(file.path) && /@keyframes\b|\b(?:transition|animation)\s*:/i.test(text)) {
+      addDiagnostic(
+        'component.animation.css_timeline_forbidden',
+        'error',
+        'policy',
+        `External component CSS must not define independent animation timelines in ${file.path}.`,
+        'Use Remotion frame-driven animation with useCurrentFrame(), interpolate(), spring(), or component-kit timing helpers.',
+      );
+    }
+    if (hasHighRiskNakedPx(text, isCssFile(file.path))) {
+      addDiagnostic(
+        'component.layout.naked_px_high_risk',
+        'error',
+        'authoring',
+        `Component source contains high-risk naked px layout values in ${file.path}.`,
+        'Route design-space dimensions through @promptframe/component-kit/layout so the component scales with the assigned slot.',
+      );
+    }
+  }
+
+  return {
+    accepted: !diagnostics.some((diagnostic) => diagnostic.severity === 'error'),
+    checkedRuleIds: [...PROMPTFRAME_LAYOUT_POLICY_RULE_IDS],
+    diagnostics,
+  };
+}
+
+function normalizeLayoutPolicyFiles(input: PromptFrameLayoutPolicyInput): PromptFrameLayoutPolicyFile[] {
+  const files: PromptFrameLayoutPolicyFile[] = [];
+  if (input.componentSourceText) {
+    files.push({ path: 'src/Component.tsx', sourceText: input.componentSourceText });
+  }
+  if (input.styleSourceText) {
+    files.push({ path: 'src/Component.module.css', sourceText: input.styleSourceText });
+  }
+  for (const file of input.files ?? []) {
+    files.push(file);
+  }
+  return files;
+}
+
+function hasRootFixedSize(source: string): boolean {
+  const normalized = source.replace(/\s+/g, ' ');
+  const widthThenHeight = /\bwidth\s*:\s*['"]?\d+(?:\.\d+)?(?:px)?['"]?\s*,[^{};]{0,220}\bheight\s*:\s*['"]?\d+(?:\.\d+)?(?:px)?['"]?/i;
+  const heightThenWidth = /\bheight\s*:\s*['"]?\d+(?:\.\d+)?(?:px)?['"]?\s*,[^{};]{0,220}\bwidth\s*:\s*['"]?\d+(?:\.\d+)?(?:px)?['"]?/i;
+  return widthThenHeight.test(normalized) || heightThenWidth.test(normalized);
+}
+
+function hasHighRiskNakedPx(source: string, cssFile: boolean): boolean {
+  const highRiskCss = /(?:^|[;{\n]\s*)(?:width|height|min-width|min-height|max-width|max-height|padding|padding-inline|padding-block|margin|margin-inline|margin-block|gap|row-gap|column-gap|font-size|line-height|inset|top|right|bottom|left)\s*:\s*\d+(?:\.\d+)?px\b/i;
+  const highRiskInline = /\b(?:width|height|minWidth|minHeight|maxWidth|maxHeight|padding|paddingInline|paddingBlock|margin|marginInline|marginBlock|gap|rowGap|columnGap|fontSize|lineHeight|inset|top|right|bottom|left)\s*:\s*\d+(?:\.\d+)?\b/;
+  for (const line of source.split(/\r?\n/)) {
+    if (/\blayout\.(?:px|clamp)\s*\(/.test(line)) continue;
+    if (highRiskCss.test(line)) return true;
+    if (!cssFile && !/\b(?:border|border-width|stroke-width|strokeWidth|viewBox)\b/i.test(line) && highRiskInline.test(line)) return true;
+  }
+  return false;
+}
+
+function isCssFile(path: string): boolean {
+  return /\.css$/i.test(path);
+}
 
 export const componentManifestAuthorSchema = z.object({
   id: nonEmptyStringSchema.max(128),

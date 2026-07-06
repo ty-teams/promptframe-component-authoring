@@ -28,6 +28,7 @@ test('component-kit exposes only public authoring entrypoints', () => {
   assert.equal(packageJson.name, '@promptframe/component-kit');
   assert.deepEqual(Object.keys(packageJson.exports ?? {}).sort(), [
     '.',
+    './layout',
     './package.json',
     './preview',
     './standard',
