@@ -2225,6 +2225,32 @@ test('validate and check hard-fail missing layout manifest and fixed root dimens
   }
 });
 
+test('validate ignores fixed local PreviewRoot shell while enforcing component layout policy', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-layout-previewroot-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(componentDir, 'src/PreviewRoot.tsx'), [
+      "import { Player } from '@remotion/player';",
+      'export function PreviewRoot() {',
+      '  return <main style={{ height: "100vh", width: 1280, gap: 24 }}><Player /></main>;',
+      '}',
+    ].join('\n'));
+
+    const result = await execFileAsync('node', [
+      cliPath,
+      'validate',
+      componentDir,
+      '--json',
+    ]);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.command, 'validate');
+    assert.equal(payload.diagnostic.code, 'validate.completed');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('check blocks stale remote standard source hash when endpoint is configured', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-check-sourcehash-'));
   const calls = [];

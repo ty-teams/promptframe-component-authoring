@@ -99,6 +99,39 @@ test('layout scanner catches root fixed dimensions and viewport slot escape', ()
   assert.ok(codes(report).includes('component.layout.root_viewport_unit'));
 });
 
+test('layout scanner ignores local preview shell files while keeping component source strict', () => {
+  const report = evaluatePromptFrameLayoutPolicy({
+    manifest: manifest({ layout: goodLayout }),
+    componentSourceText: [
+      'import { AbsoluteFill } from "remotion";',
+      'export default function Component() {',
+      '  return <AbsoluteFill style={{ justifyContent: "center" }} />;',
+      '}',
+    ].join('\n'),
+    files: [
+      {
+        path: 'src/PreviewRoot.tsx',
+        sourceText: [
+          'export function PreviewRoot() {',
+          '  return <main style={{ height: "100vh", width: 1280, gap: 24 }} />;',
+          '}',
+        ].join('\n'),
+      },
+      {
+        path: 'src/Component.test.tsx',
+        sourceText: 'export const fixedTestHarness = { width: 1280, height: 720 };',
+      },
+      {
+        path: 'src/vite-env.d.ts',
+        sourceText: '/// <reference types="vite/client" />',
+      },
+    ],
+  });
+
+  assert.equal(report.accepted, true);
+  assert.deepEqual(report.diagnostics, []);
+});
+
 test('layout scanner catches global CSS and CSS animation timelines', () => {
   const report = evaluatePromptFrameLayoutPolicy({
     manifest: manifest({ layout: goodLayout }),

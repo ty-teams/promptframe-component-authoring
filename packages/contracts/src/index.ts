@@ -1506,9 +1506,20 @@ function normalizeLayoutPolicyFiles(input: PromptFrameLayoutPolicyInput): Prompt
     files.push({ path: 'src/Component.module.css', sourceText: input.styleSourceText });
   }
   for (const file of input.files ?? []) {
+    if (isLayoutPolicySupportFile(file.path)) continue;
     files.push(file);
   }
   return files;
+}
+
+function isLayoutPolicySupportFile(path: string): boolean {
+  const normalized = path.replace(/\\/g, '/');
+  const fileName = normalized.split('/').pop() ?? '';
+  return (
+    /^src\/PreviewRoot\.[jt]sx?$/i.test(normalized)
+    || /\.(?:test|spec)\.[jt]sx?$/i.test(fileName)
+    || /^vite-env\.d\.ts$/i.test(fileName)
+  );
 }
 
 function hasRootFixedSize(source: string): boolean {
