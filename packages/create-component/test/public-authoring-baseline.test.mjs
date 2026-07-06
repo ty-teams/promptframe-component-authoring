@@ -11,11 +11,11 @@ test('public templates use the current PromptFrame authoring package baseline', 
     'packages/create-component/templates/react-remotion/package.json',
   ]) {
     const packageJson = JSON.parse(await readFile(path.join(repoRoot, templatePackagePath), 'utf8'));
-    assert.equal(packageJson.dependencies?.['@promptframe/component-kit'], '^0.1.11', templatePackagePath);
-    assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.14', templatePackagePath);
+    assert.equal(packageJson.dependencies?.['@promptframe/component-kit'], '^0.1.12', templatePackagePath);
+    assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.15', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@remotion/player'], '^4.0.0', templatePackagePath);
     assert.equal(packageJson.devDependencies?.['@vitejs/plugin-react'], '^6.0.1', templatePackagePath);
-    assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.42', templatePackagePath);
+    assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.43', templatePackagePath);
     assert.equal(packageJson.devDependencies?.typescript, '~6.0.2', templatePackagePath);
     assert.equal(packageJson.devDependencies?.vite, '^8.0.10', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@vitejs/plugin-react'], undefined, templatePackagePath);
@@ -26,7 +26,7 @@ test('public templates use the current PromptFrame authoring package baseline', 
 
 test('create package version is bumped for the next template release', async () => {
   const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'packages/create-component/package.json'), 'utf8'));
-  assert.equal(packageJson.version, '0.1.32');
+  assert.equal(packageJson.version, '0.1.33');
 });
 
 test('public templates expose PromptFrame CLI lifecycle scripts', async () => {
@@ -129,7 +129,7 @@ test('public authoring docs document the current npm registry baseline', async (
     'packages/create-component/templates/react-remotion/README.md',
   ]) {
     const text = await readFile(path.join(repoRoot, docPath), 'utf8');
-    assert.match(text, /Current npm registry baseline is[\s\S]*@promptframe\/cli@0\.1\.42[\s\S]*create-promptframe-component@0\.1\.32/, docPath);
+    assert.match(text, /Current npm registry baseline is[\s\S]*@promptframe\/cli@0\.1\.43[\s\S]*create-promptframe-component@0\.1\.33/, docPath);
     assert.match(text, /workspace root lockfile|workspace root lockfile evidence|pnpm workspace root lockfile/, docPath);
     assert.doesNotMatch(text, /source candidate|source tree prepares|until Trusted Publishing completes/, docPath);
   }

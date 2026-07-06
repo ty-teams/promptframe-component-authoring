@@ -1,6 +1,6 @@
 {
   "name": "@promptframe/component-kit",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -61,7 +61,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@promptframe/contracts": "^0.1.13"
+    "@promptframe/contracts": "^0.1.15"
   },
   "peerDependencies": {
     "react": "^19.0.0",
