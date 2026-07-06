@@ -1,0 +1,28 @@
+.root {
+  justify-content: center;
+  padding: var(--pf-padding);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  overflow: hidden;
+}
+
+.copy {
+  max-width: 100%;
+}
+
+.kicker {
+  margin: 0;
+  font-size: var(--pf-kicker-size);
+  letter-spacing: 0;
+  opacity: 0.72;
+}
+
+.title {
+  margin: var(--pf-title-offset) 0 0;
+  font-size: var(--pf-title-size);
+  line-height: 1.02;
+  letter-spacing: 0;
+}
+
+.hiddenResource {
+  display: none;
+}

@@ -89,8 +89,7 @@ const previewMessages: Record<PreviewLocale, Record<PreviewMessageKey, string>> 
 };
 
 function resolvePreviewLocale(): PreviewLocale {
-  const language = typeof navigator === 'undefined' ? '' : navigator.language.toLowerCase();
-  return language.startsWith('zh') ? 'zh' : 'en';
+  return 'en';
 }
 
 const previewLocale = resolvePreviewLocale();

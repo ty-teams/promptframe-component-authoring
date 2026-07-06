@@ -242,6 +242,31 @@ test('public templates expose component-kit generated preview case matrix', asyn
   }
 });
 
+test('public templates use CSS Module and slot layout helper instead of all-inline root styles', async () => {
+  for (const templateRoot of [
+    'templates/react-remotion',
+    'packages/create-component/templates/react-remotion',
+  ]) {
+    const component = await readFile(path.join(repoRoot, templateRoot, 'src/Component.tsx'), 'utf8');
+    const manifest = JSON.parse(await readFile(path.join(repoRoot, templateRoot, 'manifest.json'), 'utf8'));
+    const cssModule = await readFile(path.join(repoRoot, templateRoot, 'src/Component.module.css'), 'utf8');
+    const previewRoot = await readFile(path.join(repoRoot, templateRoot, 'src/PreviewRoot.tsx'), 'utf8');
+
+    assert.match(component, /@promptframe\/component-kit\/layout/, templateRoot);
+    assert.match(component, /createPromptFrameLayout/, templateRoot);
+    assert.match(component, /from '\.\/Component\.module\.css'/, templateRoot);
+    assert.match(component, /styles\.root/, templateRoot);
+    assert.match(component, /layout\.px\(/, templateRoot);
+    assert.doesNotMatch(component, /padding:\s*72\b/, templateRoot);
+    assert.doesNotMatch(component, /fontSize:\s*68\b/, templateRoot);
+    assert.match(cssModule, /\.root/, templateRoot);
+    assert.equal(manifest.layout?.contractVersion, 'layout-capability.v0.1.0', templateRoot);
+    assert.equal(manifest.layout?.recommendedSlot, 'full_screen', templateRoot);
+    assert.deepEqual(manifest.layout?.supportedAspectRatios, ['16:9', '9:16', '1:1'], templateRoot);
+    assert.doesNotMatch(previewRoot, /navigator\.language/, templateRoot);
+  }
+});
+
 test('public templates localize PreviewRoot controls and derive readable prop labels', async () => {
   for (const templateRoot of [
     'templates/react-remotion',

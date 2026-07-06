@@ -2154,6 +2154,77 @@ test('validate and check report unknown private style props as authoring diagnos
   }
 });
 
+test('validate and check hard-fail missing layout manifest and fixed root dimensions', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-layout-policy-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+
+    const manifestPath = path.join(componentDir, 'manifest.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    delete manifest.layout;
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'validate',
+        componentDir,
+        '--json',
+      ]),
+      (error) => {
+        assert.equal(error.code, 1);
+        const payload = JSON.parse(error.stderr);
+        assert.equal(payload.success, false);
+        assert.equal(payload.command, 'validate');
+        assert.equal(payload.diagnostic.code, 'component.layout.manifest_required');
+        assert.match(payload.failureReason, /layout capability/i);
+        return true;
+      },
+    );
+
+    manifest.layout = fixtureLayoutCapability();
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    await writeFile(path.join(componentDir, 'src/Component.tsx'), [
+      "import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';",
+      'export default function Component() {',
+      '  useCurrentFrame();',
+      '  useVideoConfig();',
+      '  return <AbsoluteFill style={{ width: 440, height: 290 }} />;',
+      '}',
+    ].join('\n'));
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'check',
+        componentDir,
+        '--target',
+        'project_private_generation',
+        '--json',
+      ], {
+        env: {
+          ...process.env,
+          PROMPTFRAME_API_BASE: '',
+          REMOTION_MEDIA_API_BASE: '',
+          PROMPTFRAME_CONFIG: path.join(dir, 'missing-config.json'),
+        },
+      }),
+      (error) => {
+        assert.equal(error.code, 1);
+        const payload = JSON.parse(error.stderr);
+        assert.equal(payload.success, false);
+        assert.equal(payload.command, 'check');
+        assert.equal(payload.diagnostic.code, 'component.layout.root_fixed_size');
+        assert.match(payload.failureReason, /fixed final width\/height/i);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('check blocks stale remote standard source hash when endpoint is configured', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-check-sourcehash-'));
   const calls = [];
@@ -2988,6 +3059,14 @@ test('local standard, doctor, and validate expose stable JSON diagnostics', asyn
     assert.deepEqual(validate.checkedRuleIds, [
       'manifest.identity.version',
       'manifest.component_type.supported',
+      'component.layout.manifest_required',
+      'component.layout.manifest_invalid',
+      'component.layout.root_fixed_size',
+      'component.layout.root_viewport_unit',
+      'component.layout.naked_px_high_risk',
+      'component.layout.naked_px_medium_risk',
+      'component.style.global_css_forbidden',
+      'component.animation.css_timeline_forbidden',
       'evidence.schema_source_hash_present',
       'runtime.deterministic.remotion',
       'runtime.deterministic.fps_hardcoded_timing',
@@ -3025,6 +3104,14 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
     assert.deepEqual(check.checkedRuleIds, [
       'manifest.identity.version',
       'manifest.component_type.supported',
+      'component.layout.manifest_required',
+      'component.layout.manifest_invalid',
+      'component.layout.root_fixed_size',
+      'component.layout.root_viewport_unit',
+      'component.layout.naked_px_high_risk',
+      'component.layout.naked_px_medium_risk',
+      'component.style.global_css_forbidden',
+      'component.animation.css_timeline_forbidden',
       'evidence.schema_source_hash_present',
       'runtime.deterministic.remotion',
       'runtime.deterministic.fps_hardcoded_timing',
@@ -3818,6 +3905,7 @@ async function writeFixtureComponent(componentDir) {
       description: 'Fixture component used by CLI package tests.',
       tags: ['fixture'],
       designedDurationRange: { min: 30, max: 120 },
+      layout: fixtureLayoutCapability(),
       entry: {
         sourcePath: 'src/Component.tsx',
         componentExport: 'default',
@@ -3845,6 +3933,22 @@ async function writeFixtureComponent(componentDir) {
     'src/index.ts': 'export { default } from "./Component";\n',
     'src/preview-props.json': JSON.stringify({ durationFrames: 60, fps: 30, width: 1280, height: 720, props: {} }),
   });
+}
+
+function fixtureLayoutCapability() {
+  return {
+    contractVersion: 'layout-capability.v0.1.0',
+    recommendedSlot: 'full_screen',
+    minReadableSize: {
+      width: 320,
+      height: 180,
+    },
+    supportedAspectRatios: ['16:9', '9:16', '1:1'],
+    layoutAdaptivity: 'responsive',
+    overflowPolicy: 'fit',
+    safeAreaPolicy: 'recommended',
+    confidence: 0.8,
+  };
 }
 
 async function writeWorkspaceFixtureComponent(componentDir, componentId) {

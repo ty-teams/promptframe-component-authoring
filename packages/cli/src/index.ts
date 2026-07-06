@@ -28,9 +28,11 @@ import {
   PROMPTFRAME_PUBLIC_SECURITY_POLICY,
   PROMPTFRAME_PUBLIC_SECURITY_POLICY_DIGEST,
   PROMPTFRAME_PUBLIC_STANDARD_POLICY,
+  PROMPTFRAME_LAYOUT_POLICY_RULE_IDS,
   PROMPTFRAME_CONTRACTS_VERSION,
   PROMPTFRAME_PUBLIC_DEPENDENCY_POLICY,
   detectPromptFrameUnknownCustomStyleProps,
+  evaluatePromptFrameLayoutPolicy,
   evaluatePromptFrameDependencyPolicy,
   authoringUploadTargetSchema,
   parseComponentManifest,
@@ -104,6 +106,7 @@ const PACKAGE_MANAGER_LOCKFILE_NAME_SET = new Set<string>(PACKAGE_MANAGER_LOCKFI
 const VALIDATE_CHECKED_RULE_IDS: PublicPolicyRuleId[] = [
   'manifest.identity.version',
   'manifest.component_type.supported',
+  ...PROMPTFRAME_LAYOUT_POLICY_RULE_IDS,
   'evidence.schema_source_hash_present',
   'runtime.deterministic.remotion',
   'runtime.deterministic.fps_hardcoded_timing',
@@ -337,6 +340,7 @@ function validate(argv: string[]): void {
   assertPublicResourcesAccepted(publicResources);
   const dependencyPolicy = evaluateDirectoryDependencyPolicy(dir);
   const diagnostics = [
+    ...layoutPolicyDiagnostics(dir, manifest),
     ...stylePropDiagnostics(dir),
     ...securityPolicyWarningDiagnostics(dir),
     ...dependencyPolicy.diagnostics,
@@ -456,6 +460,7 @@ function buildCheckOutput(
   assertPublicResourcesAccepted(publicResources);
   const diagnostics = [
     ...reusabilityDiagnostics(localReusability),
+    ...layoutPolicyDiagnostics(dir, manifest),
     ...stylePropDiagnostics(dir),
     ...securityPolicyWarningDiagnostics(dir),
     ...dependencyPolicy.diagnostics,
@@ -622,6 +627,7 @@ function validateComponentDirectory(dir: string): ComponentManifest {
   const manifestPath = join(dir, 'manifest.json');
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
   const parsed = parseComponentManifest(normalizeLegacyManifest(manifest));
+  assertLayoutPolicyAccepted(dir, parsed);
   validatePreviewProps(dir, parsed);
   validateSourceSafety(dir);
   validateSecurityPolicy(dir);
@@ -815,6 +821,7 @@ function prepareComponentUpload(
   const diagnostics = localReusability
     ? [
         ...reusabilityDiagnostics(localReusability),
+        ...layoutPolicyDiagnostics(input.dir, validateComponentDirectory(input.dir)),
         ...stylePropDiagnostics(input.dir),
         ...(artifact.publicResources?.diagnostics ?? []),
       ]
@@ -3517,6 +3524,30 @@ function evaluateDirectoryReusability(
     schemaSourceText: readIfExists(join(dir, manifest.entry.propsSchemaPath)),
     previewProps: readPreviewProps(dir),
   });
+}
+
+function assertLayoutPolicyAccepted(dir: string, manifest: ComponentManifest): void {
+  const firstError = layoutPolicyDiagnostics(dir, manifest).find((item) => item.severity === 'error');
+  if (!firstError) return;
+  fail(firstError.message, firstError.code, 1, firstError.repairHint);
+}
+
+function layoutPolicyDiagnostics(dir: string, manifest: ComponentManifest): ComponentDiagnostic[] {
+  return evaluatePromptFrameLayoutPolicy({
+    manifest,
+    componentSourceText: readIfExists(join(dir, manifest.entry.sourcePath)),
+    files: collectLayoutPolicyTextFiles(dir, manifest.entry.sourcePath),
+  }).diagnostics;
+}
+
+function collectLayoutPolicyTextFiles(dir: string, primarySourcePath: string): Array<{ path: string; sourceText: string }> {
+  return collectPackageFiles(dir)
+    .filter((entry) => entry.name !== primarySourcePath)
+    .filter((entry) => /^src\/.+\.(?:css|tsx?|jsx?)$/i.test(entry.name))
+    .map((entry) => ({
+      path: entry.name,
+      sourceText: entry.data.toString('utf8'),
+    }));
 }
 
 function stylePropDiagnostics(dir: string): Array<LocalReusabilityDiagnostic & { propName: string }> {
