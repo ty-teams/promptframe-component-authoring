@@ -42,6 +42,9 @@ test('style prop policy detects root-level private style props without flagging 
   ].join('\n'));
 
   assert.equal(PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.id, 'component.style.unknown_custom_style_prop');
+  assert.match(PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.repairHint, /styleIntent/);
+  assert.match(PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.repairHint, /resolvePromptFrameStyle/);
+  assert.match(PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.repairHint, /brandTokens\.primaryColor/);
   assert.deepEqual(findings.map((finding) => finding.propName), ['foregroundColor', 'theme']);
   assert.ok(findings.every((finding) => finding.ruleId === PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.id));
 });

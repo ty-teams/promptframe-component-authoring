@@ -928,7 +928,7 @@ export const PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE = {
   stage: 'schema',
   severity: 'warning',
   message: 'Root-level private style props are not part of the public PromptFrame style contract.',
-  repairHint: 'Move visual style controls under styleIntent and consume @promptframe/component-kit/style helpers instead of custom color/theme/style props.',
+  repairHint: 'Move visual style controls under styleIntent, for example styleIntent.accentColor or styleIntent.brandTokens.primaryColor, then render with resolvePromptFrameStyle() from @promptframe/component-kit/style instead of custom color/theme/style props.',
 } as const;
 
 export const PROMPTFRAME_STYLE_INTENT_ROOT_PROP_NAME = 'styleIntent' as const;

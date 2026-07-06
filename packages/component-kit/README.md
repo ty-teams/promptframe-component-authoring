@@ -40,7 +40,11 @@ export function Component(props: Props) {
 ```
 
 ```ts
-import { COMPONENT_PREVIEW_CONSTRAINTS, createPreviewCaseMatrix } from '@promptframe/component-kit/preview';
+import {
+  COMPONENT_PREVIEW_CONSTRAINTS,
+  createPreviewCaseMatrix,
+  describePromptFramePreviewPropControl,
+} from '@promptframe/component-kit/preview';
 
 export const maxPreviewWidth = COMPONENT_PREVIEW_CONSTRAINTS.maxWidth;
 
@@ -50,6 +54,8 @@ export const previewCases = createPreviewCaseMatrix({
   fpsPresets: [30, 60],
   validateProps: (candidate) => candidate,
 });
+
+export const titleControl = describePromptFramePreviewPropControl(['title'], 'Quarterly revenue');
 ```
 
 ```ts
@@ -62,7 +68,9 @@ const timeline = createDurationTimeline({
 const introEnd = secondsToFrames(1.5, 30);
 ```
 
-Use `fpsPresets` for local fps-adaptive diagnostics such as 30fps / 60fps comparisons. Source `src/preview-props.json` remains governed by the current public preview policy; do not save or upload 60fps local preview cases until the public standard explicitly allows them.
+`createPreviewCaseMatrix()` returns explicit `caseKind` metadata: `baseline_reset`, `aspect`, `props_stress`, and `fps_diagnostic`. Props stress cases should preserve the current author preview aspect/fps in scaffold UI; aspect and fps diagnostics are separate controls so a human author can see what changed. `probeCoverage` marks whether a case is platform-probe-equivalent or local-authoring-only.
+
+Use `fpsPresets` for local fps-adaptive diagnostics such as 30fps / 60fps comparisons. Source `src/preview-props.json` remains governed by the current public preview policy; do not save or upload 60fps local preview cases until the public standard explicitly allows them. Use `describePromptFramePreviewPropControl()` and related preview helpers when building local prop editors so object/array props use structured or JSON fallback editing instead of accidental `[object Object]` strings.
 
 ```ts
 import { resolvePromptFrameStyle } from '@promptframe/component-kit/style';
@@ -79,7 +87,7 @@ const style = resolvePromptFrameStyle({ tone: 'tech', accentColor: '#38bdf8' }, 
 
 ```ts
 import { getComponentStandardStamp } from '@promptframe/component-kit';
-import { COMPONENT_PREVIEW_CONSTRAINTS, createPreviewCaseMatrix } from '@promptframe/component-kit/preview';
+import { COMPONENT_PREVIEW_CONSTRAINTS, createPreviewCaseMatrix, describePromptFramePreviewPropControl } from '@promptframe/component-kit/preview';
 import { createDurationTimeline } from '@promptframe/component-kit/timing';
 import { resolvePromptFrameStyle } from '@promptframe/component-kit/style';
 ```

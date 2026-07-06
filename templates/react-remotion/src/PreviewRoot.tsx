@@ -1,5 +1,17 @@
 import { Player } from '@remotion/player';
-import { createPreviewCaseMatrix, type PromptFramePreviewCase } from '@promptframe/component-kit/preview';
+import {
+  coercePromptFramePreviewControlValue,
+  createPreviewCaseMatrix,
+  describePromptFramePreviewPropControl,
+  formatPromptFramePreviewControlValue,
+  formatPromptFramePreviewPropLabel,
+  formatPromptFramePreviewPropPath,
+  isPromptFramePreviewJsonLikeValue,
+  parsePromptFramePreviewJsonDraft,
+  type PromptFramePreviewCase,
+  type PromptFramePreviewFps,
+  type PromptFramePreviewPropPath,
+} from '@promptframe/component-kit/preview';
 import { StrictMode, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import Component from './Component';
@@ -20,17 +32,21 @@ type PreviewSize = {
   height: number;
 };
 
+type PreviewTiming = {
+  label: string;
+  fps: PromptFramePreviewFps;
+  durationFrames: number;
+};
+
 type PreviewCase = {
   name: string;
   width: number;
   height: number;
-  fps: number;
+  fps: PromptFramePreviewFps;
   durationFrames: number;
   props: ComponentProps;
   generatedAt: string;
 };
-
-type PropPath = Array<string | number>;
 
 type PreviewLocale = 'en' | 'zh';
 
@@ -38,17 +54,23 @@ type PreviewMessageKey =
   | 'advancedJson'
   | 'aspect'
   | 'autoCases'
+  | 'baselineReset'
   | 'custom'
+  | 'diagnostics'
   | 'exportCase'
+  | 'fps'
   | 'invalidJson'
   | 'invalidProps'
   | 'item'
   | 'jsonParseFallback'
+  | 'localDiagnosticOnly'
   | 'noItems'
+  | 'platformProbeEquivalent'
   | 'preview'
   | 'previewCaseName'
   | 'previewControlsAria'
   | 'props'
+  | 'propsStress'
   | 'schemaValidationFailed';
 
 const previewMessages: Record<PreviewLocale, Record<PreviewMessageKey, string>> = {
@@ -56,34 +78,46 @@ const previewMessages: Record<PreviewLocale, Record<PreviewMessageKey, string>> 
     advancedJson: 'Advanced JSON',
     aspect: 'Aspect',
     autoCases: 'Auto cases',
+    baselineReset: 'Baseline reset',
     custom: 'Custom',
+    diagnostics: 'Diagnostics',
     exportCase: 'Export case',
+    fps: 'FPS',
     invalidJson: 'Invalid JSON',
     invalidProps: 'Invalid props',
     item: 'Item',
     jsonParseFallback: 'Unable to parse JSON.',
+    localDiagnosticOnly: 'Local diagnostic only',
     noItems: 'No items',
+    platformProbeEquivalent: 'Platform probe equivalent',
     preview: 'Preview',
     previewCaseName: 'Preview case name',
     previewControlsAria: 'PromptFrame preview controls',
     props: 'Props',
+    propsStress: 'Props stress',
     schemaValidationFailed: 'Schema validation failed.',
   },
   zh: {
     advancedJson: '高级 JSON',
     aspect: '画幅',
     autoCases: '自动案例',
+    baselineReset: '基线重置',
     custom: '自定义',
+    diagnostics: '诊断',
     exportCase: '导出案例',
+    fps: '帧率',
     invalidJson: 'JSON 无效',
     invalidProps: '参数无效',
     item: '项目',
     jsonParseFallback: '无法解析 JSON。',
+    localDiagnosticOnly: '仅本地诊断',
     noItems: '暂无项目',
+    platformProbeEquivalent: '平台 Probe 等价',
     preview: '预览',
     previewCaseName: '预览案例名称',
     previewControlsAria: 'PromptFrame 预览控制台',
     props: '属性',
+    propsStress: '属性压力',
     schemaValidationFailed: 'Schema 校验失败。',
   },
 };
@@ -97,20 +131,6 @@ const isZh = previewLocale === 'zh';
 
 function t(key: PreviewMessageKey): string {
   return previewMessages[previewLocale][key];
-}
-
-function formatPropLabel(rawKey: string): string {
-  const spaced = rawKey
-    .replace(/[_-]+/g, ' ')
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  if (!spaced) {
-    return rawKey;
-  }
-
-  return spaced.replace(/\b[a-z]/g, (character) => character.toUpperCase());
 }
 
 const initialPropsParse = propsSchema.safeParse(preview.props ?? {});
@@ -130,6 +150,11 @@ const matchedInitialSize = previewAspectPresets.find(
 const initialSize: PreviewSize = matchedInitialSize
   ? { ...matchedInitialSize }
   : { label: t('custom'), width: preview.width, height: preview.height };
+const initialTiming: PreviewTiming = {
+  label: `${preview.fps}fps`,
+  fps: preview.fps,
+  durationFrames: preview.durationFrames,
+};
 const defaultPreviewCaseName = 'local-preview-case';
 const generatedPreviewCases = createPreviewCaseMatrix<ComponentProps>({
   basePreview: {
@@ -150,6 +175,11 @@ const generatedPreviewCases = createPreviewCaseMatrix<ComponentProps>({
     height: preset.height,
   })),
 });
+const baselinePreviewCase = generatedPreviewCases.find((previewCase) => previewCase.caseKind === 'baseline_reset');
+const aspectPreviewCases = generatedPreviewCases.filter((previewCase) => previewCase.caseKind === 'aspect');
+const diagnosticPreviewCases = generatedPreviewCases.filter((previewCase) => (
+  previewCase.caseKind === 'props_stress' || previewCase.caseKind === 'fps_diagnostic'
+));
 
 const root = document.getElementById('root');
 
@@ -157,23 +187,11 @@ if (!root) {
   throw new Error('Missing preview root element');
 }
 
-function isColorValue(value: unknown): value is string {
-  return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value);
-}
-
-function isJsonLikeValue(value: unknown): value is Record<string, unknown> | unknown[] | null {
-  return value === null || typeof value === 'object';
-}
-
 function isRecordValue(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function formatPathKey(path: PropPath): string {
-  return path.map(String).join('.');
-}
-
-function getValueAtPath(rootValue: unknown, path: PropPath): unknown {
+function getValueAtPath(rootValue: unknown, path: PromptFramePreviewPropPath): unknown {
   return path.reduce<unknown>((current, segment) => {
     if (Array.isArray(current) && typeof segment === 'number') {
       return current[segment];
@@ -185,7 +203,7 @@ function getValueAtPath(rootValue: unknown, path: PropPath): unknown {
   }, rootValue);
 }
 
-function setValueAtPath(rootValue: unknown, path: PropPath, nextValue: unknown): unknown {
+function setValueAtPath(rootValue: unknown, path: PromptFramePreviewPropPath, nextValue: unknown): unknown {
   if (path.length === 0) {
     return nextValue;
   }
@@ -211,43 +229,6 @@ function formatJsonValue(value: unknown): string {
   return JSON.stringify(value, null, 2) ?? '';
 }
 
-function formatPrimitiveControlValue(value: unknown): string | number {
-  if (typeof value === 'number') {
-    return Number.isFinite(value) ? value : '';
-  }
-  if (typeof value === 'boolean') {
-    return value ? 'true' : 'false';
-  }
-  return typeof value === 'string' ? value : '';
-}
-
-function coerceControlValue(currentValue: unknown, rawValue: string): unknown {
-  if (typeof currentValue === 'number') {
-    const numeric = Number(rawValue);
-    return Number.isFinite(numeric) ? numeric : currentValue;
-  }
-  if (typeof currentValue === 'boolean') {
-    return rawValue === 'true';
-  }
-  if (isJsonLikeValue(currentValue)) {
-    try {
-      return JSON.parse(rawValue);
-    } catch {
-      return currentValue;
-    }
-  }
-  return rawValue;
-}
-
-function parseJsonDraft(rawValue: string): { success: true; value: unknown } | { success: false; message: string } {
-  try {
-    return { success: true, value: JSON.parse(rawValue) };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : t('jsonParseFallback');
-    return { success: false, message: `${t('invalidJson')}: ${message}` };
-  }
-}
-
 function formatPropsParseError(error: { issues?: Array<{ path?: Array<string | number>; message?: string }> }): string {
   const firstIssue = error.issues?.[0];
   const path = firstIssue?.path?.length ? `${firstIssue.path.join('.')}: ` : '';
@@ -271,17 +252,19 @@ function buildPreviewCase({
   name,
   inputProps,
   previewSize,
+  previewTiming,
 }: {
   name: string;
   inputProps: ComponentProps;
   previewSize: PreviewSize;
+  previewTiming: PreviewTiming;
 }): PreviewCase {
   return {
     name: normalizePreviewCaseName(name),
     width: previewSize.width,
     height: previewSize.height,
-    fps: preview.fps,
-    durationFrames: preview.durationFrames,
+    fps: previewTiming.fps,
+    durationFrames: previewTiming.durationFrames,
     props: inputProps,
     generatedAt: new Date().toISOString(),
   };
@@ -301,30 +284,37 @@ function downloadPreviewCase(previewCase: PreviewCase): string {
   return fileName;
 }
 
+function previewCaseCoverageLabel(previewCase: PromptFramePreviewCase<ComponentProps>): string {
+  return previewCase.probeCoverage === 'platform_probe_equivalent'
+    ? t('platformProbeEquivalent')
+    : t('localDiagnosticOnly');
+}
+
 function PreviewApp() {
   const [inputProps, setInputProps] = useState<ComponentProps>(initialProps);
   const [previewSize, setPreviewSize] = useState(initialSize);
+  const [previewTiming, setPreviewTiming] = useState<PreviewTiming>(initialTiming);
   const [previewCaseName, setPreviewCaseName] = useState(defaultPreviewCaseName);
   const [exportStatus, setExportStatus] = useState('');
   const [jsonDrafts, setJsonDrafts] = useState<Record<string, string>>({});
   const [jsonDraftErrors, setJsonDraftErrors] = useState<Record<string, string>>({});
 
-  const updateInputPropAtPath = (path: PropPath, rawValue: string) => {
-    const draftKey = formatPathKey(path);
+  const updateInputPropAtPath = (path: PromptFramePreviewPropPath, rawValue: string) => {
+    const draftKey = formatPromptFramePreviewPropPath(path);
     const currentValue = getValueAtPath(inputProps, path);
     let nextValue: unknown;
 
-    if (isJsonLikeValue(currentValue)) {
+    if (isPromptFramePreviewJsonLikeValue(currentValue)) {
       setJsonDrafts((current) => ({ ...current, [draftKey]: rawValue }));
 
-      const parsedJson = parseJsonDraft(rawValue);
+      const parsedJson = parsePromptFramePreviewJsonDraft(rawValue);
       if (!parsedJson.success) {
-        setJsonDraftErrors((current) => ({ ...current, [draftKey]: parsedJson.message }));
+        setJsonDraftErrors((current) => ({ ...current, [draftKey]: `${t('invalidJson')}: ${parsedJson.message}` }));
         return;
       }
       nextValue = parsedJson.value;
     } else {
-      nextValue = coerceControlValue(currentValue, rawValue);
+      nextValue = coercePromptFramePreviewControlValue(currentValue, rawValue);
     }
 
     const nextCandidate = setValueAtPath(inputProps, path, nextValue);
@@ -349,7 +339,7 @@ function PreviewApp() {
   };
 
   const exportPreviewCase = () => {
-    const previewCase = buildPreviewCase({ name: previewCaseName, inputProps, previewSize });
+    const previewCase = buildPreviewCase({ name: previewCaseName, inputProps, previewSize, previewTiming });
     const fileName = downloadPreviewCase(previewCase);
     setExportStatus(isZh
       ? `已导出 ${fileName}。请保存到 .promptframe/local-previews/。`
@@ -357,14 +347,24 @@ function PreviewApp() {
   };
 
   const applyGeneratedPreviewCase = (previewCase: PromptFramePreviewCase<ComponentProps>) => {
-    setInputProps(previewCase.props);
     setJsonDrafts({});
     setJsonDraftErrors({});
-    setPreviewSize({
-      label: previewCase.name,
-      width: previewCase.width,
-      height: previewCase.height,
-    });
+
+    if (previewCase.caseKind === 'baseline_reset') {
+      setInputProps(previewCase.props);
+      setPreviewSize(initialSize);
+      setPreviewTiming(initialTiming);
+    }
+    if (previewCase.caseKind === 'aspect') {
+      setPreviewSize({ label: previewCase.name, width: previewCase.width, height: previewCase.height });
+    }
+    if (previewCase.caseKind === 'fps_diagnostic') {
+      setPreviewTiming({ label: previewCase.name, fps: previewCase.fps, durationFrames: previewCase.durationFrames });
+    }
+    if (previewCase.caseKind === 'props_stress') {
+      setInputProps(previewCase.props);
+    }
+
     setPreviewCaseName(previewCase.id);
     setExportStatus(isZh
       ? `已载入 ${previewCase.name}。如有需要可继续调整属性，然后导出为本地预览案例。`
@@ -384,8 +384,8 @@ function PreviewApp() {
     ) : null;
   };
 
-  const renderJsonFallback = (path: PropPath, value: unknown): ReactNode => {
-    const draftKey = formatPathKey(path);
+  const renderJsonFallback = (path: PromptFramePreviewPropPath, value: unknown): ReactNode => {
+    const draftKey = formatPromptFramePreviewPropPath(path);
     return (
       <details style={{ display: 'grid', gap: 8 }}>
         <summary style={{ color: '#475569', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
@@ -414,13 +414,14 @@ function PreviewApp() {
     );
   };
 
-  const renderPrimitiveControl = (path: PropPath, value: unknown): ReactNode => {
-    const draftKey = formatPathKey(path);
-    if (typeof value === 'boolean') {
+  const renderPrimitiveControl = (path: PromptFramePreviewPropPath, value: unknown): ReactNode => {
+    const control = describePromptFramePreviewPropControl(path, value);
+    const draftKey = control.pathKey;
+    if (control.kind === 'boolean') {
       return (
         <select
           data-promptframe-prop-field={draftKey}
-          value={formatPrimitiveControlValue(value)}
+          value={formatPromptFramePreviewControlValue(value)}
           onChange={(event) => updateInputPropAtPath(path, event.currentTarget.value)}
           style={{
             width: '100%',
@@ -441,8 +442,8 @@ function PreviewApp() {
     return (
       <input
         data-promptframe-prop-field={draftKey}
-        type={isColorValue(value) ? 'color' : typeof value === 'number' ? 'number' : 'text'}
-        value={formatPrimitiveControlValue(value)}
+        type={control.inputType === 'select' ? 'text' : control.inputType ?? 'text'}
+        value={formatPromptFramePreviewControlValue(value)}
         onChange={(event) => updateInputPropAtPath(path, event.currentTarget.value)}
         style={{
           width: '100%',
@@ -450,17 +451,18 @@ function PreviewApp() {
           boxSizing: 'border-box',
           border: jsonDraftErrors[draftKey] ? '1px solid #dc2626' : '1px solid #cbd5e1',
           borderRadius: 6,
-          padding: isColorValue(value) ? 4 : '8px 10px',
+          padding: control.kind === 'color' ? 4 : '8px 10px',
           font: 'inherit',
         }}
       />
     );
   };
 
-  const renderPropControl = (path: PropPath, label: string, value: unknown, depth = 0): ReactNode => {
-    const draftKey = formatPathKey(path);
+  const renderPropControl = (path: PromptFramePreviewPropPath, label: string, value: unknown, depth = 0): ReactNode => {
+    const control = describePromptFramePreviewPropControl(path, value, label);
+    const draftKey = control.pathKey;
 
-    if (Array.isArray(value)) {
+    if (control.kind === 'json_array' && Array.isArray(value)) {
       return (
         <div
           key={draftKey}
@@ -495,7 +497,7 @@ function PreviewApp() {
       );
     }
 
-    if (isRecordValue(value)) {
+    if (control.kind === 'json_object' && isRecordValue(value)) {
       return (
         <div
           key={draftKey}
@@ -512,7 +514,7 @@ function PreviewApp() {
           <span style={{ color: '#334155', fontSize: 13, fontWeight: 700 }}>{label}</span>
           {Object.entries(value).map(([childKey, childValue]) => (
             <div key={`${draftKey}.${childKey}`} style={{ display: 'grid', gap: 6, paddingLeft: depth > 0 ? 8 : 0 }}>
-              {renderPropControl([...path, childKey], formatPropLabel(childKey), childValue, depth + 1)}
+              {renderPropControl([...path, childKey], formatPromptFramePreviewPropLabel(childKey), childValue, depth + 1)}
             </div>
           ))}
           {renderJsonFallback(path, value)}
@@ -520,7 +522,7 @@ function PreviewApp() {
       );
     }
 
-    if (value === null) {
+    if (control.kind === 'json_null') {
       return (
         <div key={draftKey} data-promptframe-prop-structured={draftKey} style={{ display: 'grid', gap: 6 }}>
           <span style={{ color: '#334155', fontSize: 13, fontWeight: 700 }}>{label}</span>
@@ -577,10 +579,10 @@ function PreviewApp() {
           <Player
             component={Component}
             inputProps={inputProps}
-            durationInFrames={preview.durationFrames}
+            durationInFrames={previewTiming.durationFrames}
             compositionWidth={previewSize.width}
             compositionHeight={previewSize.height}
-            fps={preview.fps}
+            fps={previewTiming.fps}
             controls
             loop
             acknowledgeRemotionLicense
@@ -617,6 +619,9 @@ function PreviewApp() {
             {previewAspectPresets.map((preset) => (
               <button
                 key={preset.label}
+                data-promptframe-preview-aspect-case={aspectPreviewCases.find((previewCase) => (
+                  previewCase.width === preset.width && previewCase.height === preset.height
+                ))?.id ?? preset.label}
                 type="button"
                 onClick={() => setPreviewSize(preset)}
                 style={{
@@ -633,6 +638,9 @@ function PreviewApp() {
               </button>
             ))}
           </div>
+          <p style={{ color: '#64748b', fontSize: 12, margin: '8px 0 0' }}>
+            {t('fps')}: {previewTiming.label} / {previewTiming.durationFrames} frames
+          </p>
           <div
             style={{
               marginTop: 16,
@@ -684,13 +692,38 @@ function PreviewApp() {
             ) : null}
             <div style={{ display: 'grid', gap: 8 }}>
               <strong style={{ color: '#334155', fontSize: 13 }}>{t('autoCases')}</strong>
+              {baselinePreviewCase ? (
+                <button
+                  data-promptframe-preview-baseline-reset
+                  data-promptframe-preview-case-apply={baselinePreviewCase.id}
+                  data-promptframe-preview-case-kind={baselinePreviewCase.caseKind}
+                  type="button"
+                  title={baselinePreviewCase.description}
+                  onClick={() => applyGeneratedPreviewCase(baselinePreviewCase)}
+                  style={{
+                    border: '1px solid #111827',
+                    borderRadius: 6,
+                    background: '#111827',
+                    color: '#fff',
+                    font: 'inherit',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    padding: '8px 10px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {t('baselineReset')}
+                </button>
+              ) : null}
+              <span style={{ color: '#64748b', fontSize: 12 }}>{t('propsStress')} / {t('diagnostics')}</span>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-                {generatedPreviewCases.map((previewCase) => (
+                {diagnosticPreviewCases.map((previewCase) => (
                   <button
                     data-promptframe-preview-case-apply={previewCase.id}
+                    data-promptframe-preview-case-kind={previewCase.caseKind}
                     key={previewCase.id}
                     type="button"
-                    title={previewCase.description}
+                    title={`${previewCase.description} ${previewCaseCoverageLabel(previewCase)}`}
                     onClick={() => applyGeneratedPreviewCase(previewCase)}
                     style={{
                       border: '1px solid #cbd5e1',
@@ -703,7 +736,10 @@ function PreviewApp() {
                       cursor: 'pointer',
                     }}
                   >
-                    {previewCase.name}
+                    <span style={{ display: 'block', fontWeight: 700 }}>{previewCase.name}</span>
+                    <span style={{ display: 'block', color: '#64748b', fontSize: 11 }}>
+                      {previewCaseCoverageLabel(previewCase)}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -714,7 +750,7 @@ function PreviewApp() {
         <section style={{ marginTop: 22 }}>
           <h2 style={{ fontSize: 16, margin: '0 0 12px', letterSpacing: 0 }}>{t('props')}</h2>
           <div style={{ display: 'grid', gap: 12 }}>
-            {Object.entries(inputProps).map(([key, value]) => renderPropControl([key], formatPropLabel(key), value))}
+            {Object.entries(inputProps).map(([key, value]) => renderPropControl([key], formatPromptFramePreviewPropLabel(key), value))}
           </div>
         </section>
       </aside>

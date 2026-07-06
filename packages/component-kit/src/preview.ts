@@ -13,6 +13,18 @@ export const COMPONENT_PREVIEW_CONSTRAINTS: ComponentPreviewConstraints = {
 };
 
 export type PromptFramePreviewFps = 30 | 60;
+export type PromptFramePreviewCaseKind = 'baseline_reset' | 'aspect' | 'props_stress' | 'fps_diagnostic';
+export type PromptFramePreviewProbeCoverage = 'platform_probe_equivalent' | 'local_authoring_only';
+export type PromptFramePreviewPropPath = Array<string | number>;
+export type PromptFramePreviewPropControlKind =
+  | 'boolean'
+  | 'color'
+  | 'json_array'
+  | 'json_null'
+  | 'json_object'
+  | 'number'
+  | 'text';
+export type PromptFramePreviewPropInputType = 'color' | 'number' | 'select' | 'text';
 
 export interface ComponentPreviewPropsEnvelope<TProps extends Record<string, unknown> = Record<string, unknown>> {
   durationFrames: number;
@@ -27,7 +39,20 @@ export interface PromptFramePreviewCase<TProps extends Record<string, unknown> =
   id: string;
   name: string;
   description: string;
+  caseKind: PromptFramePreviewCaseKind;
+  probeCoverage: PromptFramePreviewProbeCoverage;
   fps: PromptFramePreviewFps;
+}
+
+export interface PromptFramePreviewPropControlDescriptor {
+  path: PromptFramePreviewPropPath;
+  pathKey: string;
+  label: string;
+  kind: PromptFramePreviewPropControlKind;
+  inputType?: PromptFramePreviewPropInputType;
+  jsonLike: boolean;
+  primitive: boolean;
+  structured: boolean;
 }
 
 export interface CreatePreviewCaseMatrixInput<TProps extends Record<string, unknown>> {
@@ -91,6 +116,8 @@ export function createPreviewCaseMatrix<TProps extends Record<string, unknown>>(
     id: 'default',
     name: 'Default',
     description: 'Canonical src/preview-props.json case.',
+    caseKind: 'baseline_reset',
+    probeCoverage: 'platform_probe_equivalent',
     ...basePreview,
     props: cloneProps(baseProps),
   });
@@ -101,6 +128,8 @@ export function createPreviewCaseMatrix<TProps extends Record<string, unknown>>(
       id: `fps-${fps}`,
       name: `${fps}fps`,
       description: `${fps}fps timing case scaled from ${basePreview.fps}fps for fps-adaptive diagnostics.`,
+      caseKind: 'fps_diagnostic',
+      probeCoverage: 'local_authoring_only',
       ...basePreview,
       fps,
       durationFrames: scaleDurationFramesForFps(basePreview.durationFrames, basePreview.fps, fps),
@@ -113,6 +142,8 @@ export function createPreviewCaseMatrix<TProps extends Record<string, unknown>>(
       id: preset.id,
       name: preset.name,
       description: `Aspect case ${preset.name}.`,
+      caseKind: 'aspect',
+      probeCoverage: 'platform_probe_equivalent',
       ...basePreview,
       width: preset.width,
       height: preset.height,
@@ -125,12 +156,152 @@ export function createPreviewCaseMatrix<TProps extends Record<string, unknown>>(
       id: variant.id,
       name: variant.name,
       description: variant.description,
+      caseKind: 'props_stress',
+      probeCoverage: 'platform_probe_equivalent',
       ...basePreview,
       props: variant.props,
     });
   }
 
   return cases;
+}
+
+export function formatPromptFramePreviewPropLabel(rawKey: string): string {
+  const spaced = rawKey
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!spaced) return rawKey;
+  return spaced.replace(/\b[a-z]/g, (character) => character.toUpperCase());
+}
+
+export function formatPromptFramePreviewPropPath(path: PromptFramePreviewPropPath): string {
+  return path.map(String).join('.');
+}
+
+export function describePromptFramePreviewPropControl(
+  path: PromptFramePreviewPropPath,
+  value: unknown,
+  label = formatPromptFramePreviewPropLabel(String(path.at(-1) ?? 'value')),
+): PromptFramePreviewPropControlDescriptor {
+  const pathKey = formatPromptFramePreviewPropPath(path);
+  if (Array.isArray(value)) {
+    return {
+      path,
+      pathKey,
+      label,
+      kind: 'json_array',
+      jsonLike: true,
+      primitive: false,
+      structured: true,
+    };
+  }
+  if (value === null) {
+    return {
+      path,
+      pathKey,
+      label,
+      kind: 'json_null',
+      jsonLike: true,
+      primitive: false,
+      structured: true,
+    };
+  }
+  if (typeof value === 'object') {
+    return {
+      path,
+      pathKey,
+      label,
+      kind: 'json_object',
+      jsonLike: true,
+      primitive: false,
+      structured: true,
+    };
+  }
+  if (typeof value === 'boolean') {
+    return {
+      path,
+      pathKey,
+      label,
+      kind: 'boolean',
+      inputType: 'select',
+      jsonLike: false,
+      primitive: true,
+      structured: false,
+    };
+  }
+  if (typeof value === 'number') {
+    return {
+      path,
+      pathKey,
+      label,
+      kind: 'number',
+      inputType: 'number',
+      jsonLike: false,
+      primitive: true,
+      structured: false,
+    };
+  }
+  if (typeof value === 'string' && isHexColor(value)) {
+    return {
+      path,
+      pathKey,
+      label,
+      kind: 'color',
+      inputType: 'color',
+      jsonLike: false,
+      primitive: true,
+      structured: false,
+    };
+  }
+  return {
+    path,
+    pathKey,
+    label,
+    kind: 'text',
+    inputType: 'text',
+    jsonLike: false,
+    primitive: true,
+    structured: false,
+  };
+}
+
+export function isPromptFramePreviewJsonLikeValue(value: unknown): value is Record<string, unknown> | unknown[] | null {
+  return value === null || typeof value === 'object';
+}
+
+export function formatPromptFramePreviewControlValue(value: unknown): string | number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : '';
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  return typeof value === 'string' ? value : '';
+}
+
+export function coercePromptFramePreviewControlValue(currentValue: unknown, rawValue: string): unknown {
+  if (typeof currentValue === 'number') {
+    const numeric = Number(rawValue);
+    return Number.isFinite(numeric) ? numeric : currentValue;
+  }
+  if (typeof currentValue === 'boolean') return rawValue === 'true';
+  if (isPromptFramePreviewJsonLikeValue(currentValue)) {
+    const parsed = parsePromptFramePreviewJsonDraft(rawValue);
+    return parsed.success ? parsed.value : currentValue;
+  }
+  return rawValue;
+}
+
+export function parsePromptFramePreviewJsonDraft(
+  rawValue: string,
+): { success: true; value: unknown } | { success: false; message: string } {
+  try {
+    return { success: true, value: JSON.parse(rawValue) };
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Unable to parse JSON.',
+    };
+  }
 }
 
 function normalizeFpsPresets(fpsPresets: ReadonlyArray<PromptFramePreviewFps> | undefined): PromptFramePreviewFps[] {

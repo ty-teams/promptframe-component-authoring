@@ -236,7 +236,14 @@ test('public templates expose component-kit generated preview case matrix', asyn
 
     assert.match(previewRoot, /createPreviewCaseMatrix/, templateRoot);
     assert.match(previewRoot, /data-promptframe-preview-case-apply/, templateRoot);
+    assert.match(previewRoot, /data-promptframe-preview-baseline-reset/, templateRoot);
+    assert.match(previewRoot, /data-promptframe-preview-aspect-case/, templateRoot);
+    assert.match(previewRoot, /data-promptframe-preview-case-kind/, templateRoot);
+    assert.match(previewRoot, /caseKind === 'props_stress'/, templateRoot);
+    assert.match(previewRoot, /caseKind === 'fps_diagnostic'/, templateRoot);
     assert.match(previewRoot, /Auto cases/, templateRoot);
+    assert.match(previewRoot, /Platform probe equivalent/, templateRoot);
+    assert.match(previewRoot, /Local diagnostic only/, templateRoot);
     assert.match(previewRoot, /propsSchema\.safeParse/, templateRoot);
     assert.match(readme, /自动生成.*preview cases|preview cases.*自动生成/, templateRoot);
   }
@@ -277,7 +284,9 @@ test('public templates localize PreviewRoot controls and derive readable prop la
     assert.match(previewRoot, /type PreviewLocale = 'en' \| 'zh'/, templateRoot);
     assert.match(previewRoot, /previewMessages/, templateRoot);
     assert.match(previewRoot, /resolvePreviewLocale/, templateRoot);
-    assert.match(previewRoot, /formatPropLabel/, templateRoot);
+    assert.match(previewRoot, /formatPromptFramePreviewPropLabel/, templateRoot);
+    assert.match(previewRoot, /describePromptFramePreviewPropControl/, templateRoot);
+    assert.match(previewRoot, /formatPromptFramePreviewPropPath/, templateRoot);
     assert.match(previewRoot, /isZh/, templateRoot);
     assert.match(previewRoot, /Aspect/, templateRoot);
     assert.match(previewRoot, /画幅/, templateRoot);
@@ -285,7 +294,9 @@ test('public templates localize PreviewRoot controls and derive readable prop la
     assert.match(previewRoot, /属性/, templateRoot);
     assert.match(previewRoot, /Advanced JSON/, templateRoot);
     assert.match(previewRoot, /高级 JSON/, templateRoot);
-    assert.match(previewRoot, /Object\.entries\(inputProps\)\.map\(\(\[key, value\]\) => renderPropControl\(\[key\], formatPropLabel\(key\), value\)\)/, templateRoot);
+    assert.match(previewRoot, /Object\.entries\(inputProps\)\.map\(\(\[key, value\]\) => renderPropControl\(\[key\], formatPromptFramePreviewPropLabel\(key\), value\)\)/, templateRoot);
+    assert.doesNotMatch(previewRoot, /function formatPropLabel/, templateRoot);
+    assert.doesNotMatch(previewRoot, /function coerceControlValue/, templateRoot);
     assert.doesNotMatch(previewRoot, /renderPropControl\(\[key\], key, value\)/, templateRoot);
     assert.doesNotMatch(previewRoot, /renderPropControl\(\[\.\.\.path, childKey\], childKey, childValue/, templateRoot);
   }
@@ -314,11 +325,12 @@ test('public templates provide JSON fallback controls for complex props', async 
   ]) {
     const previewRoot = await readFile(path.join(repoRoot, templateRoot, 'src/PreviewRoot.tsx'), 'utf8');
 
-    assert.match(previewRoot, /isJsonLikeValue/, templateRoot);
+    assert.match(previewRoot, /isPromptFramePreviewJsonLikeValue/, templateRoot);
+    assert.match(previewRoot, /parsePromptFramePreviewJsonDraft/, templateRoot);
     assert.match(previewRoot, /jsonDraftErrors/, templateRoot);
     assert.match(previewRoot, /data-promptframe-prop-json/, templateRoot);
     assert.match(previewRoot, /data-promptframe-json-draft-error/, templateRoot);
-    assert.match(previewRoot, /JSON\.parse/, templateRoot);
+    assert.doesNotMatch(previewRoot, /function parseJsonDraft/, templateRoot);
     assert.match(previewRoot, /Invalid JSON/, templateRoot);
     assert.match(previewRoot, /Invalid props/, templateRoot);
     assert.doesNotMatch(previewRoot, /String\(value\)/, templateRoot);

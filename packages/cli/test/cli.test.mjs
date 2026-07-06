@@ -2444,6 +2444,10 @@ test('upload default output prints status link and next status command', async (
         buildId: 'build-human',
         status: 'succeeded',
         statusUrl: '/admin/components/builds/build-human',
+        requestedVersion: '0.1.0',
+        acceptedVersion: '0.1.1',
+        versionBumped: true,
+        versionBumpReason: 'Existing component version was already used.',
       });
       return;
     }
@@ -2452,7 +2456,7 @@ test('upload default output prints status link and next status command', async (
   try {
     const zipPath = path.join(dir, 'component.zip');
     await writeFile(zipPath, 'fake component zip');
-    const { stdout } = await execFileAsync('node', [
+    const { stdout, stderr } = await execFileAsync('node', [
       cliPath,
       'upload',
       zipPath,
@@ -2465,8 +2469,14 @@ test('upload default output prints status link and next status command', async (
     assert.match(stdout, /Upload accepted/);
     assert.match(stdout, /Build: build-human/);
     assert.match(stdout, /Status: succeeded/);
+    assert.match(stdout, /Version auto-bumped: 0\.1\.0 -> 0\.1\.1/);
+    assert.match(stdout, /Existing component version was already used/);
     assert.match(stdout, new RegExp(`Status URL: ${server.url}/admin/components/builds/build-human`));
     assert.match(stdout, new RegExp(`Next: promptframe status build-human --endpoint ${server.url}`));
+    assert.match(stderr, /PromptFrame upload progress/);
+    assert.match(stderr, /Checking platform component standard/);
+    assert.match(stderr, /Uploading source package/);
+    assert.match(stderr, /Platform accepted upload/);
   } finally {
     await server.close();
     await rm(dir, { recursive: true, force: true });

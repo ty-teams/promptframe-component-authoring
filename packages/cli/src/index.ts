@@ -735,10 +735,14 @@ async function uploadComponent(argv: string[]): Promise<void> {
   const input: ResolvedComponentInput = target.endsWith('.zip')
     ? { dir: target, source: { mode: 'zip' } }
     : resolveComponentInput(argv);
+  reportUploadProgress(argv, target.endsWith('.zip') ? 'Using source archive.' : 'Preparing component package.');
   const prepared = prepareComponentUpload(input, uploadTarget, valueAfter(argv, '--out'));
   const endpoint = resolveEndpoint('upload', argv);
+  reportUploadProgress(argv, 'Checking platform component standard.');
   await assertRemoteStandardFreshness(endpoint, argv);
+  reportUploadProgress(argv, 'Uploading source package.');
   const output = await uploadPreparedComponent(input, argv, endpoint, uploadTarget, prepared);
+  reportUploadProgress(argv, 'Platform accepted upload.');
   if (hasFlag(argv, '--json')) {
     printJson(output);
     return;
@@ -746,6 +750,7 @@ async function uploadComponent(argv: string[]): Promise<void> {
   console.log('Upload accepted by PromptFrame platform.');
   console.log(`Build: ${output.jobId ?? 'unknown'}`);
   console.log(`Status: ${stringValue(output.status) ?? stringValue(asRecord(output.build)?.status) ?? 'queued'}`);
+  printUploadVersionOutcome(output);
   if (output.jobId) {
     console.log(`Next: promptframe status ${output.jobId} --endpoint ${endpoint}`);
   }
@@ -774,9 +779,11 @@ async function uploadWorkspace(
     };
   });
   const endpoint = resolveEndpoint('upload', argv);
+  reportUploadProgress(argv, 'Checking platform component standard.');
   await assertRemoteStandardFreshness(endpoint, argv);
   const uploads = [];
   for (const item of preparedUploads) {
+    reportUploadProgress(argv, 'Uploading workspace source package.');
     uploads.push(await uploadPreparedComponent(item.input, argv, endpoint, uploadTarget, item.prepared));
   }
   const output = {
@@ -853,6 +860,7 @@ async function uploadPreparedComponent(
     },
   }, 'upload.http.failed');
   const safePayload = sanitizePublicUploadPayload(payload);
+  const versionOutcome = extractUploadVersionOutcome(payload);
   const output = sanitizePublicUploadPayload({
     ...safePayload,
     command: 'upload',
@@ -862,10 +870,57 @@ async function uploadPreparedComponent(
     ...(versionNotes ? { versionNotes } : {}),
     package: artifact,
     source: input.source,
+    ...(versionOutcome ? { versionOutcome } : {}),
     ...(localReusability ? { localReusability, diagnostics } : {}),
     diagnostic: diagnostic('upload.completed', 'info', 'Component upload accepted by platform.'),
   });
   return output;
+}
+
+function reportUploadProgress(argv: string[], message: string): void {
+  if (hasFlag(argv, '--json')) return;
+  console.error(`PromptFrame upload progress: ${message}`);
+}
+
+function extractUploadVersionOutcome(payload: Record<string, unknown>): Record<string, unknown> | undefined {
+  const build = asRecord(payload.build);
+  const requestedVersion = firstStringValue(
+    payload.requestedVersion,
+    payload.manifestVersion,
+    payload.inputVersion,
+    build?.requestedVersion,
+    build?.manifestVersion,
+    build?.inputVersion,
+  );
+  const acceptedVersion = firstStringValue(
+    payload.acceptedVersion,
+    payload.resolvedVersion,
+    payload.version,
+    build?.acceptedVersion,
+    build?.resolvedVersion,
+    build?.version,
+  );
+  const autoBumped = payload.versionBumped === true
+    || payload.autoBumped === true
+    || build?.versionBumped === true
+    || build?.autoBumped === true
+    || Boolean(firstStringValue(payload.autoBumpedFrom, build?.autoBumpedFrom));
+  const reason = firstStringValue(
+    payload.versionBumpReason,
+    payload.versionConflictReason,
+    payload.versionReason,
+    build?.versionBumpReason,
+    build?.versionConflictReason,
+    build?.versionReason,
+  );
+
+  if (!requestedVersion && !acceptedVersion && !autoBumped && !reason) return undefined;
+  return {
+    ...(requestedVersion ? { requestedVersion } : {}),
+    ...(acceptedVersion ? { acceptedVersion } : {}),
+    autoBumped,
+    ...(reason ? { reason } : {}),
+  };
 }
 
 const PUBLIC_UPLOAD_JSON_OMIT_KEYS = new Set([
@@ -4420,6 +4475,21 @@ function printStatusUrl(endpoint: string, payload: Record<string, unknown>): voi
   console.log(`Status URL: ${endpoint}${statusUrl.startsWith('/') ? statusUrl : `/${statusUrl}`}`);
 }
 
+function printUploadVersionOutcome(payload: Record<string, unknown>): void {
+  const outcome = asRecord(payload.versionOutcome);
+  if (!outcome) return;
+  const requestedVersion = stringValue(outcome.requestedVersion);
+  const acceptedVersion = stringValue(outcome.acceptedVersion);
+  const reason = stringValue(outcome.reason);
+  if (outcome.autoBumped === true || (requestedVersion && acceptedVersion && requestedVersion !== acceptedVersion)) {
+    console.log(`Version auto-bumped: ${requestedVersion ?? 'unknown'} -> ${acceptedVersion ?? 'unknown'}`);
+    if (reason) console.log(`Version note: ${reason}`);
+    return;
+  }
+  if (acceptedVersion) console.log(`Version: ${acceptedVersion}`);
+  if (reason) console.log(`Version note: ${reason}`);
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
@@ -4430,6 +4500,14 @@ function arrayValue(value: unknown): unknown[] {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function firstStringValue(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    const string = stringValue(value);
+    if (string) return string;
+  }
+  return undefined;
 }
 
 function requiredPayloadString(payload: Record<string, unknown>, key: string, code: string): string {
