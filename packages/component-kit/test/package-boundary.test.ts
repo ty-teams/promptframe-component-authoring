@@ -31,6 +31,7 @@ test('component-kit exposes only public authoring entrypoints', () => {
     './layout',
     './package.json',
     './preview',
+    './preview-react',
     './standard',
     './style',
     './timing',

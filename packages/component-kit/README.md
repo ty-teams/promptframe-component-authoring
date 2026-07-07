@@ -14,6 +14,7 @@ npm install @promptframe/component-kit
 - `public/` resource lookup helper for runtime-injected component resources with local-dev fallback.
 - Timing helpers for deterministic fps-aware timing and frame-driven animations.
 - Public style helpers backed by `@promptframe/contracts`.
+- Shared React preview props inspector for scaffold and platform preview surfaces.
 
 ## Usage
 
@@ -72,6 +73,49 @@ const introEnd = secondsToFrames(1.5, 30);
 
 Use `fpsPresets` for local fps-adaptive diagnostics such as 30fps / 60fps comparisons. Source `src/preview-props.json` remains governed by the current public preview policy; do not save or upload 60fps local preview cases until the public standard explicitly allows them. Use `describePromptFramePreviewPropControl()` and related preview helpers when building local prop editors so object/array props use structured or JSON fallback editing instead of accidental `[object Object]` strings.
 
+```tsx
+import {
+  PromptFramePreviewInspector,
+  type PromptFramePreviewControl,
+} from '@promptframe/component-kit/preview-react';
+
+const controls: PromptFramePreviewControl[] = [
+  {
+    key: 'title',
+    type: 'text',
+    label: 'Title',
+    description: 'Main headline',
+  },
+  {
+    key: 'items',
+    type: 'array',
+    label: 'Items',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          label: { type: 'string', description: 'Visible item label' },
+          count: { type: 'number', minimum: 0 },
+        },
+      },
+    },
+  },
+];
+
+export function PreviewPropsPanel() {
+  return (
+    <PromptFramePreviewInspector
+      controls={controls}
+      previewProps={{ title: 'Launch', items: [{ label: 'A', count: 1 }] }}
+      editable={false}
+    />
+  );
+}
+```
+
+`@promptframe/component-kit/preview-react` is the public UI contract for preview props inspection. It renders stable `data-preview-props-*` selectors, scalar controls, enum/color controls, nested object/array editors, read-only states, missing-description warnings, and fail-closed Advanced JSON parsing. Host products may pass adapters such as `renderResourcePicker` and `renderToolbarActions`, but platform-only permissions, resource governance, Auth0/session state, storage deletion, and review workflow actions must stay in the host surface.
+
 ```ts
 import { resolvePromptFrameStyle } from '@promptframe/component-kit/style';
 
@@ -88,6 +132,7 @@ const style = resolvePromptFrameStyle({ tone: 'tech', accentColor: '#38bdf8' }, 
 ```ts
 import { getComponentStandardStamp } from '@promptframe/component-kit';
 import { COMPONENT_PREVIEW_CONSTRAINTS, createPreviewCaseMatrix, describePromptFramePreviewPropControl } from '@promptframe/component-kit/preview';
+import { PromptFramePreviewInspector } from '@promptframe/component-kit/preview-react';
 import { createDurationTimeline } from '@promptframe/component-kit/timing';
 import { resolvePromptFrameStyle } from '@promptframe/component-kit/style';
 ```
