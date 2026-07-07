@@ -167,17 +167,12 @@ const generatedPreviewCases = createPreviewCaseMatrix<ComponentProps>({
     const parsed = propsSchema.safeParse(candidate);
     return parsed.success ? parsed.data : undefined;
   },
-  aspectPresets: previewAspectPresets.map((preset) => ({
-    id: `aspect-${preset.label.replace(':', '-')}`,
-    name: preset.label,
-    width: preset.width,
-    height: preset.height,
-  })),
+  aspectPresets: [],
+  fpsPresets: [],
 });
 const baselinePreviewCase = generatedPreviewCases.find((previewCase) => previewCase.caseKind === 'baseline_reset');
-const aspectPreviewCases = generatedPreviewCases.filter((previewCase) => previewCase.caseKind === 'aspect');
 const diagnosticPreviewCases = generatedPreviewCases.filter((previewCase) => (
-  previewCase.caseKind === 'props_stress' || previewCase.caseKind === 'fps_diagnostic'
+  previewCase.caseKind === 'props_stress'
 ));
 
 const root = document.getElementById('root');
@@ -324,14 +319,6 @@ function PreviewApp() {
   const applyGeneratedPreviewCase = (previewCase: PromptFramePreviewCase<ComponentProps>) => {
     if (previewCase.caseKind === 'baseline_reset') {
       setInputProps(previewCase.props);
-      setPreviewSize(initialSize);
-      setPreviewTiming(initialTiming);
-    }
-    if (previewCase.caseKind === 'aspect') {
-      setPreviewSize({ label: previewCase.name, width: previewCase.width, height: previewCase.height });
-    }
-    if (previewCase.caseKind === 'fps_diagnostic') {
-      setPreviewTiming({ label: previewCase.name, fps: previewCase.fps, durationFrames: previewCase.durationFrames });
     }
     if (previewCase.caseKind === 'props_stress') {
       setInputProps(previewCase.props);
@@ -343,10 +330,13 @@ function PreviewApp() {
       : `Loaded ${previewCase.name}. Adjust props if needed, then export it as a local preview case.`);
   };
 
+  const fillPlayerByWidth = previewSize.width >= previewSize.height;
+
   return (
     <main
       style={{
-        height: '100vh',
+        width: '100%',
+        height: '100%',
         margin: 0,
         background: '#111827',
         color: '#f8fafc',
@@ -363,6 +353,7 @@ function PreviewApp() {
         style={{
           minWidth: 0,
           minHeight: 0,
+          width: '100%',
           height: '100%',
           display: 'grid',
           placeItems: 'center',
@@ -372,11 +363,16 @@ function PreviewApp() {
         <div
           data-promptframe-preview-player
           style={{
-            width: `min(100%, 1280px, calc((100vh - 48px) * ${previewSize.width / previewSize.height}))`,
+            width: fillPlayerByWidth ? '100%' : 'auto',
+            height: fillPlayerByWidth ? 'auto' : '100%',
+            maxWidth: '100%',
             maxHeight: '100%',
             aspectRatio: `${previewSize.width} / ${previewSize.height}`,
             display: 'grid',
             placeItems: 'center',
+            overflow: 'hidden',
+            background: '#000',
+            boxShadow: '0 18px 60px rgba(0, 0, 0, 0.38)',
           }}
         >
           <Player
@@ -391,10 +387,8 @@ function PreviewApp() {
             acknowledgeRemotionLicense
             style={{
               width: '100%',
-              maxHeight: '100%',
-              aspectRatio: `${previewSize.width} / ${previewSize.height}`,
+              height: '100%',
               background: '#000',
-              boxShadow: '0 18px 60px rgba(0, 0, 0, 0.38)',
             }}
           />
         </div>
@@ -407,13 +401,35 @@ function PreviewApp() {
           background: '#f8fafc',
           color: '#111827',
           borderRadius: 8,
-          padding: 18,
           boxSizing: 'border-box',
           maxHeight: '100%',
-          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
         }}
       >
-        <section>
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            padding: 18,
+            boxSizing: 'border-box',
+            overscrollBehavior: 'contain',
+          }}
+        >
+        <section
+          data-promptframe-preview-aspect-toolbar
+          style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 2,
+            background: '#f8fafc',
+            paddingBottom: 12,
+            borderBottom: '1px solid #e2e8f0',
+          }}
+        >
           <h2 style={{ fontSize: 16, margin: '0 0 12px', letterSpacing: 0 }}>{t('preview')}</h2>
           <div
             aria-label={t('aspect')}
@@ -422,9 +438,7 @@ function PreviewApp() {
             {previewAspectPresets.map((preset) => (
               <button
                 key={preset.label}
-                data-promptframe-preview-aspect-case={aspectPreviewCases.find((previewCase) => (
-                  previewCase.width === preset.width && previewCase.height === preset.height
-                ))?.id ?? preset.label}
+                data-promptframe-preview-aspect-case={preset.label}
                 type="button"
                 onClick={() => setPreviewSize(preset)}
                 style={{
@@ -444,11 +458,12 @@ function PreviewApp() {
           <p style={{ color: '#64748b', fontSize: 12, margin: '8px 0 0' }}>
             {t('fps')}: {previewTiming.label} / {previewTiming.durationFrames} frames
           </p>
+        </section>
+
+        <section>
           <div
             style={{
               marginTop: 16,
-              borderTop: '1px solid #e2e8f0',
-              paddingTop: 16,
               display: 'grid',
               gap: 10,
             }}
@@ -563,6 +578,7 @@ function PreviewApp() {
             scrollMode="parent"
           />
         </section>
+        </div>
       </aside>
     </main>
   );

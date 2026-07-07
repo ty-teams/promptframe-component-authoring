@@ -231,7 +231,7 @@ test('public templates expose saved local preview case export controls', async (
   }
 });
 
-test('public templates expose component-kit generated preview case matrix', async () => {
+test('public templates expose the component-kit preview case matrix without default aspect/fps diagnostics', async () => {
   for (const templateRoot of [
     'templates/react-remotion',
     'packages/create-component/templates/react-remotion',
@@ -244,8 +244,10 @@ test('public templates expose component-kit generated preview case matrix', asyn
     assert.match(previewRoot, /data-promptframe-preview-baseline-reset/, templateRoot);
     assert.match(previewRoot, /data-promptframe-preview-aspect-case/, templateRoot);
     assert.match(previewRoot, /data-promptframe-preview-case-kind/, templateRoot);
+    assert.match(previewRoot, /aspectPresets:\s*\[\]/, templateRoot);
+    assert.match(previewRoot, /fpsPresets:\s*\[\]/, templateRoot);
     assert.match(previewRoot, /caseKind === 'props_stress'/, templateRoot);
-    assert.match(previewRoot, /caseKind === 'fps_diagnostic'/, templateRoot);
+    assert.doesNotMatch(previewRoot, /caseKind === 'fps_diagnostic'/, templateRoot);
     assert.match(previewRoot, /Auto cases/, templateRoot);
     assert.match(previewRoot, /Platform probe equivalent/, templateRoot);
     assert.match(previewRoot, /Local diagnostic only/, templateRoot);
@@ -309,16 +311,31 @@ test('public templates localize PreviewRoot controls and derive readable prop la
   }
 });
 
-test('public templates keep the PreviewRoot viewport locked and Player contained', async () => {
+test('public templates keep the PreviewRoot viewport locked and Player contained with gold shell layout', async () => {
   for (const templateRoot of [
     'templates/react-remotion',
     'packages/create-component/templates/react-remotion',
   ]) {
+    const indexHtml = await readFile(path.join(repoRoot, templateRoot, 'index.html'), 'utf8');
     const previewRoot = await readFile(path.join(repoRoot, templateRoot, 'src/PreviewRoot.tsx'), 'utf8');
 
-    assert.match(previewRoot, /height:\s*'100vh'/, templateRoot);
+    assert.match(indexHtml, /html,\s*body/, templateRoot);
+    assert.match(indexHtml, /#root/, templateRoot);
+    assert.match(indexHtml, /height:\s*100%/, templateRoot);
+    assert.match(indexHtml, /margin:\s*0/, templateRoot);
+    assert.match(previewRoot, /height:\s*'100%'/, templateRoot);
+    assert.doesNotMatch(previewRoot, /height:\s*'100vh'|width:\s*'100vw'/, templateRoot);
     assert.match(previewRoot, /overflow:\s*'hidden'/, templateRoot);
+    assert.match(previewRoot, /fillPlayerByWidth/, templateRoot);
+    assert.match(previewRoot, /width:\s*fillPlayerByWidth\s*\?\s*'100%'\s*:\s*'auto'/, templateRoot);
+    assert.match(previewRoot, /height:\s*fillPlayerByWidth\s*\?\s*'auto'\s*:\s*'100%'/, templateRoot);
+    assert.match(previewRoot, /maxWidth:\s*'100%'/, templateRoot);
     assert.match(previewRoot, /maxHeight:\s*'100%'/, templateRoot);
+    assert.match(previewRoot, /aspectPresets:\s*\[\]/, templateRoot);
+    assert.match(previewRoot, /fpsPresets:\s*\[\]/, templateRoot);
+    assert.match(previewRoot, /position:\s*'sticky'/, templateRoot);
+    assert.doesNotMatch(previewRoot, /1280px|min\(100%,\s*1280px/, templateRoot);
+    assert.match(previewRoot, /PromptFramePreviewInspector/, templateRoot);
     assert.match(previewRoot, /acknowledgeRemotionLicense/, templateRoot);
     assert.match(previewRoot, /data-promptframe-preview-stage/, templateRoot);
     assert.match(previewRoot, /data-promptframe-preview-player/, templateRoot);
