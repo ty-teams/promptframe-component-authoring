@@ -2115,6 +2115,57 @@ test('check reports local reusability diagnostics for low-reuse marketplace auth
   }
 });
 
+test('check warns marketplace authors when public metadata lacks bilingual coverage', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-metadata-locale-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+
+    const marketplaceCheck = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'check',
+      componentDir,
+      '--target',
+      'marketplace_authoring',
+      '--json',
+    ], {
+      env: {
+        ...process.env,
+        PROMPTFRAME_API_BASE: '',
+        REMOTION_MEDIA_API_BASE: '',
+        PROMPTFRAME_CONFIG: path.join(dir, 'missing-config.json'),
+      },
+    })).stdout);
+
+    assert.ok(marketplaceCheck.diagnostics.some((item) => (
+      item.code === 'component_metadata.locale.bilingual_recommended'
+      && item.severity === 'warning'
+    )));
+
+    const privateCheck = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'check',
+      componentDir,
+      '--target',
+      'project_private_generation',
+      '--json',
+    ], {
+      env: {
+        ...process.env,
+        PROMPTFRAME_API_BASE: '',
+        REMOTION_MEDIA_API_BASE: '',
+        PROMPTFRAME_CONFIG: path.join(dir, 'missing-config.json'),
+      },
+    })).stdout);
+
+    assert.equal(privateCheck.diagnostics.some((item) => (
+      item.code === 'component_metadata.locale.bilingual_recommended'
+    )), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('validate and check report unknown private style props as authoring diagnostics', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-style-props-'));
   try {

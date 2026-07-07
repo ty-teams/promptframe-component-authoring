@@ -461,6 +461,7 @@ function buildCheckOutput(
   assertPublicResourcesAccepted(publicResources);
   const diagnostics = [
     ...reusabilityDiagnostics(localReusability),
+    ...marketplaceMetadataLocaleDiagnostics(manifest, target),
     ...layoutPolicyDiagnostics(dir, manifest),
     ...stylePropDiagnostics(dir),
     ...securityPolicyWarningDiagnostics(dir),
@@ -832,10 +833,12 @@ function prepareComponentUpload(
           localReusability = reusability;
         },
       );
-  const diagnostics = localReusability
+  const manifest = input.source.mode === 'zip' ? undefined : validateComponentDirectory(input.dir);
+  const diagnostics = localReusability && manifest
     ? [
         ...reusabilityDiagnostics(localReusability),
-        ...layoutPolicyDiagnostics(input.dir, validateComponentDirectory(input.dir)),
+        ...marketplaceMetadataLocaleDiagnostics(manifest, uploadTarget),
+        ...layoutPolicyDiagnostics(input.dir, manifest),
         ...stylePropDiagnostics(input.dir),
         ...(artifact.publicResources?.diagnostics ?? []),
       ]
@@ -890,6 +893,35 @@ function reportUploadProgress(argv: string[], phase: UploadProgressPhase, messag
     return;
   }
   console.error(`PromptFrame upload progress: ${message}`);
+}
+
+function marketplaceMetadataLocaleDiagnostics(
+  manifest: ComponentManifest,
+  target: AuthoringUploadTarget,
+): ComponentDiagnostic[] {
+  if (target !== 'marketplace_authoring') return [];
+  const publicCopy = [
+    manifest.displayName,
+    manifest.description,
+    ...manifest.tags,
+  ].join(' ');
+  if (hasCjkText(publicCopy) && hasLatinText(publicCopy)) return [];
+  return [
+    diagnostic(
+      'component_metadata.locale.bilingual_recommended',
+      'warning',
+      'Marketplace authoring metadata appears monolingual; public listing copy should be understandable in both zh and en before review.',
+      'Add bilingual title/description/tag intent in author-facing metadata or prepare a metadata-safe i18n draft after upload. This is a warning today and may become a public listing gate later.',
+    ) as ComponentDiagnostic,
+  ];
+}
+
+function hasCjkText(value: string): boolean {
+  return /[\u3400-\u9fff]/u.test(value);
+}
+
+function hasLatinText(value: string): boolean {
+  return /[A-Za-z]/u.test(value);
 }
 
 function extractUploadVersionOutcome(payload: Record<string, unknown>): Record<string, unknown> | undefined {
