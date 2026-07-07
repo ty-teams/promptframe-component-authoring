@@ -9,7 +9,7 @@
     "README.md"
   ],
   "bin": {
-    "create-promptframe-component": "./dist/index.js"
+    "create-promptframe-component": "dist/index.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
