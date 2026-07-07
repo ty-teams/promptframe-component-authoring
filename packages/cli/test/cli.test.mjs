@@ -4015,6 +4015,7 @@ async function writeFixtureComponent(componentDir) {
 function fixtureLayoutCapability() {
   return {
     contractVersion: 'layout-capability.v0.1.0',
+    layoutMode: 'slot_fill_reflow',
     recommendedSlot: 'full_screen',
     minReadableSize: {
       width: 320,

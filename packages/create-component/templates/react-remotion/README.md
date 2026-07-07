@@ -10,7 +10,7 @@ PromptFrame 标准视频组件模板。
 
 CodingAI 不能读取 PromptFrame 平台源码、内部协作看板、REQ/TASK/QA、内部协作收件箱、secret、内部部署脚本或私有 endpoint 默认值。
 
-版本事实：Current npm registry baseline is `@promptframe/cli@0.1.45`, `@promptframe/contracts@0.1.16`, `@promptframe/component-kit@0.1.13`, and `create-promptframe-component@0.1.36`. The published CLI consumes the contracts AST-aware public security policy evaluator, blocks red-team browser capability vectors, enforces Slot-first layout/source diagnostics, supports pnpm workspace root lockfile evidence, workspace root check/upload, workflow v2 upgrade diagnostics, `workspace:*` shared-package diagnostics, preview props/schema unknown-prop diagnostics, required public prop descriptions, stderr NDJSON upload progress for `--json`, server version auto-bump notes, and reports `securityPolicyDigest` / `securityEvaluatorMode` / `publicResources` in JSON output.
+版本事实：Current source baseline is `@promptframe/cli@0.1.45`, `@promptframe/contracts@0.1.17`, `@promptframe/component-kit@0.1.13`, and `create-promptframe-component@0.1.37`. The published CLI consumes the contracts AST-aware public security policy evaluator, blocks red-team browser capability vectors, enforces Slot-first layout/source diagnostics, supports pnpm workspace root lockfile evidence, workspace root check/upload, workflow v2 upgrade diagnostics, `workspace:*` shared-package diagnostics, preview props/schema unknown-prop diagnostics, required public prop descriptions, stderr NDJSON upload progress for `--json`, server version auto-bump notes, and reports `securityPolicyDigest` / `securityEvaluatorMode` / `publicResources` in JSON output.
 
 ## 本地开发
 
@@ -52,6 +52,8 @@ npx promptframe status <buildId> --endpoint <promptframe-api-base>
 - `src/schema.ts`：Zod props schema（参数 schema）和默认 props。
 - `src/preview-props.json`：有边界的默认预览参数。
 - `manifest.json`：组件身份、版本、分类、审核状态和 hash 信息。
+
+`manifest.layout.layoutMode` 是平台和 Director 读取的机器字段，不是自由标签。模板默认使用 `slot_fill_reflow`，表示组件根节点填满平台 slot，内部内容随 slot 重排或缩放。只在组件确实是固定比例内容时使用 `fixed_aspect_fit`，只在角标/水印/小挂件这类浮动元素时使用 `floating_ornament`。
 
 ## 时间轴规则
 

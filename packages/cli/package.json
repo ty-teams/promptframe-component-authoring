@@ -43,7 +43,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@promptframe/contracts": "^0.1.16"
+    "@promptframe/contracts": "^0.1.17"
   },
   "devDependencies": {
     "@types/node": "^24.12.4",

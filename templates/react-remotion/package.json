@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@promptframe/component-kit": "^0.1.13",
-    "@promptframe/contracts": "^0.1.16",
+    "@promptframe/contracts": "^0.1.17",
     "@remotion/player": "^4.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

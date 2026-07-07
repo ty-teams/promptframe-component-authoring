@@ -45,6 +45,7 @@ function manifest(overrides = {}) {
 
 const goodLayout = {
   contractVersion: LAYOUT_CAPABILITY_VERSION,
+  layoutMode: 'slot_fill_reflow',
   recommendedSlot: 'card',
   minReadableSize: { width: 320, height: 180 },
   supportedAspectRatios: ['16:9', '1:1'],
@@ -73,8 +74,29 @@ test('strict layout policy validates complete layout capability fields', () => {
   const report = evaluatePromptFrameLayoutPolicy({
     manifest: manifest({
       layout: {
+        layoutMode: 'slot_fill_reflow',
         recommendedSlot: 'card',
         supportedAspectRatios: ['16:9'],
+      },
+    }),
+  });
+
+  assert.equal(report.accepted, false);
+  assert.ok(codes(report).includes('component.layout.manifest_invalid'));
+});
+
+test('strict layout policy requires machine-readable layoutMode for new uploads', () => {
+  const report = evaluatePromptFrameLayoutPolicy({
+    manifest: manifest({
+      layout: {
+        contractVersion: LAYOUT_CAPABILITY_VERSION,
+        recommendedSlot: 'card',
+        minReadableSize: { width: 320, height: 180 },
+        supportedAspectRatios: ['16:9', '1:1'],
+        layoutAdaptivity: 'responsive',
+        overflowPolicy: 'fit',
+        safeAreaPolicy: 'recommended',
+        confidence: 0.8,
       },
     }),
   });

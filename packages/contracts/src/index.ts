@@ -1370,6 +1370,13 @@ export interface PromptFrameLayoutPolicyReport {
 export const layoutAdaptivitySchema = z.enum(['responsive', 'scales_down', 'reflows', 'clips', 'fixed']);
 export type LayoutAdaptivity = z.infer<typeof layoutAdaptivitySchema>;
 
+export const layoutModeSchema = z.enum([
+  'slot_fill_reflow',
+  'fixed_aspect_fit',
+  'floating_ornament',
+]);
+export type LayoutMode = z.infer<typeof layoutModeSchema>;
+
 export const slotRecommendationSchema = z.enum([
   'full_screen',
   'half_screen',
@@ -1382,6 +1389,7 @@ export type SlotRecommendation = z.infer<typeof slotRecommendationSchema>;
 
 export const layoutCapabilitySchema = z.object({
   contractVersion: z.literal(LAYOUT_CAPABILITY_VERSION).default(LAYOUT_CAPABILITY_VERSION),
+  layoutMode: layoutModeSchema,
   recommendedSlot: slotRecommendationSchema,
   minReadableSize: z.object({
     width: z.number().int().positive(),
@@ -1426,7 +1434,7 @@ export function evaluatePromptFrameLayoutPolicy(input: PromptFrameLayoutPolicyIn
       'error',
       'manifest',
       'Component manifest must declare layout capability for new uploads and new versions.',
-      'Add manifest.layout with recommendedSlot, minReadableSize, supportedAspectRatios, layoutAdaptivity, overflowPolicy and safeAreaPolicy.',
+      'Add manifest.layout with layoutMode, recommendedSlot, minReadableSize, supportedAspectRatios, layoutAdaptivity, overflowPolicy and safeAreaPolicy.',
     );
   } else {
     const parsedLayout = layoutCapabilitySchema.safeParse(layout);

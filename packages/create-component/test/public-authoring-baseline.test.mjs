@@ -12,7 +12,7 @@ test('public templates use the current PromptFrame authoring package baseline', 
   ]) {
     const packageJson = JSON.parse(await readFile(path.join(repoRoot, templatePackagePath), 'utf8'));
     assert.equal(packageJson.dependencies?.['@promptframe/component-kit'], '^0.1.13', templatePackagePath);
-    assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.16', templatePackagePath);
+    assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.17', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@remotion/player'], '^4.0.0', templatePackagePath);
     assert.equal(packageJson.devDependencies?.['@vitejs/plugin-react'], '^6.0.1', templatePackagePath);
     assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.45', templatePackagePath);
@@ -26,7 +26,7 @@ test('public templates use the current PromptFrame authoring package baseline', 
 
 test('create package version is bumped for the next template release', async () => {
   const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'packages/create-component/package.json'), 'utf8'));
-  assert.equal(packageJson.version, '0.1.36');
+  assert.equal(packageJson.version, '0.1.37');
 });
 
 test('public templates expose PromptFrame CLI lifecycle scripts', async () => {
@@ -121,7 +121,7 @@ test('public authoring docs and templates expose component public resource contr
   }
 });
 
-test('public authoring docs document the current npm registry baseline', async () => {
+test('public authoring docs document the current source baseline', async () => {
   for (const docPath of [
     'README.md',
     'packages/cli/README.md',
@@ -129,11 +129,11 @@ test('public authoring docs document the current npm registry baseline', async (
     'packages/create-component/templates/react-remotion/README.md',
   ]) {
     const text = await readFile(path.join(repoRoot, docPath), 'utf8');
-    assert.match(text, /Current npm registry baseline is/, docPath);
-    assert.match(text, /@promptframe\/contracts@0\.1\.16/, docPath);
+    assert.match(text, /Current source baseline is/, docPath);
+    assert.match(text, /@promptframe\/contracts@0\.1\.17/, docPath);
     assert.match(text, /@promptframe\/component-kit@0\.1\.13/, docPath);
     assert.match(text, /@promptframe\/cli@0\.1\.45/, docPath);
-    assert.match(text, /create-promptframe-component@0\.1\.36/, docPath);
+    assert.match(text, /create-promptframe-component@0\.1\.37/, docPath);
     assert.match(text, /workspace root lockfile|workspace root lockfile evidence|pnpm workspace root lockfile/, docPath);
     assert.doesNotMatch(text, /source candidate|source tree prepares|until Trusted Publishing completes/, docPath);
   }
@@ -275,6 +275,7 @@ test('public templates use CSS Module and slot layout helper instead of all-inli
     assert.doesNotMatch(component, /fontSize:\s*68\b/, templateRoot);
     assert.match(cssModule, /\.root/, templateRoot);
     assert.equal(manifest.layout?.contractVersion, 'layout-capability.v0.1.0', templateRoot);
+    assert.equal(manifest.layout?.layoutMode, 'slot_fill_reflow', templateRoot);
     assert.equal(manifest.layout?.recommendedSlot, 'full_screen', templateRoot);
     assert.deepEqual(manifest.layout?.supportedAspectRatios, ['16:9', '9:16', '1:1'], templateRoot);
     assert.doesNotMatch(previewRoot, /navigator\.language/, templateRoot);
