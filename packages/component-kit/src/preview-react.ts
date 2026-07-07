@@ -218,7 +218,7 @@ export function PromptFramePreviewInspector({
         React.createElement(ControlEditor, {
           key: control.key,
           control,
-          value: previewProps[control.key] ?? control.defaultValue,
+          value: previewProps[control.key] !== undefined ? previewProps[control.key] : control.defaultValue,
           readOnly,
           locale,
           onChange: (value: unknown) => setControlValue(control.key, value),
@@ -444,7 +444,7 @@ function PreviewJsonControlEditor({
 }) {
   const expectedType = control.type === 'array' ? 'array' : 'object';
   const serializedValue = React.useMemo(
-    () => JSON.stringify(value ?? createDefaultValueFromSchema(control.schema), null, 2),
+    () => JSON.stringify(value !== undefined ? value : createDefaultValueFromSchema(control.schema), null, 2),
     [control.schema, value],
   );
   const [draft, setDraft] = React.useState(serializedValue);

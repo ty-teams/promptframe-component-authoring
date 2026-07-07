@@ -71,6 +71,25 @@ test('PromptFramePreviewInspector renders shared selectors for nested props and 
   assert.equal(React.isValidElement(element), true);
 });
 
+test('PromptFramePreviewInspector preserves explicit null preview prop values', () => {
+  const element = React.createElement(PromptFramePreviewInspector, {
+    controls: [{
+      key: 'nullable',
+      type: 'object',
+      label: 'Nullable',
+      defaultValue: { fallback: true },
+    }],
+    previewProps: { nullable: null },
+    editable: false,
+    locale: 'en',
+  });
+
+  const markup = renderToStaticMarkup(element);
+  assert.match(markup, /&quot;nullable&quot;: null/);
+  assert.match(markup, />null<\/textarea>/);
+  assert.doesNotMatch(markup, /fallback/);
+});
+
 test('parsePromptFramePreviewInspectorJsonDraft fails closed for invalid JSON and schema mismatch', () => {
   assert.deepEqual(parsePromptFramePreviewInspectorJsonDraft('{broken', 'object', 'en'), {
     ok: false,
