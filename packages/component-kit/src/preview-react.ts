@@ -443,18 +443,45 @@ function PreviewJsonControlEditor({
   onChange: (value: unknown) => void;
 }) {
   const expectedType = control.type === 'array' ? 'array' : 'object';
-  return React.createElement('textarea', {
-    readOnly,
-    disabled: readOnly,
-    'data-preview-props-json-control': control.key,
-    defaultValue: JSON.stringify(value ?? createDefaultValueFromSchema(control.schema), null, 2),
-    onChange: (event: unknown) => {
-      if (readOnly) return;
-      const parsed = parsePromptFramePreviewInspectorJsonDraft(eventValue(event), expectedType, locale, control.schema);
-      if (parsed.ok) onChange(parsed.value);
-    },
-    style: textAreaStyle,
-  });
+  const serializedValue = React.useMemo(
+    () => JSON.stringify(value ?? createDefaultValueFromSchema(control.schema), null, 2),
+    [control.schema, value],
+  );
+  const [draft, setDraft] = React.useState(serializedValue);
+  const [error, setError] = React.useState<string | null>(null);
+  const errorId = `preview-props-json-error-${control.key.replace(/[^A-Za-z0-9_-]/g, '-')}`;
+
+  React.useEffect(() => {
+    setDraft(serializedValue);
+    setError(null);
+  }, [serializedValue]);
+
+  return React.createElement(React.Fragment, null,
+    React.createElement('textarea', {
+      readOnly,
+      disabled: readOnly,
+      'aria-invalid': error ? 'true' : undefined,
+      'aria-describedby': error ? errorId : undefined,
+      'data-preview-props-json-control': control.key,
+      value: draft,
+      onChange: (event: unknown) => {
+        if (readOnly) return;
+        const nextDraft = eventValue(event);
+        setDraft(nextDraft);
+        const parsed = parsePromptFramePreviewInspectorJsonDraft(nextDraft, expectedType, locale, control.schema);
+        if (!parsed.ok) {
+          setError(parsed.error);
+          return;
+        }
+        setError(null);
+        onChange(parsed.value);
+      },
+      style: textAreaStyle,
+    }),
+    error
+      ? React.createElement('span', { id: errorId, 'data-preview-props-json-error': control.key, style: errorStyle }, error)
+      : null,
+  );
 }
 
 function renderScalarInput({

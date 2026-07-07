@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -137,4 +138,12 @@ test('parsePromptFramePreviewInspectorJsonDraft preserves admin schema guardrail
     ok: false,
     error: 'mode must match the const value.',
   });
+});
+
+test('PromptFramePreviewInspector keeps Advanced JSON errors visible in the shared UI source', async () => {
+  const source = await readFile(new URL('../src/preview-react.ts', import.meta.url), 'utf8');
+
+  assert.match(source, /data-preview-props-json-error/);
+  assert.match(source, /aria-invalid/);
+  assert.match(source, /aria-describedby/);
 });
