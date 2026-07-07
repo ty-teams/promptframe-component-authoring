@@ -10,7 +10,11 @@ export type PromptFramePreviewJsonControlType = 'array' | 'object';
 export interface PromptFramePreviewJsonSchemaLike {
   type?: PromptFramePreviewJsonSchemaType | PromptFramePreviewJsonSchemaType[];
   description?: string;
+  const?: unknown;
   enum?: readonly unknown[];
+  format?: string;
+  minLength?: number;
+  maxLength?: number;
   properties?: Record<string, PromptFramePreviewJsonSchemaLike>;
   items?: PromptFramePreviewJsonSchemaLike;
   required?: readonly string[];
@@ -546,7 +550,21 @@ function validatePromptFramePreviewValue(
 ): string | null {
   if (!schema) return null;
   const type = primarySchemaType(schema);
+  if ('const' in schema && schema.const !== undefined && !isJsonEqual(schema.const, value)) {
+    return `${path ? `${path} ` : ''}must match the const value.`;
+  }
   if (type && !schemaTypeMatches(value, type)) return `${path ? `${path} ` : ''}must be ${type}.`;
+  if (type === 'string' && typeof value === 'string') {
+    if (schema.minLength !== undefined && value.length < schema.minLength) {
+      return `${path ? `${path} ` : ''}must be at least ${schema.minLength} characters.`;
+    }
+    if (schema.maxLength !== undefined && value.length > schema.maxLength) {
+      return `${path ? `${path} ` : ''}must be at most ${schema.maxLength} characters.`;
+    }
+    if (schema.format === 'color' && !isHexColor(value)) {
+      return `${path ? `${path} ` : ''}must be a valid color value.`;
+    }
+  }
   if ((type === 'number' || type === 'integer') && typeof value === 'number') {
     if (schema.minimum !== undefined && value < schema.minimum) return `${path ? `${path} ` : ''}must be >= ${schema.minimum}.`;
     if (schema.maximum !== undefined && value > schema.maximum) return `${path ? `${path} ` : ''}must be <= ${schema.maximum}.`;
@@ -555,7 +573,11 @@ function validatePromptFramePreviewValue(
     return `${path ? `${path} ` : ''}must be one of ${schema.enum.map(String).join(', ')}.`;
   }
   if ((type === 'object' || schema.properties) && isPlainRecord(value)) {
+    for (const key of schema.required ?? []) {
+      if (!(key in value)) return `${path ? `${path}.${key}` : key} is required.`;
+    }
     for (const [key, childSchema] of Object.entries(schema.properties ?? {})) {
+      if (!(key in value)) continue;
       const childError = validatePromptFramePreviewValue(value[key], childSchema, path ? `${path}.${key}` : key);
       if (childError) return childError;
     }
@@ -659,6 +681,10 @@ function coerceEnumValue(value: string, values?: readonly unknown[]): unknown {
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isJsonEqual(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function uniqueStrings(values: string[]): string[] {

@@ -98,3 +98,43 @@ test('parsePromptFramePreviewInspectorJsonDraft fails closed for invalid JSON an
     value: { count: 2 },
   });
 });
+
+test('parsePromptFramePreviewInspectorJsonDraft preserves admin schema guardrails', () => {
+  assert.deepEqual(parsePromptFramePreviewInspectorJsonDraft('{"items":[]}', 'object', 'en', {
+    type: 'object',
+    required: ['title'],
+    properties: {
+      title: { type: 'string' },
+    },
+  }), {
+    ok: false,
+    error: 'title is required.',
+  });
+  assert.deepEqual(parsePromptFramePreviewInspectorJsonDraft('{"title":"Go"}', 'object', 'en', {
+    type: 'object',
+    properties: {
+      title: { type: 'string', minLength: 4 },
+    },
+  }), {
+    ok: false,
+    error: 'title must be at least 4 characters.',
+  });
+  assert.deepEqual(parsePromptFramePreviewInspectorJsonDraft('{"color":"not-a-color"}', 'object', 'en', {
+    type: 'object',
+    properties: {
+      color: { type: 'string', format: 'color' },
+    },
+  }), {
+    ok: false,
+    error: 'color must be a valid color value.',
+  });
+  assert.deepEqual(parsePromptFramePreviewInspectorJsonDraft('{"mode":"wrong"}', 'object', 'en', {
+    type: 'object',
+    properties: {
+      mode: { const: 'hero' },
+    },
+  }), {
+    ok: false,
+    error: 'mode must match the const value.',
+  });
+});
