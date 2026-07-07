@@ -11,7 +11,7 @@ test('public templates use the current PromptFrame authoring package baseline', 
     'packages/create-component/templates/react-remotion/package.json',
   ]) {
     const packageJson = JSON.parse(await readFile(path.join(repoRoot, templatePackagePath), 'utf8'));
-    assert.equal(packageJson.dependencies?.['@promptframe/component-kit'], '^0.1.12', templatePackagePath);
+    assert.equal(packageJson.dependencies?.['@promptframe/component-kit'], '^0.1.13', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.16', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@remotion/player'], '^4.0.0', templatePackagePath);
     assert.equal(packageJson.devDependencies?.['@vitejs/plugin-react'], '^6.0.1', templatePackagePath);
@@ -26,7 +26,7 @@ test('public templates use the current PromptFrame authoring package baseline', 
 
 test('create package version is bumped for the next template release', async () => {
   const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'packages/create-component/package.json'), 'utf8'));
-  assert.equal(packageJson.version, '0.1.34');
+  assert.equal(packageJson.version, '0.1.35');
 });
 
 test('public templates expose PromptFrame CLI lifecycle scripts', async () => {
@@ -131,8 +131,9 @@ test('public authoring docs document the current npm registry baseline', async (
     const text = await readFile(path.join(repoRoot, docPath), 'utf8');
     assert.match(text, /Current npm registry baseline is/, docPath);
     assert.match(text, /@promptframe\/contracts@0\.1\.16/, docPath);
+    assert.match(text, /@promptframe\/component-kit@0\.1\.13/, docPath);
     assert.match(text, /@promptframe\/cli@0\.1\.44/, docPath);
-    assert.match(text, /create-promptframe-component@0\.1\.34/, docPath);
+    assert.match(text, /create-promptframe-component@0\.1\.35/, docPath);
     assert.match(text, /workspace root lockfile|workspace root lockfile evidence|pnpm workspace root lockfile/, docPath);
     assert.doesNotMatch(text, /source candidate|source tree prepares|until Trusted Publishing completes/, docPath);
   }
@@ -200,7 +201,8 @@ test('public templates expose schema-derived local controls and aspect presets',
     assert.match(previewRoot, /16:9/, templateRoot);
     assert.match(previewRoot, /9:16/, templateRoot);
     assert.match(previewRoot, /1:1/, templateRoot);
-    assert.match(previewRoot, /Object\.entries\(inputProps\)/, templateRoot);
+    assert.match(previewRoot, /previewInspectorControls/, templateRoot);
+    assert.match(previewRoot, /PromptFramePreviewControl/, templateRoot);
     assert.match(previewRoot, /setInputProps/, templateRoot);
   }
 });
@@ -288,20 +290,22 @@ test('public templates localize PreviewRoot controls and derive readable prop la
     assert.match(previewRoot, /previewMessages/, templateRoot);
     assert.match(previewRoot, /resolvePreviewLocale/, templateRoot);
     assert.match(previewRoot, /formatPromptFramePreviewPropLabel/, templateRoot);
-    assert.match(previewRoot, /describePromptFramePreviewPropControl/, templateRoot);
-    assert.match(previewRoot, /formatPromptFramePreviewPropPath/, templateRoot);
+    assert.match(previewRoot, /PromptFramePreviewInspector/, templateRoot);
+    assert.match(previewRoot, /@promptframe\/component-kit\/preview-react/, templateRoot);
     assert.match(previewRoot, /isZh/, templateRoot);
     assert.match(previewRoot, /Aspect/, templateRoot);
     assert.match(previewRoot, /画幅/, templateRoot);
     assert.match(previewRoot, /Props/, templateRoot);
     assert.match(previewRoot, /属性/, templateRoot);
-    assert.match(previewRoot, /Advanced JSON/, templateRoot);
-    assert.match(previewRoot, /高级 JSON/, templateRoot);
-    assert.match(previewRoot, /Object\.entries\(inputProps\)\.map\(\(\[key, value\]\) => renderPropControl\(\[key\], formatPromptFramePreviewPropLabel\(key\), value\)\)/, templateRoot);
+    assert.match(previewRoot, /<PromptFramePreviewInspector/, templateRoot);
+    assert.match(previewRoot, /onPreviewPropsChange=\{updateInputProps\}/, templateRoot);
+    assert.match(previewRoot, /scrollMode="parent"/, templateRoot);
+    assert.doesNotMatch(previewRoot, /navigator\.clipboard/, templateRoot);
     assert.doesNotMatch(previewRoot, /function formatPropLabel/, templateRoot);
     assert.doesNotMatch(previewRoot, /function coerceControlValue/, templateRoot);
-    assert.doesNotMatch(previewRoot, /renderPropControl\(\[key\], key, value\)/, templateRoot);
-    assert.doesNotMatch(previewRoot, /renderPropControl\(\[\.\.\.path, childKey\], childKey, childValue/, templateRoot);
+    assert.doesNotMatch(previewRoot, /function renderPropControl|const renderPropControl/, templateRoot);
+    assert.doesNotMatch(previewRoot, /renderPropControl\(/, templateRoot);
+    assert.doesNotMatch(previewRoot, /describePromptFramePreviewPropControl/, templateRoot);
   }
 });
 
@@ -322,37 +326,49 @@ test('public templates keep the PreviewRoot viewport locked and Player contained
 });
 
 test('public templates provide JSON fallback controls for complex props', async () => {
+  const sharedPreviewInspector = await readFile(path.join(repoRoot, 'packages/component-kit/src/preview-react.ts'), 'utf8');
+  assert.match(sharedPreviewInspector, /data-preview-props-json-control/, 'component-kit shared preview inspector');
+  assert.match(sharedPreviewInspector, /data-preview-props-json-error/, 'component-kit shared preview inspector');
+  assert.match(sharedPreviewInspector, /parsePromptFramePreviewInspectorJsonDraft/, 'component-kit shared preview inspector');
+
   for (const templateRoot of [
     'templates/react-remotion',
     'packages/create-component/templates/react-remotion',
   ]) {
     const previewRoot = await readFile(path.join(repoRoot, templateRoot, 'src/PreviewRoot.tsx'), 'utf8');
 
-    assert.match(previewRoot, /isPromptFramePreviewJsonLikeValue/, templateRoot);
-    assert.match(previewRoot, /parsePromptFramePreviewJsonDraft/, templateRoot);
-    assert.match(previewRoot, /jsonDraftErrors/, templateRoot);
-    assert.match(previewRoot, /data-promptframe-prop-json/, templateRoot);
-    assert.match(previewRoot, /data-promptframe-json-draft-error/, templateRoot);
+    assert.match(previewRoot, /PromptFramePreviewInspector/, templateRoot);
+    assert.match(previewRoot, /@promptframe\/component-kit\/preview-react/, templateRoot);
+    assert.doesNotMatch(previewRoot, /isPromptFramePreviewJsonLikeValue/, templateRoot);
+    assert.doesNotMatch(previewRoot, /parsePromptFramePreviewJsonDraft/, templateRoot);
+    assert.doesNotMatch(previewRoot, /jsonDraftErrors/, templateRoot);
+    assert.doesNotMatch(previewRoot, /data-promptframe-prop-json/, templateRoot);
+    assert.doesNotMatch(previewRoot, /data-promptframe-json-draft-error/, templateRoot);
     assert.doesNotMatch(previewRoot, /function parseJsonDraft/, templateRoot);
-    assert.match(previewRoot, /Invalid JSON/, templateRoot);
-    assert.match(previewRoot, /Invalid props/, templateRoot);
     assert.doesNotMatch(previewRoot, /String\(value\)/, templateRoot);
   }
 });
 
 test('public templates render complex props as structured controls before JSON fallback', async () => {
+  const sharedPreviewInspector = await readFile(path.join(repoRoot, 'packages/component-kit/src/preview-react.ts'), 'utf8');
+  assert.match(sharedPreviewInspector, /data-preview-props-structured-control/, 'component-kit shared preview inspector');
+  assert.match(sharedPreviewInspector, /data-preview-props-field/, 'component-kit shared preview inspector');
+  assert.match(sharedPreviewInspector, /data-preview-props-array-item/, 'component-kit shared preview inspector');
+  assert.match(sharedPreviewInspector, /Advanced JSON/, 'component-kit shared preview inspector');
+
   for (const templateRoot of [
     'templates/react-remotion',
     'packages/create-component/templates/react-remotion',
   ]) {
     const previewRoot = await readFile(path.join(repoRoot, templateRoot, 'src/PreviewRoot.tsx'), 'utf8');
 
-    assert.match(previewRoot, /data-promptframe-prop-structured/, templateRoot);
-    assert.match(previewRoot, /data-promptframe-prop-field/, templateRoot);
-    assert.match(previewRoot, /data-promptframe-prop-array-item/, templateRoot);
-    assert.match(previewRoot, /Advanced JSON/, templateRoot);
-    assert.match(previewRoot, /getValueAtPath/, templateRoot);
-    assert.match(previewRoot, /setValueAtPath/, templateRoot);
+    assert.match(previewRoot, /PromptFramePreviewInspector/, templateRoot);
+    assert.match(previewRoot, /previewInspectorControls/, templateRoot);
+    assert.doesNotMatch(previewRoot, /data-promptframe-prop-structured/, templateRoot);
+    assert.doesNotMatch(previewRoot, /data-promptframe-prop-field/, templateRoot);
+    assert.doesNotMatch(previewRoot, /data-promptframe-prop-array-item/, templateRoot);
+    assert.doesNotMatch(previewRoot, /getValueAtPath/, templateRoot);
+    assert.doesNotMatch(previewRoot, /setValueAtPath/, templateRoot);
   }
 });
 

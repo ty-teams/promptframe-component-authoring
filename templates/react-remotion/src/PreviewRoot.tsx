@@ -1,18 +1,17 @@
 import { Player } from '@remotion/player';
 import {
-  coercePromptFramePreviewControlValue,
   createPreviewCaseMatrix,
-  describePromptFramePreviewPropControl,
-  formatPromptFramePreviewControlValue,
   formatPromptFramePreviewPropLabel,
-  formatPromptFramePreviewPropPath,
-  isPromptFramePreviewJsonLikeValue,
-  parsePromptFramePreviewJsonDraft,
   type PromptFramePreviewCase,
   type PromptFramePreviewFps,
-  type PromptFramePreviewPropPath,
 } from '@promptframe/component-kit/preview';
-import { StrictMode, type ReactNode, useState } from 'react';
+import {
+  PromptFramePreviewInspector,
+  type PromptFramePreviewControl,
+  type PromptFramePreviewControlType,
+  type PromptFramePreviewJsonSchemaLike,
+} from '@promptframe/component-kit/preview-react';
+import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import Component from './Component';
 import previewEnvelope from './preview-props.json';
@@ -191,49 +190,55 @@ function isRecordValue(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function getValueAtPath(rootValue: unknown, path: PromptFramePreviewPropPath): unknown {
-  return path.reduce<unknown>((current, segment) => {
-    if (Array.isArray(current) && typeof segment === 'number') {
-      return current[segment];
-    }
-    if (isRecordValue(current) && typeof segment === 'string') {
-      return current[segment];
-    }
-    return undefined;
-  }, rootValue);
-}
-
-function setValueAtPath(rootValue: unknown, path: PromptFramePreviewPropPath, nextValue: unknown): unknown {
-  if (path.length === 0) {
-    return nextValue;
-  }
-
-  const [segment, ...rest] = path;
-  if (Array.isArray(rootValue) && typeof segment === 'number') {
-    const clone = [...rootValue];
-    clone[segment] = setValueAtPath(clone[segment], rest, nextValue);
-    return clone;
-  }
-
-  if (isRecordValue(rootValue) && typeof segment === 'string') {
-    return {
-      ...rootValue,
-      [segment]: setValueAtPath(rootValue[segment], rest, nextValue),
-    };
-  }
-
-  return rootValue;
-}
-
-function formatJsonValue(value: unknown): string {
-  return JSON.stringify(value, null, 2) ?? '';
-}
-
 function formatPropsParseError(error: { issues?: Array<{ path?: Array<string | number>; message?: string }> }): string {
   const firstIssue = error.issues?.[0];
   const path = firstIssue?.path?.length ? `${firstIssue.path.join('.')}: ` : '';
   return `${path}${firstIssue?.message ?? t('schemaValidationFailed')}`;
 }
+
+function inferPreviewControlType(key: string, value: unknown): PromptFramePreviewControlType {
+  if (Array.isArray(value)) return 'array';
+  if (isRecordValue(value)) return 'object';
+  if (typeof value === 'boolean') return 'boolean';
+  if (typeof value === 'number') return 'number';
+  if (typeof value === 'string' && /color|colour|accent|background/i.test(key) && /^#[0-9a-f]{6}$/i.test(value)) {
+    return 'color';
+  }
+  return 'text';
+}
+
+function inferSchemaFromPreviewValue(value: unknown): PromptFramePreviewJsonSchemaLike {
+  if (Array.isArray(value)) {
+    return {
+      type: 'array',
+      items: value.length > 0 ? inferSchemaFromPreviewValue(value[0]) : undefined,
+    };
+  }
+  if (isRecordValue(value)) {
+    return {
+      type: 'object',
+      properties: Object.fromEntries(
+        Object.entries(value).map(([key, childValue]) => [key, inferSchemaFromPreviewValue(childValue)]),
+      ),
+    };
+  }
+  if (typeof value === 'boolean') return { type: 'boolean' };
+  if (typeof value === 'number') return { type: Number.isInteger(value) ? 'integer' : 'number' };
+  if (value === null) return { type: 'null' };
+  return { type: 'string' };
+}
+
+function buildPreviewInspectorControls(props: ComponentProps): PromptFramePreviewControl[] {
+  return Object.entries(props as Record<string, unknown>).map(([key, value]) => ({
+    key,
+    type: inferPreviewControlType(key, value),
+    label: formatPromptFramePreviewPropLabel(key),
+    defaultValue: value,
+    schema: inferSchemaFromPreviewValue(value),
+  }));
+}
+
+const previewInspectorControls = buildPreviewInspectorControls(initialProps);
 
 function normalizePreviewCaseName(name: string): string {
   const trimmed = name.trim();
@@ -296,45 +301,15 @@ function PreviewApp() {
   const [previewTiming, setPreviewTiming] = useState<PreviewTiming>(initialTiming);
   const [previewCaseName, setPreviewCaseName] = useState(defaultPreviewCaseName);
   const [exportStatus, setExportStatus] = useState('');
-  const [jsonDrafts, setJsonDrafts] = useState<Record<string, string>>({});
-  const [jsonDraftErrors, setJsonDraftErrors] = useState<Record<string, string>>({});
 
-  const updateInputPropAtPath = (path: PromptFramePreviewPropPath, rawValue: string) => {
-    const draftKey = formatPromptFramePreviewPropPath(path);
-    const currentValue = getValueAtPath(inputProps, path);
-    let nextValue: unknown;
-
-    if (isPromptFramePreviewJsonLikeValue(currentValue)) {
-      setJsonDrafts((current) => ({ ...current, [draftKey]: rawValue }));
-
-      const parsedJson = parsePromptFramePreviewJsonDraft(rawValue);
-      if (!parsedJson.success) {
-        setJsonDraftErrors((current) => ({ ...current, [draftKey]: `${t('invalidJson')}: ${parsedJson.message}` }));
-        return;
-      }
-      nextValue = parsedJson.value;
-    } else {
-      nextValue = coercePromptFramePreviewControlValue(currentValue, rawValue);
-    }
-
-    const nextCandidate = setValueAtPath(inputProps, path, nextValue);
+  const updateInputProps = (nextCandidate: Record<string, unknown>) => {
     const parsed = propsSchema.safeParse(nextCandidate);
     if (!parsed.success) {
-      setJsonDraftErrors((current) => ({
-        ...current,
-        [draftKey]: `${t('invalidProps')}: ${formatPropsParseError(parsed.error)}`,
-      }));
+      setExportStatus(`${t('invalidProps')}: ${formatPropsParseError(parsed.error)}`);
       return;
     }
 
-    setJsonDraftErrors((current) => {
-      if (!(draftKey in current)) {
-        return current;
-      }
-      const next = { ...current };
-      delete next[draftKey];
-      return next;
-    });
+    setExportStatus('');
     setInputProps(parsed.data);
   };
 
@@ -347,9 +322,6 @@ function PreviewApp() {
   };
 
   const applyGeneratedPreviewCase = (previewCase: PromptFramePreviewCase<ComponentProps>) => {
-    setJsonDrafts({});
-    setJsonDraftErrors({});
-
     if (previewCase.caseKind === 'baseline_reset') {
       setInputProps(previewCase.props);
       setPreviewSize(initialSize);
@@ -369,175 +341,6 @@ function PreviewApp() {
     setExportStatus(isZh
       ? `已载入 ${previewCase.name}。如有需要可继续调整属性，然后导出为本地预览案例。`
       : `Loaded ${previewCase.name}. Adjust props if needed, then export it as a local preview case.`);
-  };
-
-  const renderDraftError = (draftKey: string): ReactNode => {
-    const jsonDraftError = jsonDraftErrors[draftKey];
-    return jsonDraftError ? (
-      <span
-        data-promptframe-json-draft-error={draftKey}
-        role="alert"
-        style={{ color: '#b91c1c', fontSize: 12, lineHeight: 1.45 }}
-      >
-        {jsonDraftError}
-      </span>
-    ) : null;
-  };
-
-  const renderJsonFallback = (path: PromptFramePreviewPropPath, value: unknown): ReactNode => {
-    const draftKey = formatPromptFramePreviewPropPath(path);
-    return (
-      <details style={{ display: 'grid', gap: 8 }}>
-        <summary style={{ color: '#475569', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
-          {t('advancedJson')}
-        </summary>
-        <textarea
-          data-promptframe-prop-json={draftKey}
-          value={jsonDrafts[draftKey] ?? formatJsonValue(value)}
-          onChange={(event) => updateInputPropAtPath(path, event.currentTarget.value)}
-          rows={5}
-          spellCheck={false}
-          style={{
-            width: '100%',
-            minWidth: 0,
-            boxSizing: 'border-box',
-            border: jsonDraftErrors[draftKey] ? '1px solid #dc2626' : '1px solid #cbd5e1',
-            borderRadius: 6,
-            padding: '8px 10px',
-            font: 'inherit',
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
-            resize: 'vertical',
-          }}
-        />
-        {renderDraftError(draftKey)}
-      </details>
-    );
-  };
-
-  const renderPrimitiveControl = (path: PromptFramePreviewPropPath, value: unknown): ReactNode => {
-    const control = describePromptFramePreviewPropControl(path, value);
-    const draftKey = control.pathKey;
-    if (control.kind === 'boolean') {
-      return (
-        <select
-          data-promptframe-prop-field={draftKey}
-          value={formatPromptFramePreviewControlValue(value)}
-          onChange={(event) => updateInputPropAtPath(path, event.currentTarget.value)}
-          style={{
-            width: '100%',
-            minWidth: 0,
-            boxSizing: 'border-box',
-            border: jsonDraftErrors[draftKey] ? '1px solid #dc2626' : '1px solid #cbd5e1',
-            borderRadius: 6,
-            padding: '8px 10px',
-            font: 'inherit',
-          }}
-        >
-          <option value="true">true</option>
-          <option value="false">false</option>
-        </select>
-      );
-    }
-
-    return (
-      <input
-        data-promptframe-prop-field={draftKey}
-        type={control.inputType === 'select' ? 'text' : control.inputType ?? 'text'}
-        value={formatPromptFramePreviewControlValue(value)}
-        onChange={(event) => updateInputPropAtPath(path, event.currentTarget.value)}
-        style={{
-          width: '100%',
-          minWidth: 0,
-          boxSizing: 'border-box',
-          border: jsonDraftErrors[draftKey] ? '1px solid #dc2626' : '1px solid #cbd5e1',
-          borderRadius: 6,
-          padding: control.kind === 'color' ? 4 : '8px 10px',
-          font: 'inherit',
-        }}
-      />
-    );
-  };
-
-  const renderPropControl = (path: PromptFramePreviewPropPath, label: string, value: unknown, depth = 0): ReactNode => {
-    const control = describePromptFramePreviewPropControl(path, value, label);
-    const draftKey = control.pathKey;
-
-    if (control.kind === 'json_array' && Array.isArray(value)) {
-      return (
-        <div
-          key={draftKey}
-          data-promptframe-prop-structured={draftKey}
-          style={{
-            display: 'grid',
-            gap: 8,
-            border: '1px solid #e2e8f0',
-            borderRadius: 6,
-            padding: 10,
-            background: depth === 0 ? '#fff' : '#f8fafc',
-          }}
-        >
-          <span style={{ color: '#334155', fontSize: 13, fontWeight: 700 }}>{label}</span>
-          {value.length > 0 ? (
-            <div style={{ display: 'grid', gap: 8 }}>
-              {value.map((item, index) => (
-                <div
-                  data-promptframe-prop-array-item={`${draftKey}.${index}`}
-                  key={`${draftKey}.${index}`}
-                  style={{ display: 'grid', gap: 8, borderLeft: '2px solid #cbd5e1', paddingLeft: 10 }}
-                >
-                  {renderPropControl([...path, index], `${t('item')} ${index + 1}`, item, depth + 1)}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <span style={{ color: '#64748b', fontSize: 12 }}>{t('noItems')}</span>
-          )}
-          {renderJsonFallback(path, value)}
-        </div>
-      );
-    }
-
-    if (control.kind === 'json_object' && isRecordValue(value)) {
-      return (
-        <div
-          key={draftKey}
-          data-promptframe-prop-structured={draftKey}
-          style={{
-            display: 'grid',
-            gap: 8,
-            border: '1px solid #e2e8f0',
-            borderRadius: 6,
-            padding: 10,
-            background: depth === 0 ? '#fff' : '#f8fafc',
-          }}
-        >
-          <span style={{ color: '#334155', fontSize: 13, fontWeight: 700 }}>{label}</span>
-          {Object.entries(value).map(([childKey, childValue]) => (
-            <div key={`${draftKey}.${childKey}`} style={{ display: 'grid', gap: 6, paddingLeft: depth > 0 ? 8 : 0 }}>
-              {renderPropControl([...path, childKey], formatPromptFramePreviewPropLabel(childKey), childValue, depth + 1)}
-            </div>
-          ))}
-          {renderJsonFallback(path, value)}
-        </div>
-      );
-    }
-
-    if (control.kind === 'json_null') {
-      return (
-        <div key={draftKey} data-promptframe-prop-structured={draftKey} style={{ display: 'grid', gap: 6 }}>
-          <span style={{ color: '#334155', fontSize: 13, fontWeight: 700 }}>{label}</span>
-          {renderJsonFallback(path, value)}
-        </div>
-      );
-    }
-
-    return (
-      <label key={draftKey} style={{ display: 'grid', gap: 6, fontSize: 13 }}>
-        <span style={{ color: '#334155', fontWeight: 700 }}>{label}</span>
-        {renderPrimitiveControl(path, value)}
-        {renderDraftError(draftKey)}
-      </label>
-    );
   };
 
   return (
@@ -749,9 +552,16 @@ function PreviewApp() {
 
         <section style={{ marginTop: 22 }}>
           <h2 style={{ fontSize: 16, margin: '0 0 12px', letterSpacing: 0 }}>{t('props')}</h2>
-          <div style={{ display: 'grid', gap: 12 }}>
-            {Object.entries(inputProps).map(([key, value]) => renderPropControl([key], formatPromptFramePreviewPropLabel(key), value))}
-          </div>
+          <PromptFramePreviewInspector
+            controls={previewInspectorControls}
+            initialPreviewProps={initialProps as Record<string, unknown>}
+            previewProps={inputProps as Record<string, unknown>}
+            editable
+            locale={previewLocale}
+            onPreviewPropsChange={updateInputProps}
+            renderToolbarActions={() => <></>}
+            scrollMode="parent"
+          />
         </section>
       </aside>
     </main>

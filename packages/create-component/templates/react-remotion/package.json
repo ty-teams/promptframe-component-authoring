@@ -16,7 +16,7 @@
     "upgrade": "promptframe upgrade ."
   },
   "dependencies": {
-    "@promptframe/component-kit": "^0.1.12",
+    "@promptframe/component-kit": "^0.1.13",
     "@promptframe/contracts": "^0.1.16",
     "@remotion/player": "^4.0.0",
     "react": "^19.0.0",
