@@ -117,6 +117,7 @@ const VALIDATE_CHECKED_RULE_IDS: PublicPolicyRuleId[] = [
 ];
 
 type PublicResourceReportStatus = 'empty' | 'accepted' | 'blocked';
+type UploadProgressPhase = 'archive' | 'package' | 'standard' | 'upload' | 'accepted';
 
 interface PublicResourceReport {
   contractVersion: typeof COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION;
@@ -735,14 +736,18 @@ async function uploadComponent(argv: string[]): Promise<void> {
   const input: ResolvedComponentInput = target.endsWith('.zip')
     ? { dir: target, source: { mode: 'zip' } }
     : resolveComponentInput(argv);
-  reportUploadProgress(argv, target.endsWith('.zip') ? 'Using source archive.' : 'Preparing component package.');
+  reportUploadProgress(
+    argv,
+    target.endsWith('.zip') ? 'archive' : 'package',
+    target.endsWith('.zip') ? 'Using source archive.' : 'Preparing component package.',
+  );
   const prepared = prepareComponentUpload(input, uploadTarget, valueAfter(argv, '--out'));
   const endpoint = resolveEndpoint('upload', argv);
-  reportUploadProgress(argv, 'Checking platform component standard.');
+  reportUploadProgress(argv, 'standard', 'Checking platform component standard.');
   await assertRemoteStandardFreshness(endpoint, argv);
-  reportUploadProgress(argv, 'Uploading source package.');
+  reportUploadProgress(argv, 'upload', 'Uploading source package.');
   const output = await uploadPreparedComponent(input, argv, endpoint, uploadTarget, prepared);
-  reportUploadProgress(argv, 'Platform accepted upload.');
+  reportUploadProgress(argv, 'accepted', 'Platform accepted upload.');
   if (hasFlag(argv, '--json')) {
     printJson(output);
     return;
@@ -771,6 +776,7 @@ async function uploadWorkspace(
     );
   }
   const reports = collectWorkspaceComponentReports(root);
+  reportUploadProgress(argv, 'package', 'Preparing workspace component packages.');
   const preparedUploads = reports.map((report) => {
     const input = workspaceComponentInput(report);
     return {
@@ -779,13 +785,14 @@ async function uploadWorkspace(
     };
   });
   const endpoint = resolveEndpoint('upload', argv);
-  reportUploadProgress(argv, 'Checking platform component standard.');
+  reportUploadProgress(argv, 'standard', 'Checking platform component standard.');
   await assertRemoteStandardFreshness(endpoint, argv);
   const uploads = [];
   for (const item of preparedUploads) {
-    reportUploadProgress(argv, 'Uploading workspace source package.');
+    reportUploadProgress(argv, 'upload', 'Uploading workspace source package.');
     uploads.push(await uploadPreparedComponent(item.input, argv, endpoint, uploadTarget, item.prepared));
   }
+  reportUploadProgress(argv, 'accepted', 'Platform accepted workspace upload.');
   const output = {
     command: 'upload',
     workspace: true,
@@ -877,8 +884,11 @@ async function uploadPreparedComponent(
   return output;
 }
 
-function reportUploadProgress(argv: string[], message: string): void {
-  if (hasFlag(argv, '--json')) return;
+function reportUploadProgress(argv: string[], phase: UploadProgressPhase, message: string): void {
+  if (hasFlag(argv, '--json')) {
+    console.error(JSON.stringify({ type: 'upload.progress', phase, message }));
+    return;
+  }
   console.error(`PromptFrame upload progress: ${message}`);
 }
 

@@ -14,6 +14,20 @@ import {
 const execFileAsync = promisify(execFile);
 const cliPath = path.resolve('dist/index.js');
 
+function parseStderrJsonLines(stderr) {
+  const lines = stderr.trim().split(/\n+/).filter(Boolean);
+  const events = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.startsWith('{') && !line.endsWith('}')) {
+      events.push(JSON.parse(lines.slice(index).join('\n')));
+      break;
+    }
+    events.push(JSON.parse(line));
+  }
+  return events;
+}
+
 test('status resolves endpoint from local config and returns platform payload JSON', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-status-'));
   const server = await createServer(async (req, res) => {
@@ -1911,7 +1925,9 @@ test('upload blocks stale marketplace authoring packages before network transpor
       ]),
       (error) => {
         assert.equal(error.code, 1);
-        const payload = JSON.parse(error.stderr);
+        const stderrEvents = parseStderrJsonLines(error.stderr);
+        assert.deepEqual(stderrEvents.slice(0, -1).map((event) => event.phase), ['package']);
+        const payload = stderrEvents.at(-1);
         assert.equal(payload.command, 'upload');
         assert.equal(payload.diagnostic.code, 'component_standard.authoring_package.contracts.min_version');
         assert.equal(payload.retryable, false);
@@ -1968,7 +1984,9 @@ test('upload blocks stale marketplace authoring packages inside zip before netwo
       ]),
       (error) => {
         assert.equal(error.code, 1);
-        const payload = JSON.parse(error.stderr);
+        const stderrEvents = parseStderrJsonLines(error.stderr);
+        assert.deepEqual(stderrEvents.slice(0, -1).map((event) => event.phase), ['archive']);
+        const payload = stderrEvents.at(-1);
         assert.equal(payload.command, 'upload');
         assert.equal(payload.diagnostic.code, 'component_standard.authoring_package.contracts.min_version');
         assert.equal(payload.retryable, false);
@@ -2018,7 +2036,9 @@ test('upload blocks stale remote standard source hash before package upload tran
       ]),
       (error) => {
         assert.equal(error.code, 1);
-        const payload = JSON.parse(error.stderr);
+        const stderrEvents = parseStderrJsonLines(error.stderr);
+        assert.deepEqual(stderrEvents.slice(0, -1).map((event) => event.phase), ['package', 'standard']);
+        const payload = stderrEvents.at(-1);
         assert.equal(payload.command, 'upload');
         assert.equal(payload.diagnostic.code, 'standard.freshness.upload_blocking');
         assert.equal(payload.retryable, false);
@@ -2423,7 +2443,7 @@ test('upload --json redacts public-unsafe platform response fields', async () =>
   try {
     const zipPath = path.join(dir, 'component.zip');
     await writeFile(zipPath, 'fake component zip');
-    const { stdout } = await execFileAsync('node', [
+    const { stdout, stderr } = await execFileAsync('node', [
       cliPath,
       'upload',
       zipPath,
@@ -2434,9 +2454,30 @@ test('upload --json redacts public-unsafe platform response fields', async () =>
       '--json',
     ]);
     const payload = JSON.parse(stdout);
+    const progressEvents = stderr
+      .trim()
+      .split(/\n+/)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
 
     assert.equal(payload.command, 'upload');
     assert.equal(payload.jobId, 'build-safe-json');
+    assert.deepEqual(progressEvents.map((event) => event.type), [
+      'upload.progress',
+      'upload.progress',
+      'upload.progress',
+      'upload.progress',
+    ]);
+    assert.deepEqual(progressEvents.map((event) => event.phase), [
+      'archive',
+      'standard',
+      'upload',
+      'accepted',
+    ]);
+    assert.match(progressEvents[0].message, /source archive/i);
+    assert.match(progressEvents[1].message, /component standard/i);
+    assert.match(progressEvents[2].message, /source package/i);
+    assert.match(progressEvents[3].message, /accepted/i);
     assert.equal(payload.build.status, 'succeeded');
     assert.equal(payload.evidence, undefined);
     assert.equal(payload.providerUsageReceipt, undefined);
