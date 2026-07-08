@@ -67,6 +67,12 @@ export interface PromptFramePreviewInspectorProps {
   scrollMode?: PromptFramePreviewInspectorScrollMode;
 }
 
+export interface PromptFramePreviewControlsFromSchemaOptions {
+  propsSchema: unknown;
+  defaultProps: Record<string, unknown>;
+  labelFormatter?: (key: string) => string;
+}
+
 type SchemaValueEditorProps = {
   schema?: PromptFramePreviewJsonSchemaLike;
   value: unknown;
@@ -75,6 +81,30 @@ type SchemaValueEditorProps = {
   locale: PromptFramePreviewLocale;
   onChange: (value: unknown) => void;
 };
+
+export function buildPromptFramePreviewControlsFromSchema({
+  propsSchema,
+  defaultProps,
+  labelFormatter = (key) => key,
+}: PromptFramePreviewControlsFromSchemaOptions): PromptFramePreviewControl[] {
+  const shape = zodLikeObjectShape(propsSchema);
+  const keys = uniqueStrings([...Object.keys(shape), ...Object.keys(defaultProps)]).slice(0, 200);
+  return keys.map((key) => {
+    const value = defaultProps[key];
+    const schema = zodLikeToPreviewJsonSchema(shape[key], value) ?? schemaFromValue(value) ?? { type: 'string' };
+    const type = previewControlTypeFromSchema(key, schema, value);
+    return {
+      key,
+      type,
+      label: labelFormatter(key),
+      description: schema.description,
+      required: shape[key] ? zodLikeFieldIsRequired(shape[key]) : undefined,
+      enumValues: schema.enum,
+      defaultValue: value,
+      schema,
+    };
+  });
+}
 
 const messages = {
   en: {
@@ -657,6 +687,166 @@ function schemaFromValue(value: unknown): PromptFramePreviewJsonSchemaLike | und
   if (typeof value === 'number') return { type: 'number' };
   if (typeof value === 'string') return { type: 'string' };
   return undefined;
+}
+
+function previewControlTypeFromSchema(
+  key: string,
+  schema: PromptFramePreviewJsonSchemaLike,
+  value: unknown,
+): PromptFramePreviewControlType {
+  if (schema.enum?.length) return 'enum';
+  const type = primarySchemaType(schema);
+  if (type === 'array') return 'array';
+  if (type === 'object') return 'object';
+  if (type === 'boolean') return 'boolean';
+  if (type === 'number' || type === 'integer') return 'number';
+  if (typeof value === 'string' && /color|colour|accent|background/i.test(key) && isHexColor(value)) return 'color';
+  return 'text';
+}
+
+function zodLikeToPreviewJsonSchema(schemaLike: unknown, fallbackValue?: unknown): PromptFramePreviewJsonSchemaLike | undefined {
+  if (!schemaLike) return undefined;
+  const unwrapped = unwrapZodLikeSchema(schemaLike);
+  const def = zodLikeDef(unwrapped);
+  const typeName = zodLikeTypeName(unwrapped);
+  const description = zodLikeDescription(schemaLike) ?? zodLikeDescription(unwrapped);
+  let schema: PromptFramePreviewJsonSchemaLike | undefined;
+
+  if (typeName.includes('array')) {
+    schema = {
+      type: 'array',
+      items: zodLikeToPreviewJsonSchema(def?.type ?? def?.element, Array.isArray(fallbackValue) ? fallbackValue[0] : undefined),
+    };
+  } else if (typeName.includes('object')) {
+    const shape = zodLikeObjectShape(unwrapped);
+    const properties = Object.fromEntries(
+      Object.entries(shape).map(([key, child]) => [key, zodLikeToPreviewJsonSchema(child, isPlainRecord(fallbackValue) ? fallbackValue[key] : undefined) ?? {}]),
+    );
+    schema = {
+      type: 'object',
+      properties,
+      required: Object.entries(shape)
+        .filter(([, child]) => zodLikeFieldIsRequired(child))
+        .map(([key]) => key),
+    };
+  } else if (typeName.includes('enum')) {
+    schema = {
+      type: 'string',
+      enum: zodLikeEnumValues(def?.values ?? def?.entries ?? def?.options),
+    };
+  } else if (typeName.includes('literal')) {
+    const literalValue = def?.value;
+    schema = {
+      type: schemaFromValue(literalValue)?.type,
+      const: literalValue,
+    };
+  } else if (typeName.includes('boolean')) {
+    schema = { type: 'boolean' };
+  } else if (typeName.includes('number')) {
+    schema = { type: 'number', ...zodLikeNumericBounds(def) };
+  } else if (typeName.includes('bigint')) {
+    schema = { type: 'integer', ...zodLikeNumericBounds(def) };
+  } else if (typeName.includes('string')) {
+    schema = { type: 'string', ...zodLikeStringBounds(def) };
+  } else {
+    schema = schemaFromValue(fallbackValue);
+  }
+
+  return schema ? { ...schema, ...(description ? { description } : {}) } : undefined;
+}
+
+function zodLikeObjectShape(schemaLike: unknown): Record<string, unknown> {
+  const unwrapped = unwrapZodLikeSchema(schemaLike);
+  if (!isPlainRecord(unwrapped)) return {};
+  const directShape = unwrapped.shape;
+  if (isPlainRecord(directShape)) return directShape;
+  if (typeof directShape === 'function') return recordFromMaybe(directShape());
+  const def = zodLikeDef(unwrapped);
+  if (typeof def?.shape === 'function') return recordFromMaybe(def.shape());
+  return recordFromMaybe(def?.shape);
+}
+
+function zodLikeFieldIsRequired(schemaLike: unknown): boolean {
+  const typeName = zodLikeTypeName(schemaLike);
+  if (typeName.includes('optional') || typeName.includes('default') || typeName.includes('catch') || typeName.includes('nullable')) {
+    return false;
+  }
+  return true;
+}
+
+function unwrapZodLikeSchema(schemaLike: unknown): unknown {
+  let current = schemaLike;
+  for (let depth = 0; depth < 20; depth += 1) {
+    const def = zodLikeDef(current);
+    const typeName = zodLikeTypeName(current);
+    if (
+      typeName.includes('default')
+      || typeName.includes('optional')
+      || typeName.includes('nullable')
+      || typeName.includes('catch')
+      || typeName.includes('effects')
+      || typeName.includes('branded')
+      || typeName.includes('readonly')
+      || typeName.includes('promise')
+    ) {
+      const next = def?.innerType ?? def?.schema ?? def?.type;
+      if (next && next !== current) {
+        current = next;
+        continue;
+      }
+    }
+    return current;
+  }
+  return current;
+}
+
+function zodLikeDescription(schemaLike: unknown): string | undefined {
+  if (!isPlainRecord(schemaLike)) return undefined;
+  if (typeof schemaLike.description === 'string' && schemaLike.description.trim()) return schemaLike.description;
+  const def = zodLikeDef(schemaLike);
+  return typeof def?.description === 'string' && def.description.trim() ? def.description : undefined;
+}
+
+function zodLikeDef(schemaLike: unknown): Record<string, unknown> | undefined {
+  return isPlainRecord(schemaLike) && isPlainRecord(schemaLike._def) ? schemaLike._def : undefined;
+}
+
+function zodLikeTypeName(schemaLike: unknown): string {
+  const def = zodLikeDef(schemaLike);
+  const raw = def?.typeName ?? def?.type;
+  return typeof raw === 'string' ? raw.toLowerCase() : '';
+}
+
+function zodLikeEnumValues(value: unknown): readonly unknown[] | undefined {
+  if (Array.isArray(value)) return value;
+  if (isPlainRecord(value)) return Object.values(value).filter((item) => typeof item === 'string' || typeof item === 'number');
+  return undefined;
+}
+
+function zodLikeNumericBounds(def: Record<string, unknown> | undefined): Pick<PromptFramePreviewJsonSchemaLike, 'minimum' | 'maximum'> {
+  const checks = Array.isArray(def?.checks) ? def.checks : [];
+  const bounds: Pick<PromptFramePreviewJsonSchemaLike, 'minimum' | 'maximum'> = {};
+  for (const check of checks) {
+    if (!isPlainRecord(check)) continue;
+    if (check.kind === 'min' && typeof check.value === 'number') bounds.minimum = check.value;
+    if (check.kind === 'max' && typeof check.value === 'number') bounds.maximum = check.value;
+  }
+  return bounds;
+}
+
+function zodLikeStringBounds(def: Record<string, unknown> | undefined): Pick<PromptFramePreviewJsonSchemaLike, 'minLength' | 'maxLength'> {
+  const checks = Array.isArray(def?.checks) ? def.checks : [];
+  const bounds: Pick<PromptFramePreviewJsonSchemaLike, 'minLength' | 'maxLength'> = {};
+  for (const check of checks) {
+    if (!isPlainRecord(check)) continue;
+    if (check.kind === 'min' && typeof check.value === 'number') bounds.minLength = check.value;
+    if (check.kind === 'max' && typeof check.value === 'number') bounds.maxLength = check.value;
+  }
+  return bounds;
+}
+
+function recordFromMaybe(value: unknown): Record<string, unknown> {
+  return isPlainRecord(value) ? value : {};
 }
 
 function createDefaultValueFromSchema(schema?: PromptFramePreviewJsonSchemaLike): unknown {

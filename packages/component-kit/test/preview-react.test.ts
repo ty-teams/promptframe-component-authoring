@@ -5,6 +5,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
   PromptFramePreviewInspector,
+  buildPromptFramePreviewControlsFromSchema,
   parsePromptFramePreviewInspectorJsonDraft,
   type PromptFramePreviewControl,
 } from '../src/preview-react.js';
@@ -118,6 +119,76 @@ test('parsePromptFramePreviewInspectorJsonDraft fails closed for invalid JSON an
     value: { count: 2 },
   });
 });
+
+test('buildPromptFramePreviewControlsFromSchema derives descriptions from Zod-like schema', () => {
+  const titleField = zodLike('ZodDefault', {
+    description: 'Main title text rendered in the component preview.',
+    innerType: zodLike('ZodString', { description: 'Main title text rendered in the component preview.' }),
+  });
+  const variantField = zodLike('ZodEnum', {
+    description: 'Visual treatment selected by the author.',
+    values: ['hero', 'compact'],
+  });
+  const themeField = zodLike('ZodObject', {
+    description: 'Nested theme controls.',
+    shape: () => ({
+      accent: zodLike('ZodString', { description: 'Accent color for foreground elements.' }),
+    }),
+  });
+  const itemsField = zodLike('ZodArray', {
+    description: 'Repeated data rows shown by the component.',
+    type: zodLike('ZodObject', {
+      description: 'One row.',
+      shape: () => ({
+        label: zodLike('ZodString', { description: 'Row label.' }),
+        value: zodLike('ZodNumber', { description: 'Row value.' }),
+      }),
+    }),
+  });
+
+  const controls = buildPromptFramePreviewControlsFromSchema({
+    propsSchema: {
+      shape: {
+        title: titleField,
+        variant: variantField,
+        theme: themeField,
+        items: itemsField,
+      },
+    },
+    defaultProps: {
+      title: 'Launch',
+      variant: 'hero',
+      theme: { accent: '#38bdf8' },
+      items: [{ label: 'A', value: 1 }],
+    },
+  });
+
+  assert.equal(controls.find((control) => control.key === 'title')?.description, 'Main title text rendered in the component preview.');
+  assert.equal(controls.find((control) => control.key === 'variant')?.type, 'enum');
+  assert.deepEqual(controls.find((control) => control.key === 'variant')?.enumValues, ['hero', 'compact']);
+  assert.equal(
+    controls.find((control) => control.key === 'theme')?.schema?.properties?.accent?.description,
+    'Accent color for foreground elements.',
+  );
+  assert.equal(
+    controls.find((control) => control.key === 'items')?.schema?.items?.properties?.label?.description,
+    'Row label.',
+  );
+  assert.equal(
+    controls.some((control) => control.description === 'No prop description was provided; add schema description or metadata.parameterDescriptions.'),
+    false,
+  );
+});
+
+function zodLike(typeName: string, def: Record<string, unknown> = {}) {
+  return {
+    description: def.description,
+    _def: {
+      typeName,
+      ...def,
+    },
+  };
+}
 
 test('parsePromptFramePreviewInspectorJsonDraft preserves admin schema guardrails', () => {
   assert.deepEqual(parsePromptFramePreviewInspectorJsonDraft('{"items":[]}', 'object', 'en', {

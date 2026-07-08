@@ -6,10 +6,8 @@ import {
   type PromptFramePreviewFps,
 } from '@promptframe/component-kit/preview';
 import {
+  buildPromptFramePreviewControlsFromSchema,
   PromptFramePreviewInspector,
-  type PromptFramePreviewControl,
-  type PromptFramePreviewControlType,
-  type PromptFramePreviewJsonSchemaLike,
 } from '@promptframe/component-kit/preview-react';
 import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -181,59 +179,17 @@ if (!root) {
   throw new Error('Missing preview root element');
 }
 
-function isRecordValue(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
 function formatPropsParseError(error: { issues?: Array<{ path?: Array<string | number>; message?: string }> }): string {
   const firstIssue = error.issues?.[0];
   const path = firstIssue?.path?.length ? `${firstIssue.path.join('.')}: ` : '';
   return `${path}${firstIssue?.message ?? t('schemaValidationFailed')}`;
 }
 
-function inferPreviewControlType(key: string, value: unknown): PromptFramePreviewControlType {
-  if (Array.isArray(value)) return 'array';
-  if (isRecordValue(value)) return 'object';
-  if (typeof value === 'boolean') return 'boolean';
-  if (typeof value === 'number') return 'number';
-  if (typeof value === 'string' && /color|colour|accent|background/i.test(key) && /^#[0-9a-f]{6}$/i.test(value)) {
-    return 'color';
-  }
-  return 'text';
-}
-
-function inferSchemaFromPreviewValue(value: unknown): PromptFramePreviewJsonSchemaLike {
-  if (Array.isArray(value)) {
-    return {
-      type: 'array',
-      items: value.length > 0 ? inferSchemaFromPreviewValue(value[0]) : undefined,
-    };
-  }
-  if (isRecordValue(value)) {
-    return {
-      type: 'object',
-      properties: Object.fromEntries(
-        Object.entries(value).map(([key, childValue]) => [key, inferSchemaFromPreviewValue(childValue)]),
-      ),
-    };
-  }
-  if (typeof value === 'boolean') return { type: 'boolean' };
-  if (typeof value === 'number') return { type: Number.isInteger(value) ? 'integer' : 'number' };
-  if (value === null) return { type: 'null' };
-  return { type: 'string' };
-}
-
-function buildPreviewInspectorControls(props: ComponentProps): PromptFramePreviewControl[] {
-  return Object.entries(props as Record<string, unknown>).map(([key, value]) => ({
-    key,
-    type: inferPreviewControlType(key, value),
-    label: formatPromptFramePreviewPropLabel(key),
-    defaultValue: value,
-    schema: inferSchemaFromPreviewValue(value),
-  }));
-}
-
-const previewInspectorControls = buildPreviewInspectorControls(initialProps);
+const previewInspectorControls = buildPromptFramePreviewControlsFromSchema({
+  propsSchema,
+  defaultProps: initialProps,
+  labelFormatter: formatPromptFramePreviewPropLabel,
+});
 
 function normalizePreviewCaseName(name: string): string {
   const trimmed = name.trim();

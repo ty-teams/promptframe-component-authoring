@@ -11,7 +11,7 @@ test('public templates use the current PromptFrame authoring package baseline', 
     'packages/create-component/templates/react-remotion/package.json',
   ]) {
     const packageJson = JSON.parse(await readFile(path.join(repoRoot, templatePackagePath), 'utf8'));
-    assert.equal(packageJson.dependencies?.['@promptframe/component-kit'], '^0.1.13', templatePackagePath);
+    assert.equal(packageJson.dependencies?.['@promptframe/component-kit'], '^0.1.14', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.17', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@remotion/player'], '^4.0.0', templatePackagePath);
     assert.equal(packageJson.devDependencies?.['@vitejs/plugin-react'], '^6.0.1', templatePackagePath);
@@ -26,7 +26,7 @@ test('public templates use the current PromptFrame authoring package baseline', 
 
 test('create package version is bumped for the next template release', async () => {
   const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'packages/create-component/package.json'), 'utf8'));
-  assert.equal(packageJson.version, '0.1.38');
+  assert.equal(packageJson.version, '0.1.39');
 });
 
 test('public templates expose PromptFrame CLI lifecycle scripts', async () => {
@@ -131,9 +131,9 @@ test('public authoring docs document the current source baseline', async () => {
     const text = await readFile(path.join(repoRoot, docPath), 'utf8');
     assert.match(text, /Current source baseline is/, docPath);
     assert.match(text, /@promptframe\/contracts@0\.1\.17/, docPath);
-    assert.match(text, /@promptframe\/component-kit@0\.1\.13/, docPath);
+    assert.match(text, /@promptframe\/component-kit@0\.1\.14/, docPath);
     assert.match(text, /@promptframe\/cli@0\.1\.48/, docPath);
-    assert.match(text, /create-promptframe-component@0\.1\.38/, docPath);
+    assert.match(text, /create-promptframe-component@0\.1\.39/, docPath);
     assert.match(text, /workspace root lockfile|workspace root lockfile evidence|pnpm workspace root lockfile/, docPath);
     assert.doesNotMatch(text, /source candidate|source tree prepares|until Trusted Publishing completes/, docPath);
   }
@@ -293,6 +293,8 @@ test('public templates localize PreviewRoot controls and derive readable prop la
     assert.match(previewRoot, /previewMessages/, templateRoot);
     assert.match(previewRoot, /resolvePreviewLocale/, templateRoot);
     assert.match(previewRoot, /formatPromptFramePreviewPropLabel/, templateRoot);
+    assert.match(previewRoot, /buildPromptFramePreviewControlsFromSchema/, templateRoot);
+    assert.match(previewRoot, /propsSchema,\s*defaultProps:\s*initialProps/, templateRoot);
     assert.match(previewRoot, /PromptFramePreviewInspector/, templateRoot);
     assert.match(previewRoot, /@promptframe\/component-kit\/preview-react/, templateRoot);
     assert.match(previewRoot, /isZh/, templateRoot);
@@ -306,6 +308,8 @@ test('public templates localize PreviewRoot controls and derive readable prop la
     assert.doesNotMatch(previewRoot, /navigator\.clipboard/, templateRoot);
     assert.doesNotMatch(previewRoot, /function formatPropLabel/, templateRoot);
     assert.doesNotMatch(previewRoot, /function coerceControlValue/, templateRoot);
+    assert.doesNotMatch(previewRoot, /function inferSchemaFromPreviewValue/, templateRoot);
+    assert.doesNotMatch(previewRoot, /inferSchemaFromPreviewValue\(/, templateRoot);
     assert.doesNotMatch(previewRoot, /function renderPropControl|const renderPropControl/, templateRoot);
     assert.doesNotMatch(previewRoot, /renderPropControl\(/, templateRoot);
     assert.doesNotMatch(previewRoot, /describePromptFramePreviewPropControl/, templateRoot);
