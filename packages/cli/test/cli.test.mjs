@@ -3447,6 +3447,41 @@ test('validate rejects preview props that exceed the public standard limits', as
   }
 });
 
+test('validate rejects preview duration outside manifest designed range', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-preview-duration-range-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(componentDir, 'src/preview-props.json'), JSON.stringify({
+      durationFrames: 25,
+      fps: 30,
+      width: 1280,
+      height: 720,
+      props: {},
+    }));
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'validate',
+        componentDir,
+        '--json',
+      ]),
+      (error) => {
+        assert.equal(error.code, 1);
+        const payload = JSON.parse(error.stderr);
+        assert.equal(payload.success, false);
+        assert.equal(payload.command, 'validate');
+        assert.equal(payload.diagnostic.code, 'component_standard.preview.duration_frames.designed_range');
+        assert.match(payload.failureReason, /designedDurationRange/);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('validate rejects preview props fields that are not declared in schema.ts', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-preview-schema-'));
   try {
@@ -3924,7 +3959,7 @@ test('validate uses AST-aware security policy for alias browser capability viola
   }
 });
 
-test('validate reports fps hardcoded timing as warning diagnostics without blocking', async () => {
+test('validate rejects fps hardcoded timing instead of warning only', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-fps-hardcoded-timing-'));
   try {
     const componentDir = path.join(dir, 'component');
@@ -3940,21 +3975,19 @@ test('validate reports fps hardcoded timing as warning diagnostics without block
       '}',
     ].join('\n'));
 
-    const validate = JSON.parse((await execFileAsync('node', [
-      cliPath,
-      'validate',
-      componentDir,
-      '--json',
-    ])).stdout);
-
-    assert.equal(validate.command, 'validate');
-    assert.equal(validate.diagnostic.code, 'validate.completed');
-    assert.ok(validate.checkedRuleIds.includes('runtime.deterministic.fps_hardcoded_timing'));
-    const diagnostics = validate.diagnostics.filter((item) => item.code === 'runtime.deterministic.fps_hardcoded_timing');
-    assert.ok(diagnostics.length >= 2, `expected fps diagnostics, got ${diagnostics.length}`);
-    assert.ok(diagnostics.every((item) => item.severity === 'warning'));
-    assert.ok(diagnostics.every((item) => item.stage === 'validate'));
-    assert.ok(diagnostics.every((item) => /secondsToFrames|createDurationTimeline/.test(item.repairHint ?? '')));
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'validate',
+        componentDir,
+        '--json',
+      ]),
+      (error) => {
+        assert.match(error.stderr, /runtime\.deterministic\.fps_hardcoded_timing/);
+        assert.match(error.stderr, /secondsToFrames|createRevealPhases|createFillProgress/);
+        return true;
+      },
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

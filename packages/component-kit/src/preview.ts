@@ -13,7 +13,7 @@ export const COMPONENT_PREVIEW_CONSTRAINTS: ComponentPreviewConstraints = {
 };
 
 export type PromptFramePreviewFps = 30 | 60;
-export type PromptFramePreviewCaseKind = 'baseline_reset' | 'aspect' | 'props_stress' | 'fps_diagnostic';
+export type PromptFramePreviewCaseKind = 'baseline_reset' | 'aspect' | 'props_stress' | 'fps_diagnostic' | 'duration_diagnostic';
 export type PromptFramePreviewProbeCoverage = 'platform_probe_equivalent' | 'local_authoring_only';
 export type PromptFramePreviewPropPath = Array<string | number>;
 export type PromptFramePreviewPropControlKind =
@@ -60,6 +60,7 @@ export interface CreatePreviewCaseMatrixInput<TProps extends Record<string, unkn
   baseProps: TProps;
   validateProps?: (candidate: TProps) => TProps | undefined;
   fpsPresets?: ReadonlyArray<PromptFramePreviewFps>;
+  durationScalePresets?: ReadonlyArray<number>;
   aspectPresets?: ReadonlyArray<{
     id: string;
     name: string;
@@ -91,6 +92,7 @@ export function createPreviewCaseMatrix<TProps extends Record<string, unknown>>(
   baseProps,
   validateProps,
   fpsPresets,
+  durationScalePresets = [],
   aspectPresets = DEFAULT_PREVIEW_ASPECT_CASES,
 }: CreatePreviewCaseMatrixInput<TProps>): PromptFramePreviewCase<TProps>[] {
   const cases: PromptFramePreviewCase<TProps>[] = [];
@@ -133,6 +135,19 @@ export function createPreviewCaseMatrix<TProps extends Record<string, unknown>>(
       ...basePreview,
       fps,
       durationFrames: scaleDurationFramesForFps(basePreview.durationFrames, basePreview.fps, fps),
+      props: cloneProps(baseProps),
+    });
+  }
+
+  for (const scale of normalizeDurationScalePresets(durationScalePresets)) {
+    addCase({
+      id: `duration-${formatDurationScaleId(scale)}`,
+      name: `${formatDurationScaleLabel(scale)} duration`,
+      description: `${formatDurationScaleLabel(scale)} designed-duration diagnostic case.`,
+      caseKind: 'duration_diagnostic',
+      probeCoverage: 'local_authoring_only',
+      ...basePreview,
+      durationFrames: scaleDurationFrames(basePreview.durationFrames, scale),
       props: cloneProps(baseProps),
     });
   }
@@ -308,8 +323,26 @@ function normalizeFpsPresets(fpsPresets: ReadonlyArray<PromptFramePreviewFps> | 
   return Array.from(new Set(fpsPresets ?? [])).sort((left, right) => left - right);
 }
 
+function normalizeDurationScalePresets(durationScalePresets: ReadonlyArray<number>): number[] {
+  return Array.from(new Set(durationScalePresets))
+    .filter((scale) => Number.isFinite(scale) && scale > 0)
+    .sort((left, right) => left - right);
+}
+
 function scaleDurationFramesForFps(durationFrames: number, sourceFps: number, targetFps: number): number {
-  return Math.max(1, Math.round((durationFrames * targetFps) / sourceFps));
+  return scaleDurationFrames(durationFrames, targetFps / sourceFps);
+}
+
+function scaleDurationFrames(durationFrames: number, scale: number): number {
+  return Math.max(1, Math.min(COMPONENT_PREVIEW_CONSTRAINTS.maxDurationFrames, Math.round(durationFrames * scale)));
+}
+
+function formatDurationScaleId(scale: number): string {
+  return `${scale}`.replace('.', '-') + 'x';
+}
+
+function formatDurationScaleLabel(scale: number): string {
+  return `${scale}x`;
 }
 
 function createPropsStressVariants<TProps extends Record<string, unknown>>(

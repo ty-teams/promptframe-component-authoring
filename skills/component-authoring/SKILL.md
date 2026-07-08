@@ -225,7 +225,7 @@ component/
 - The generated controls expand object / array props into structured groups, fields, and array items by default; use `Advanced JSON` only as a fallback for bulk edits.
 - The local preview shell may generate bounded preview cases from `@promptframe/component-kit/preview`, apply only cases that pass `propsSchema.safeParse`, and export saved preview cases into `.promptframe/local-previews/` for author regression only; these files are not source-package evidence and do not replace `src/preview-props.json`.
 - `promptframe preview . --json` only verifies the local preview envelope from `src/preview-props.json`; it does not replace platform iframe preview, probes, or render evidence.
-- Animation timing must be fps-aware: convert wall-clock seconds with `secondsToFrames(seconds, fps)` or route frame ranges through `createDurationTimeline()` / `timeline.at()`. Local fps-adaptive diagnostics should compare 30fps and 60fps behavior before upload.
+- Animation timing must be fps-aware: convert wall-clock seconds with `secondsToFrames(seconds, fps)`, route frame ranges through `createDurationTimeline()` / `timeline.at()`, or use intent helpers such as `createRevealPhases()` and `createFillProgress()`. Local fps-adaptive diagnostics should compare 30fps and 60fps behavior, and local duration diagnostics should check 0.5x / 2x designed-duration behavior before upload.
 - Animation must be frame-driven with the platform-compatible hooks and helpers exposed by the template.
 - Do not use CSS transitions/keyframes, timers, `Date.now()`, or `Math.random()`.
 - Use the template's media primitives rather than browser-native media tags.
@@ -240,7 +240,7 @@ When `promptframe validate --json` or platform admission returns one of these di
 - `doctor.required_files.missing`: restore `manifest.json`, `package.json`, `src/Component.tsx`, `src/schema.ts`, `src/index.ts`, and `src/preview-props.json`.
 - `component_standard.source.no_math_random`: replace `Math.random()` with props, frame-derived values, or deterministic seeded helpers.
 - `code.eval`, `code.new_function`, `code.string_timer`: remove dynamic string execution; component logic must be deterministic TypeScript/React code.
-- `runtime.deterministic.fps_hardcoded_timing`: warning-first; replace hardcoded frame counts in timing contexts with `secondsToFrames(seconds, fps)` or `createDurationTimeline()` / `timeline.at()`.
+- `runtime.deterministic.fps_hardcoded_timing`: manual-review validation gate; replace hardcoded frame counts in timing contexts with `secondsToFrames(seconds, fps)`, `createDurationTimeline()` / `timeline.at()`, `createRevealPhases()`, or `createFillProgress()`.
 - `network.raw_fetch`: remove raw `fetch`, XHR, WebSocket, EventSource, or Beacon calls unless the platform provides a mediated allowlisted API.
 - `prompt.injection_string`: remove comments, README text, or strings that ask the platform to ignore rules, rank the component first, auto-approve, or change admission behavior.
 - `network.remote_url`: move hardcoded remote assets into platform asset intake or props; do not bake remote URLs into component source.

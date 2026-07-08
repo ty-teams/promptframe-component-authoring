@@ -117,7 +117,7 @@ test('AST evaluator returns digest and source location metadata', () => {
   assert.ok(finding.evidence?.includes('BroadcastChannel'));
 });
 
-test('AST evaluator warns on fps hardcoded timing in Remotion timing contexts', () => {
+test('AST evaluator blocks fps hardcoded timing in Remotion timing contexts', () => {
   const source = `
     import { Sequence, interpolate, spring, useCurrentFrame } from 'remotion';
     export default function Component() {
@@ -134,24 +134,26 @@ test('AST evaluator warns on fps hardcoded timing in Remotion timing contexts', 
   }).findings.filter((finding) => finding.ruleId === 'runtime.deterministic.fps_hardcoded_timing');
 
   assert.ok(findings.length >= 3, `expected fps timing findings, got ${findings.length}`);
-  assert.ok(findings.every((finding) => finding.action === 'warn'));
+  assert.ok(findings.every((finding) => finding.action === 'manual_review'));
   assert.ok(findings.every((finding) => finding.severity === 'medium'));
-  assert.ok(findings.every((finding) => finding.repairHint?.includes('secondsToFrames')));
+  assert.ok(findings.every((finding) => /secondsToFrames|createRevealPhases|createFillProgress/.test(finding.repairHint ?? '')));
   assert.ok(findings.some((finding) => finding.trace?.some((item) => item.includes('interpolate'))));
   assert.ok(findings.some((finding) => finding.trace?.some((item) => item.includes('jsx'))));
   assert.ok(findings.some((finding) => finding.trace?.some((item) => item.includes('fps'))));
 });
 
-test('AST evaluator does not warn on visual constants or fps-aware helpers', () => {
+test('AST evaluator does not block visual constants or fps-aware helpers', () => {
   const source = `
     import { Sequence, useVideoConfig } from 'remotion';
-    import { secondsToFrames } from '@promptframe/component-kit/timing';
+    import { createFillProgress, createRevealPhases, secondsToFrames } from '@promptframe/component-kit/timing';
     export default function Component() {
       const { fps } = useVideoConfig();
       const duration = secondsToFrames(1, fps);
+      const reveal = createRevealPhases({ fps, timeline: { at: (value) => value, holdFrames: 0 }, enterSeconds: 0.2, revealSeconds: 1, exitSeconds: 2 });
+      const fill = createFillProgress({ durationFrames: duration, startPercent: 0.2, endPercent: 0.8 });
       const cardWidth = 30;
       const indexes = [0, 1, 2, 3];
-      return <Sequence durationInFrames={duration}><div style={{ width: cardWidth, height: 60 }} /></Sequence>;
+      return <Sequence durationInFrames={duration}><div style={{ width: cardWidth, height: 60, opacity: reveal.progressAt(fill.startFrame) }} /></Sequence>;
     }
   `;
 

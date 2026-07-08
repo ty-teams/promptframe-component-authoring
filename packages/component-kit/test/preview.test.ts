@@ -114,6 +114,32 @@ test('createPreviewCaseMatrix can add fps-adaptive timing variants without chang
   assert.deepEqual(fps60Case.props, defaultCase.props);
 });
 
+test('createPreviewCaseMatrix can add designed-duration diagnostic cases', () => {
+  const cases = createPreviewCaseMatrix({
+    basePreview: {
+      durationFrames: 120,
+      fps: 30,
+      width: 1280,
+      height: 720,
+    },
+    baseProps: {
+      title: 'Duration check',
+    },
+    aspectPresets: [],
+    durationScalePresets: [0.5, 2],
+  });
+
+  const half = cases.find((previewCase) => previewCase.id === 'duration-0-5x');
+  const double = cases.find((previewCase) => previewCase.id === 'duration-2x');
+  assert.ok(half);
+  assert.equal(half.caseKind, 'duration_diagnostic');
+  assert.equal(half.probeCoverage, 'local_authoring_only');
+  assert.equal(half.durationFrames, 60);
+  assert.ok(double);
+  assert.equal(double.caseKind, 'duration_diagnostic');
+  assert.equal(double.durationFrames, 180);
+});
+
 test('preview prop control helpers classify and coerce values without stringifying objects', () => {
   assert.equal(formatPromptFramePreviewPropLabel('searchKeywords'), 'Search Keywords');
   assert.equal(formatPromptFramePreviewPropPath(['items', 0, 'label']), 'items.0.label');

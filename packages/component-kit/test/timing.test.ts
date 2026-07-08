@@ -5,6 +5,8 @@ import {
   COMPONENT_STANDARD_SOURCE_HASH,
   COMPONENT_STANDARD_VERSION,
   createDurationTimeline,
+  createFillProgress,
+  createRevealPhases,
   getComponentStandardStamp,
   getScaledSpringTiming,
   secondsToFrames,
@@ -55,4 +57,38 @@ test('secondsToFrames keeps wall-clock animation timing stable across fps varian
   assert.equal(secondsToFrames(0, 60), 0);
   assert.throws(() => secondsToFrames(-1, 30), /seconds must be a non-negative finite number/);
   assert.throws(() => secondsToFrames(1, 29.97), /fps must be a positive integer/);
+});
+
+test('createRevealPhases expresses entrance timing through design seconds and timeline compression', () => {
+  const timeline = createDurationTimeline({ actualDuration: 60, designedDuration: 120 });
+  const phases = createRevealPhases({
+    fps: 30,
+    timeline,
+    enterSeconds: 0.5,
+    revealSeconds: 1.5,
+    exitSeconds: 3,
+  });
+
+  assert.deepEqual(phases.enterRange, [0, 8]);
+  assert.deepEqual(phases.revealRange, [8, 23]);
+  assert.deepEqual(phases.exitRange, [45, 60]);
+  assert.equal(phases.holdFrames, 0);
+  assert.equal(phases.progressAt(0), 0);
+  assert.equal(phases.progressAt(23), 1);
+  assert.equal(phases.progressAt(60), 1);
+});
+
+test('createFillProgress maps an exposure window to clamped progress', () => {
+  const progress = createFillProgress({
+    durationFrames: 120,
+    startPercent: 0.25,
+    endPercent: 0.75,
+  });
+
+  assert.equal(progress.startFrame, 30);
+  assert.equal(progress.endFrame, 90);
+  assert.equal(progress.at(0), 0);
+  assert.equal(progress.at(60), 0.5);
+  assert.equal(progress.at(120), 1);
+  assert.throws(() => createFillProgress({ durationFrames: 120, startPercent: 0.8, endPercent: 0.2 }), /endPercent must be greater/);
 });

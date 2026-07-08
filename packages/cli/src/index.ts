@@ -3432,8 +3432,19 @@ function assertRequiredFiles(dir: string): void {
 function validatePreviewProps(dir: string, manifest: ComponentManifest): void {
   const preview = readPreviewProps(dir);
   assertPreviewEnvelope(preview, 'src/preview-props.json', fail);
+  assertPreviewDurationMatchesManifest(preview, manifest);
   assertPreviewPropsMatchStaticSchema(dir, manifest, preview);
   assertStaticPropsHaveDescriptions(readIfExists(join(dir, manifest.entry.propsSchemaPath)), manifest.entry.propsSchemaPath);
+}
+
+function assertPreviewDurationMatchesManifest(preview: Record<string, unknown>, manifest: ComponentManifest): void {
+  const durationFrames = Number(preview.durationFrames);
+  const { min, max } = manifest.designedDurationRange;
+  if (durationFrames >= min && durationFrames <= max) return;
+  fail(
+    `src/preview-props.json durationFrames (${durationFrames}) must be within manifest.designedDurationRange (${min}-${max}).`,
+    'component_standard.preview.duration_frames.designed_range',
+  );
 }
 
 function readPreviewProps(dir: string): Record<string, unknown> {

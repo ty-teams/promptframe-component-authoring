@@ -53,6 +53,7 @@ export const previewCases = createPreviewCaseMatrix({
   basePreview: { durationFrames: 120, fps: 30, width: 1280, height: 720 },
   baseProps: { title: 'Quarterly revenue' },
   fpsPresets: [30, 60],
+  durationScalePresets: [0.5, 2],
   validateProps: (candidate) => candidate,
 });
 
@@ -60,18 +61,30 @@ export const titleControl = describePromptFramePreviewPropControl(['title'], 'Qu
 ```
 
 ```ts
-import { createDurationTimeline, secondsToFrames } from '@promptframe/component-kit/timing';
+import {
+  createDurationTimeline,
+  createFillProgress,
+  createRevealPhases,
+  secondsToFrames,
+} from '@promptframe/component-kit/timing';
 
 const timeline = createDurationTimeline({
   actualDuration: 180,
   designedDuration: secondsToFrames(4, 30),
 });
-const introEnd = secondsToFrames(1.5, 30);
+const reveal = createRevealPhases({
+  fps: 30,
+  timeline,
+  enterSeconds: 0.5,
+  revealSeconds: 1.5,
+  exitSeconds: 3,
+});
+const fill = createFillProgress({ durationFrames: timeline.actualDuration, startPercent: 0.25, endPercent: 0.75 });
 ```
 
-`createPreviewCaseMatrix()` returns explicit `caseKind` metadata: `baseline_reset`, `aspect`, `props_stress`, and `fps_diagnostic`. Props stress cases should preserve the current author preview aspect/fps in scaffold UI; aspect and fps diagnostics are separate controls so a human author can see what changed. `probeCoverage` marks whether a case is platform-probe-equivalent or local-authoring-only.
+`createPreviewCaseMatrix()` returns explicit `caseKind` metadata: `baseline_reset`, `aspect`, `props_stress`, `fps_diagnostic`, and `duration_diagnostic`. Props stress cases should preserve the current author preview aspect/fps in scaffold UI; aspect, fps, and duration diagnostics are separate controls so a human author can see what changed. `probeCoverage` marks whether a case is platform-probe-equivalent or local-authoring-only.
 
-Use `fpsPresets` for local fps-adaptive diagnostics such as 30fps / 60fps comparisons. Source `src/preview-props.json` remains governed by the current public preview policy; do not save or upload 60fps local preview cases until the public standard explicitly allows them. Use `describePromptFramePreviewPropControl()` and related preview helpers when building local prop editors so object/array props use structured or JSON fallback editing instead of accidental `[object Object]` strings.
+Use `fpsPresets` for local fps-adaptive diagnostics such as 30fps / 60fps comparisons, and `durationScalePresets` for designed-duration probes such as 0.5x / 2x. Source `src/preview-props.json` remains governed by the current public preview policy and must fit `manifest.designedDurationRange`; do not save or upload 60fps local preview cases until the public standard explicitly allows them. Use `describePromptFramePreviewPropControl()` and related preview helpers when building local prop editors so object/array props use structured or JSON fallback editing instead of accidental `[object Object]` strings.
 
 ```tsx
 import {
@@ -133,7 +146,7 @@ const style = resolvePromptFrameStyle({ tone: 'tech', accentColor: '#38bdf8' }, 
 import { getComponentStandardStamp } from '@promptframe/component-kit';
 import { COMPONENT_PREVIEW_CONSTRAINTS, createPreviewCaseMatrix, describePromptFramePreviewPropControl } from '@promptframe/component-kit/preview';
 import { PromptFramePreviewInspector } from '@promptframe/component-kit/preview-react';
-import { createDurationTimeline } from '@promptframe/component-kit/timing';
+import { createDurationTimeline, createFillProgress, createRevealPhases } from '@promptframe/component-kit/timing';
 import { resolvePromptFrameStyle } from '@promptframe/component-kit/style';
 ```
 

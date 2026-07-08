@@ -63,16 +63,16 @@ test('public security policy exposes browser capability rule IDs with author gui
   }
 });
 
-test('public security policy exposes fps hardcoded timing as warning-first guidance', () => {
+test('public security policy exposes fps hardcoded timing as manual-review gate', () => {
   const rule = PROMPTFRAME_PUBLIC_SECURITY_POLICY.warningApis.find((item) => (
     item.id === 'runtime.deterministic.fps_hardcoded_timing'
   ));
 
-  assert.equal(rule?.action, 'warn');
+  assert.equal(rule?.action, 'manual_review');
   assert.equal(rule?.severity, 'medium');
   assert.equal(rule?.category, 'remotion_lifecycle');
-  assert.match(rule?.recommendation ?? '', /secondsToFrames|createDurationTimeline/);
-  assert.match(rule?.repairHint ?? '', /secondsToFrames/);
+  assert.match(rule?.recommendation ?? '', /secondsToFrames|createDurationTimeline|createRevealPhases|createFillProgress/);
+  assert.match(rule?.repairHint ?? '', /secondsToFrames|createRevealPhases|createFillProgress/);
 });
 
 test('public security policy exposes a stable release-cohort digest', () => {

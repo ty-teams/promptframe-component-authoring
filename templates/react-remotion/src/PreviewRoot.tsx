@@ -167,10 +167,12 @@ const generatedPreviewCases = createPreviewCaseMatrix<ComponentProps>({
   },
   aspectPresets: [],
   fpsPresets: [],
+  durationScalePresets: [0.5, 2],
 });
 const baselinePreviewCase = generatedPreviewCases.find((previewCase) => previewCase.caseKind === 'baseline_reset');
 const diagnosticPreviewCases = generatedPreviewCases.filter((previewCase) => (
   previewCase.caseKind === 'props_stress'
+  || previewCase.caseKind === 'duration_diagnostic'
 ));
 
 const root = document.getElementById('root');
@@ -277,6 +279,14 @@ function PreviewApp() {
       setInputProps(previewCase.props);
     }
     if (previewCase.caseKind === 'props_stress') {
+      setInputProps(previewCase.props);
+    }
+    if (previewCase.caseKind === 'duration_diagnostic') {
+      setPreviewTiming({
+        label: previewCase.name,
+        fps: previewCase.fps,
+        durationFrames: previewCase.durationFrames,
+      });
       setInputProps(previewCase.props);
     }
 

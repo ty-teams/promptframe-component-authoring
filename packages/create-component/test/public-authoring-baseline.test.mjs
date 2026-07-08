@@ -246,7 +246,8 @@ test('public templates expose the component-kit preview case matrix without defa
     assert.match(previewRoot, /data-promptframe-preview-case-kind/, templateRoot);
     assert.match(previewRoot, /aspectPresets:\s*\[\]/, templateRoot);
     assert.match(previewRoot, /fpsPresets:\s*\[\]/, templateRoot);
-    assert.match(previewRoot, /caseKind === 'props_stress'/, templateRoot);
+    assert.match(previewRoot, /durationScalePresets:\s*\[0\.5,\s*2\]/, templateRoot);
+    assert.match(previewRoot, /caseKind === 'props_stress'[\s\S]+caseKind === 'duration_diagnostic'/, templateRoot);
     assert.doesNotMatch(previewRoot, /caseKind === 'fps_diagnostic'/, templateRoot);
     assert.match(previewRoot, /Auto cases/, templateRoot);
     assert.match(previewRoot, /Platform probe equivalent/, templateRoot);
@@ -423,10 +424,10 @@ test('public authoring docs document fps-aware timing and the AST rule boundary'
   }
 
   assert.match(timingRule, /runtime\.deterministic\.fps_hardcoded_timing/);
-  assert.match(timingRule, /warning.*diagnostics|diagnostics.*warning/i);
+  assert.match(timingRule, /manual_review|validation gate|阻断/);
   assert.match(timingRule, /interpolate\(frame, \[30, 60\]/);
   assert.match(timingRule, /spring\(\{[\s\S]*fps: 30/);
-  assert.match(timingRule, /timeline\.at\(|secondsToFrames\(/);
+  assert.match(timingRule, /timeline\.at\(|secondsToFrames\(|createRevealPhases\(|createFillProgress\(/);
 });
 
 test('public authoring docs describe the AI-first authoring boundary', async () => {

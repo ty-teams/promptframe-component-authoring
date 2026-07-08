@@ -68,14 +68,14 @@
 
 ```tsx
 import { interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
-import { createDurationTimeline, secondsToFrames } from '@promptframe/component-kit/timing';
+import { createDurationTimeline, createRevealPhases, secondsToFrames } from '@promptframe/component-kit/timing';
 
 export function Component() {
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
   const timeline = createDurationTimeline({ actualDuration: durationInFrames, designedDuration: secondsToFrames(4, fps) });
-  const introEnd = timeline.at(secondsToFrames(1.5, fps));
-  const opacity = interpolate(frame, [0, introEnd], [0, 1], { extrapolateRight: 'clamp' });
+  const reveal = createRevealPhases({ fps, timeline, enterSeconds: 0.5, revealSeconds: 1.5, exitSeconds: 3 });
+  const opacity = interpolate(frame, reveal.enterRange, [0, 1], { extrapolateRight: 'clamp' });
   return <div style={{ opacity }} />;
 }
 ```
@@ -88,15 +88,15 @@ spring({ frame, fps: 30 });
 const visible = frame > 45;
 ```
 
-`createPreviewCaseMatrix()` 可用 `fpsPresets: [30, 60]` 生成本地 fps-adaptive diagnostics（fps 自适应诊断）case，用来比较同一个 props / aspect 在 30fps 和 60fps 下的节奏。当前 `src/preview-props.json` 仍受公开 preview policy 约束；在公开标准允许 60fps 前，不要把 60fps local case 当成可上传的 source evidence。
+`createPreviewCaseMatrix()` 可用 `fpsPresets: [30, 60]` 生成本地 fps-adaptive diagnostics（fps 自适应诊断）case，用来比较同一个 props / aspect 在 30fps 和 60fps 下的节奏；也可用 `durationScalePresets: [0.5, 2]` 生成 designed-duration diagnostics，用来观察压缩与 hold 表现。当前 `src/preview-props.json` 仍受公开 preview policy 约束，且 `durationFrames` 必须落在 `manifest.designedDurationRange`；在公开标准允许 60fps 前，不要把 60fps local case 当成可上传的 source evidence。
 
 当前 AST 检测规则：
 
 - Rule ID: `runtime.deterministic.fps_hardcoded_timing`
-- Severity: `warning` first；CLI `validate --json` / `check --json` 会在 `diagnostics` 中报告，但不会因为该 rule 单独阻断本地校验。
+- Action: `manual_review`；CLI `validate --json` 会阻断，`check --json` 会在 diagnostics 中报告，作者必须先改成 fps-aware timing。
 - 检测对象：`interpolate(frame, [30, 60], ...)`、`spring({ frame, fps: 30 })`、`frame > 45` / `frame < 90`、`<Sequence from={30} durationInFrames={60}>` 等疑似硬编码时间点。
-- 白名单：区间或比较表达式使用 `fps`、`secondsToFrames()`、`timeline.at()`、`timeline.frame()`，或者是纯布局尺寸/数组长度/颜色常量时不报。
-- repairHint：Use `secondsToFrames(seconds, fps)` or `createDurationTimeline()` / `timeline.at()` from `@promptframe/component-kit/timing`.
+- 白名单：区间或比较表达式使用 `fps`、`secondsToFrames()`、`timeline.at()`、`timeline.frame()`、`createRevealPhases()`、`createFillProgress()`，或者是纯布局尺寸/数组长度/颜色常量时不报。
+- repairHint：Use `secondsToFrames(seconds, fps)`, `createRevealPhases()`, `createFillProgress()` or `createDurationTimeline()` / `timeline.at()` from `@promptframe/component-kit/timing`.
 - Fixture matrix：literal bad cases、comment/string false positives、`secondsToFrames` good cases、`timeline.at()` good cases、`spring({ fps })` good case、layout numeric constants good case.
 
 ## 上传验收应检查什么
@@ -104,12 +104,12 @@ const visible = frame > 45;
 首期至少检查：
 
 - `manifest.json` 有合法 `designedDurationRange.min/max`。
-- `src/preview-props.json` 的 `durationFrames` 不超过平台预览上限。
+- `src/preview-props.json` 的 `durationFrames` 不超过平台预览上限，并且落在 `manifest.designedDurationRange` 内。
 - 组件源码使用 `useCurrentFrame()` / `useVideoConfig()`。
 - 没有 CSS `transition`、`@keyframes`、`Date.now()`、`Math.random()` 等非确定性路径。
 
 后续 `component-kit` 落地后追加：
 
 - 必须从 `@promptframe/component-kit` 引入时序 helper，禁止复制内部实现。
-- `DESIGNED_DURATION_RANGE` / manifest / preview props 能被构建脚本交叉校验。
+- `designedDurationRange` / manifest / preview props 能被 `validate` 交叉校验。
 - CLI check / upload admission 如启用 fps-aware timing 规则，必须使用 AST evaluator，不使用正则扫描注释或字符串。
