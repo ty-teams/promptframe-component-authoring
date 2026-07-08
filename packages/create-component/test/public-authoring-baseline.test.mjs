@@ -344,6 +344,8 @@ test('public templates keep the PreviewRoot viewport locked and Player contained
     assert.match(previewRoot, /acknowledgeRemotionLicense/, templateRoot);
     assert.match(previewRoot, /data-promptframe-preview-stage/, templateRoot);
     assert.match(previewRoot, /data-promptframe-preview-player/, templateRoot);
+    assert.match(previewRoot, /data-promptframe-preview-controls-scroll/, templateRoot);
+    assert.match(previewRoot, /data-promptframe-preview-aspect-toolbar/, templateRoot);
   }
 });
 

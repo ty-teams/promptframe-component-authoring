@@ -40,6 +40,7 @@
     "build": "tsc",
     "lint": "tsc --noEmit",
     "test": "pnpm build && node --test test/*.test.mjs",
+    "test:previewroot-geometry": "pnpm build && node --test test/previewroot-browser-geometry.smoke.mjs",
     "pack:dry-run": "pnpm build && npm pack --dry-run --json",
     "clean": "rm -rf dist"
   },

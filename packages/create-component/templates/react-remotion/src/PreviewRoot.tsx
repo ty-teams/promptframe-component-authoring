@@ -365,6 +365,7 @@ function PreviewApp() {
         }}
       >
         <div
+          data-promptframe-preview-controls-scroll
           style={{
             flex: 1,
             minHeight: 0,
