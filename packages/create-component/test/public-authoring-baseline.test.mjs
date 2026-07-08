@@ -132,7 +132,7 @@ test('public authoring docs document the current source baseline', async () => {
     assert.match(text, /Current source baseline is/, docPath);
     assert.match(text, /@promptframe\/contracts@0\.1\.17/, docPath);
     assert.match(text, /@promptframe\/component-kit@0\.1\.13/, docPath);
-    assert.match(text, /@promptframe\/cli@0\.1\.46/, docPath);
+    assert.match(text, /@promptframe\/cli@0\.1\.48/, docPath);
     assert.match(text, /create-promptframe-component@0\.1\.38/, docPath);
     assert.match(text, /workspace root lockfile|workspace root lockfile evidence|pnpm workspace root lockfile/, docPath);
     assert.doesNotMatch(text, /source candidate|source tree prepares|until Trusted Publishing completes/, docPath);

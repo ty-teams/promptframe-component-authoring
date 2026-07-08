@@ -577,7 +577,23 @@ test('whoami uses the stored matching endpoint credential as a bearer token', as
     assert.equal(payload.principal.tenantId, 'tenant-a');
     assert.equal(payload.diagnostic.code, 'whoami.completed');
     assert.equal(payload.tokenSecret, undefined);
+    const humanOutput = (await execFileAsync('node', [
+      cliPath,
+      'whoami',
+      '--config',
+      configPath,
+    ])).stdout;
+    assert.match(humanOutput, /Token: human cli_token_stored \/ expires 2099-06-10T00:00:00\.000Z \(server\)/);
+    assert.equal(humanOutput.includes('pf_stored_secret'), false);
+
     assert.deepEqual(calls, [{
+      method: 'GET',
+      url: '/cli/auth/whoami',
+      authorization: 'Bearer pf_stored_secret',
+      tenantId: undefined,
+      userId: undefined,
+      roles: undefined,
+    }, {
       method: 'GET',
       url: '/cli/auth/whoami',
       authorization: 'Bearer pf_stored_secret',
@@ -2573,7 +2589,21 @@ test('upload default output prints status link and next status command', async (
   });
   try {
     const zipPath = path.join(dir, 'component.zip');
+    const configPath = path.join(dir, 'promptframe-config.json');
     await writeFile(zipPath, 'fake component zip');
+    await writeFile(configPath, JSON.stringify({
+      endpoint: server.url,
+      credential: {
+        contractVersion: 'cli-auth.v0.1.0',
+        endpoint: server.url,
+        tokenId: 'cli_token_upload_human',
+        tokenKind: 'human',
+        tenantId: 'tenant-a',
+        projectId: 'project-a',
+        expiresAt: '2099-06-10T00:00:00.000Z',
+        tokenSecret: 'pf_upload_secret',
+      },
+    }, null, 2));
     const { stdout, stderr } = await execFileAsync('node', [
       cliPath,
       'upload',
@@ -2582,11 +2612,15 @@ test('upload default output prints status link and next status command', async (
       server.url,
       '--target',
       'project_private_generation',
+      '--config',
+      configPath,
     ]);
 
     assert.match(stdout, /Upload accepted/);
     assert.match(stdout, /Build: build-human/);
     assert.match(stdout, /Status: succeeded/);
+    assert.match(stdout, /Token: human cli_token_upload_human \/ expires 2099-06-10T00:00:00\.000Z \(stored\)/);
+    assert.equal(stdout.includes('pf_upload_secret'), false);
     assert.match(stdout, /Version auto-bumped: 0\.1\.0 -> 0\.1\.1/);
     assert.match(stdout, /Existing component version was already used/);
     assert.match(stdout, new RegExp(`Status URL: ${server.url}/admin/components/builds/build-human`));

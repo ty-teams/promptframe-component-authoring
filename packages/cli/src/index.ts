@@ -756,6 +756,7 @@ async function uploadComponent(argv: string[]): Promise<void> {
   console.log('Upload accepted by PromptFrame platform.');
   console.log(`Build: ${output.jobId ?? 'unknown'}`);
   console.log(`Status: ${stringValue(output.status) ?? stringValue(asRecord(output.build)?.status) ?? 'queued'}`);
+  printAuthSummary(asRecord(output.auth));
   printUploadVersionOutcome(output);
   if (output.jobId) {
     console.log(`Next: promptframe status ${output.jobId} --endpoint ${endpoint}`);
@@ -804,6 +805,7 @@ async function uploadWorkspace(
     },
     uploadTarget,
     uploads,
+    auth: describeAuthForEndpoint(endpoint, argv),
     diagnostic: diagnostic('upload.workspace.completed', 'info', 'Workspace component uploads accepted by platform.'),
   };
   if (hasFlag(argv, '--json')) {
@@ -811,6 +813,7 @@ async function uploadWorkspace(
     return;
   }
   console.log(`Workspace upload accepted: ${root}`);
+  printAuthSummary(output.auth);
   for (const upload of uploads) {
     const source = asRecord(upload.source);
     console.log(`${stringValue(source?.workspaceComponentId) ?? 'component'} -> ${upload.jobId ?? 'unknown'}`);
@@ -877,6 +880,7 @@ async function uploadPreparedComponent(
     endpoint,
     uploadTarget,
     jobId: getBuildId(payload),
+    auth: describeAuthForEndpoint(endpoint, argv),
     ...(versionNotes ? { versionNotes } : {}),
     package: artifact,
     source: input.source,
@@ -1839,6 +1843,7 @@ async function login(argv: string[]): Promise<void> {
   }
   console.log(`Logged in to ${endpoint}.`);
   if (credential.displayIdentifier) console.log(`User: ${credential.displayIdentifier}`);
+  printAuthSummary(credential);
   console.log('Credential stored in local PromptFrame config with file permissions restricted to the current OS user.');
 }
 
@@ -1884,6 +1889,7 @@ async function loginWithDeviceCode(endpoint: string, argv: string[]): Promise<vo
   }
   console.log(`Logged in to ${endpoint}.`);
   if (credential.displayIdentifier) console.log(`User: ${credential.displayIdentifier}`);
+  printAuthSummary(credential);
   console.log('Credential stored in local PromptFrame config with file permissions restricted to the current OS user.');
 }
 
@@ -1952,7 +1958,7 @@ async function whoami(argv: string[]): Promise<void> {
   }
   const principal = asRecord(payload.principal);
   console.log(`Endpoint: ${endpoint}`);
-  console.log(`Token: ${stringValue(payload.tokenKind) ?? 'unknown'} ${stringValue(payload.tokenId) ?? ''}`.trim());
+  printAuthSummary(describeAuthFromWhoamiPayload(payload));
   console.log(`Tenant: ${stringValue(principal?.tenantId) ?? 'unknown'}`);
   console.log(`Project: ${stringValue(principal?.projectId) ?? '<none>'}`);
   console.log(`User: ${stringValue(principal?.displayIdentifier) ?? stringValue(principal?.email) ?? stringValue(principal?.userId) ?? 'unknown'}`);
@@ -3102,6 +3108,56 @@ function resolveBearerToken(endpoint: string, argv: string[]): string | undefine
     fail('Stored PromptFrame CLI credential is expired. Run promptframe login again.', 'cli.auth.token_expired', 2);
   }
   return stringValue(credential.tokenSecret);
+}
+
+function describeAuthForEndpoint(endpoint: string, argv: string[]): Record<string, string> | undefined {
+  const credential = asRecord(readConfig(argv).credential);
+  if (credential && normalizeEndpoint(stringValue(credential.endpoint) ?? '') === normalizeEndpoint(endpoint)) {
+    return compactRecord({
+      tokenId: stringValue(credential.tokenId),
+      tokenKind: stringValue(credential.tokenKind),
+      expiresAt: stringValue(credential.expiresAt),
+      source: 'stored',
+    });
+  }
+  if (valueAfter(argv, '--token')) {
+    return { tokenKind: 'explicit', source: '--token' };
+  }
+  if (process.env.PROMPTFRAME_CI_TOKEN) {
+    return { tokenKind: 'ci', source: 'PROMPTFRAME_CI_TOKEN' };
+  }
+  if (process.env.PROMPTFRAME_CLI_TOKEN) {
+    return { tokenKind: 'human', source: 'PROMPTFRAME_CLI_TOKEN' };
+  }
+  if (process.env.PROMPTFRAME_AUTH_TOKEN) {
+    return { tokenKind: 'bearer', source: 'PROMPTFRAME_AUTH_TOKEN' };
+  }
+  return undefined;
+}
+
+function describeAuthFromWhoamiPayload(payload: Record<string, unknown>): Record<string, string> {
+  return compactRecord({
+    tokenId: stringValue(payload.tokenId),
+    tokenKind: stringValue(payload.tokenKind),
+    expiresAt: stringValue(payload.expiresAt),
+    source: 'server',
+  });
+}
+
+function printAuthSummary(auth: Record<string, unknown> | undefined): void {
+  if (!auth) return;
+  const tokenKind = stringValue(auth.tokenKind) ?? 'unknown';
+  const tokenId = stringValue(auth.tokenId);
+  const expiresAt = stringValue(auth.expiresAt);
+  const source = stringValue(auth.source);
+  const pieces = [
+    tokenKind,
+    tokenId,
+    '/',
+    expiresAt ? `expires ${expiresAt}` : 'expires unknown',
+    source ? `(${source})` : '',
+  ].filter(Boolean);
+  console.log(`Token: ${pieces.join(' ')}`);
 }
 
 function buildStoredCredential(
