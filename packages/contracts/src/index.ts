@@ -10,7 +10,7 @@ export {
 export const PROMPTFRAME_CONTRACTS_VERSION = 'promptframe-contracts.v0.1.0' as const;
 export const COMPONENT_MANIFEST_SCHEMA_VERSION = 'component-manifest.v0.1.0' as const;
 export const COMPONENT_STANDARD_VERSION = 'component-standard.v0.1.0' as const;
-export const COMPONENT_STANDARD_SOURCE_HASH = 'sha256:cca52d2faf844b15d2da83726d33db398b6ead2aefb3f6bd479b9efa87fc6c84' as const;
+export const COMPONENT_STANDARD_SOURCE_HASH = 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47' as const;
 export const COMPONENT_REF_VERSION = 'component-ref.v0.1.0' as const;
 export const LAYOUT_CAPABILITY_VERSION = 'layout-capability.v0.1.0' as const;
 export const CAPABILITY_CARD_VERSION = 'component-capability-card.v0.1.0' as const;
@@ -1254,10 +1254,10 @@ export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = 
   styleContractVersion: PROMPTFRAME_STYLE_CONTRACT_VERSION,
   supportedComponentTypes: promptFrameComponentTypeSchema.options,
   minPackageVersions: {
-    contracts: '0.1.18',
-    componentKit: '0.1.15',
-    cli: '0.1.49',
-    createComponent: '0.1.40',
+    contracts: '0.1.19',
+    componentKit: '0.1.16',
+    cli: '0.1.50',
+    createComponent: '0.1.41',
   },
   uploadTargets: [
     {

@@ -166,7 +166,7 @@ test('upload, probe, and reindex call platform transport paths with stable JSON'
       writeJson(res, {
         success: true,
         sourceVersion: 'component-standard.v0.1.0',
-        sourceHash: 'sha256:cca52d2faf844b15d2da83726d33db398b6ead2aefb3f6bd479b9efa87fc6c84',
+        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
       });
       return;
     }
@@ -264,7 +264,7 @@ test('upload forwards sanitized version notes from environment fallback', async 
       writeJson(res, {
         success: true,
         sourceVersion: 'component-standard.v0.1.0',
-        sourceHash: 'sha256:cca52d2faf844b15d2da83726d33db398b6ead2aefb3f6bd479b9efa87fc6c84',
+        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
       });
       return;
     }
@@ -320,7 +320,7 @@ test('remote commands forward optional dev auth headers without defaulting produ
       writeJson(res, {
         success: true,
         sourceVersion: 'component-standard.v0.1.0',
-        sourceHash: 'sha256:cca52d2faf844b15d2da83726d33db398b6ead2aefb3f6bd479b9efa87fc6c84',
+        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
       });
       return;
     }
@@ -1719,7 +1719,7 @@ test('upload --workspace-component sends explicit source metadata headers', asyn
       writeJson(res, {
         success: true,
         sourceVersion: 'component-standard.v0.1.0',
-        sourceHash: 'sha256:cca52d2faf844b15d2da83726d33db398b6ead2aefb3f6bd479b9efa87fc6c84',
+        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
       });
       return;
     }
@@ -1821,7 +1821,7 @@ test('upload auto-detects a workspace root and uploads configured components', a
       writeJson(res, {
         success: true,
         sourceVersion: 'component-standard.v0.1.0',
-        sourceHash: 'sha256:cca52d2faf844b15d2da83726d33db398b6ead2aefb3f6bd479b9efa87fc6c84',
+        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
       });
       return;
     }
@@ -2393,7 +2393,7 @@ test('upload accepts marketplace strict target alias before platform transport',
       writeJson(res, {
         success: true,
         sourceVersion: 'component-standard.v0.1.0',
-        sourceHash: 'sha256:cca52d2faf844b15d2da83726d33db398b6ead2aefb3f6bd479b9efa87fc6c84',
+        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
       });
       return;
     }
@@ -2435,7 +2435,7 @@ test('directory upload returns local reusability diagnostics with the accepted p
       writeJson(res, {
         success: true,
         sourceVersion: 'component-standard.v0.1.0',
-        sourceHash: 'sha256:cca52d2faf844b15d2da83726d33db398b6ead2aefb3f6bd479b9efa87fc6c84',
+        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
       });
       return;
     }
@@ -2476,7 +2476,7 @@ test('upload --json redacts public-unsafe platform response fields', async () =>
       writeJson(res, {
         success: true,
         sourceVersion: 'component-standard.v0.1.0',
-        sourceHash: 'sha256:cca52d2faf844b15d2da83726d33db398b6ead2aefb3f6bd479b9efa87fc6c84',
+        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
       });
       return;
     }
@@ -2568,7 +2568,7 @@ test('upload default output prints status link and next status command', async (
       writeJson(res, {
         success: true,
         sourceVersion: 'component-standard.v0.1.0',
-        sourceHash: 'sha256:cca52d2faf844b15d2da83726d33db398b6ead2aefb3f6bd479b9efa87fc6c84',
+        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
       });
       return;
     }
@@ -2934,11 +2934,11 @@ test('check reports dependency quarantine without marking it public searchable',
       dependencies: {
         react: '^19.1.0',
         '@unknown/visual-engine': '1.2.3',
-        '@promptframe/contracts': '^0.1.18',
-        '@promptframe/component-kit': '^0.1.15',
+        '@promptframe/contracts': '^0.1.19',
+        '@promptframe/component-kit': '^0.1.16',
       },
       devDependencies: {
-        '@promptframe/cli': '^0.1.49',
+        '@promptframe/cli': '^0.1.50',
       },
     }, null, 2));
     await writeFile(path.join(componentDir, 'pnpm-lock.yaml'), 'lockfileVersion: "9.0"\n');
@@ -3320,15 +3320,15 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
     assert.ok(upgrade.packageChanges.some((change) => (
       change.name === '@promptframe/contracts'
       && change.current === '^0.1.4'
-      && change.next === '^0.1.18'
+      && change.next === '^0.1.19'
     )));
     assert.ok(upgrade.packageChanges.some((change) => (
       change.name === '@promptframe/component-kit'
-      && change.next === '^0.1.15'
+      && change.next === '^0.1.16'
     )));
     assert.ok(upgrade.packageChanges.some((change) => (
       change.name === '@promptframe/cli'
-      && change.next === '^0.1.49'
+      && change.next === '^0.1.50'
     )));
 
     const applied = JSON.parse((await execFileAsync('node', [
@@ -3343,19 +3343,19 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
     assert.equal(applied.apply, true);
     assert.ok(applied.packageChanges.some((change) => change.name === '@promptframe/contracts'));
     const appliedPackageJson = JSON.parse(await readFile(path.join(componentDir, 'package.json'), 'utf8'));
-    assert.equal(appliedPackageJson.dependencies['@promptframe/contracts'], '^0.1.18');
-    assert.equal(appliedPackageJson.dependencies['@promptframe/component-kit'], '^0.1.15');
-    assert.equal(appliedPackageJson.devDependencies['@promptframe/cli'], '^0.1.49');
+    assert.equal(appliedPackageJson.dependencies['@promptframe/contracts'], '^0.1.19');
+    assert.equal(appliedPackageJson.dependencies['@promptframe/component-kit'], '^0.1.16');
+    assert.equal(appliedPackageJson.devDependencies['@promptframe/cli'], '^0.1.50');
 
     await writeFile(path.join(componentDir, 'package.json'), JSON.stringify({
       name: 'fixture-component',
       version: '0.1.0',
       dependencies: {
-        '@promptframe/contracts': '^0.1.18',
-        '@promptframe/component-kit': '^0.1.15',
+        '@promptframe/contracts': '^0.1.19',
+        '@promptframe/component-kit': '^0.1.16',
       },
       devDependencies: {
-        '@promptframe/cli': '^0.1.49',
+        '@promptframe/cli': '^0.1.50',
       },
     }, null, 2));
     const current = JSON.parse((await execFileAsync('node', [
@@ -3396,7 +3396,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     const doctorDiagnostic = doctor.diagnostics.find((item) => item.code === 'scaffold.template.stale');
     assert.equal(doctorDiagnostic.severity, 'warning');
     assert.equal(doctorDiagnostic.current, '0.1.0');
-    assert.equal(doctorDiagnostic.minimum, '0.1.40');
+    assert.equal(doctorDiagnostic.minimum, '0.1.41');
     assert.match(doctorDiagnostic.repairHint, /promptframe upgrade .*--check-latest/);
 
     const packageBefore = await readFile(path.join(componentDir, 'package.json'), 'utf8');
@@ -4141,11 +4141,11 @@ async function writeFixtureComponent(componentDir) {
       name: 'fixture-component',
       version: '0.1.0',
       dependencies: {
-        '@promptframe/contracts': '^0.1.18',
-        '@promptframe/component-kit': '^0.1.15',
+        '@promptframe/contracts': '^0.1.19',
+        '@promptframe/component-kit': '^0.1.16',
       },
       devDependencies: {
-        '@promptframe/cli': '^0.1.49',
+        '@promptframe/cli': '^0.1.50',
       },
     }),
     'pnpm-lock.yaml': 'lockfileVersion: "9.0"\n',

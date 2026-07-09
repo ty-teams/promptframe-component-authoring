@@ -1,7 +1,7 @@
 {
   "schemaVersion": "component-manifest.v0.1.0",
   "standardVersion": "component-standard.v0.1.0",
-  "standardSourceHash": "sha256:cca52d2faf844b15d2da83726d33db398b6ead2aefb3f6bd479b9efa87fc6c84",
+  "standardSourceHash": "sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47",
   "id": "@marketplace/__COMPONENT_NAME__",
   "name": "__COMPONENT_NAME__",
   "displayName": "__DISPLAY_NAME__",
