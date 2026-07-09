@@ -3056,6 +3056,8 @@ test('dev prepares a real Remotion Player local preview command', async () => {
   try {
     const componentDir = path.join(dir, 'component');
     await writeFixtureComponent(componentDir);
+    await mkdir(path.join(componentDir, 'public/assets'), { recursive: true });
+    await writeFile(path.join(componentDir, 'public/assets/logo.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
 
     const { stdout } = await execFileAsync('node', [
       cliPath,
@@ -3079,6 +3081,10 @@ test('dev prepares a real Remotion Player local preview command', async () => {
     assert.equal(payload.command, 'dev');
     assert.equal(payload.renderingSystem, 'remotion-player');
     assert.equal(payload.previewSource, 'src/preview-props.json');
+    assert.equal(payload.devPublicResources.status, 'accepted');
+    assert.equal(payload.devPublicResources.reportPath, '.promptframe/dev-public-resources.json');
+    assert.equal(payload.devPublicResources.generatedModulePath, 'src/promptframe-dev-public-resources.generated.ts');
+    assert.deepEqual(payload.devPublicResources.entries.map((entry) => entry.publicPath), ['/assets/logo.png']);
     assert.equal(payload.devServer.url, 'http://127.0.0.1:5321');
     assert.deepEqual(payload.devServer.command, [
       'npm',
@@ -3091,6 +3097,13 @@ test('dev prepares a real Remotion Player local preview command', async () => {
       '5321',
     ]);
     assert.equal(payload.diagnostic.code, 'dev.ready');
+
+    const report = JSON.parse(await readFile(path.join(componentDir, '.promptframe/dev-public-resources.json'), 'utf8'));
+    assert.equal(report.status, 'accepted');
+    assert.equal(report.entries[0].publicPath, '/assets/logo.png');
+    const generated = await readFile(path.join(componentDir, 'src/promptframe-dev-public-resources.generated.ts'), 'utf8');
+    assert.match(generated, /promptFrameDevPublicResources/);
+    assert.ok(generated.includes('"/assets/logo.png"'));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

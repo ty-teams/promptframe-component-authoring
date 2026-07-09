@@ -93,7 +93,7 @@ npx promptframe status <buildId> --endpoint <promptframe-api-base>
 
 ## 上传与状态
 
-本地 `promptframe dev .` 会启动 Vite 预览壳，并在浏览器里渲染 `src/preview-props.json`。`preview` envelope 检查读取同一个文件，确认预览尺寸、帧率、时长和 props 边界。它们不运行自定义 runtime，也不能替代平台 iframe preview / probe / render evidence。
+本地 `promptframe dev .` 会启动 Vite 预览壳，并在浏览器里渲染 `src/preview-props.json`。它还会根据 `public/` 写入 `.promptframe/dev-public-resources.json` 和 `src/promptframe-dev-public-resources.generated.ts`，预览壳会在 text props 下显示公共资源选择器。`preview` envelope 检查读取同一个文件，确认预览尺寸、帧率、时长和 props 边界。它们不运行自定义 runtime，也不能替代平台 iframe preview / probe / render evidence。
 
 本地预览壳使用 `@remotion/player`，并传入 `acknowledgeRemotionLicense` 来减少本地开发时的重复提示；这不改变平台验收结论，也不是法律建议。作者仍应按自己的用途确认 Remotion license（Remotion 许可证）是否满足分发和商业使用要求。
 

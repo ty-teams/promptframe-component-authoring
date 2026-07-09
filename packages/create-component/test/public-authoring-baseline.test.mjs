@@ -121,6 +121,23 @@ test('public authoring docs and templates expose component public resource contr
   }
 });
 
+test('public templates wire local public resource picker through component-kit inspector', async () => {
+  for (const templateRoot of [
+    'templates/react-remotion',
+    'packages/create-component/templates/react-remotion',
+  ]) {
+    const previewRoot = await readFile(path.join(repoRoot, templateRoot, 'src/PreviewRoot.tsx'), 'utf8');
+    const generatedResources = await readFile(path.join(repoRoot, templateRoot, 'src/promptframe-dev-public-resources.generated.ts'), 'utf8');
+
+    assert.match(previewRoot, /promptFrameDevPublicResources/, templateRoot);
+    assert.match(previewRoot, /renderResourcePicker/, templateRoot);
+    assert.match(previewRoot, /data-promptframe-preview-resource-picker/, templateRoot);
+    assert.match(previewRoot, /data-promptframe-preview-resource-select/, templateRoot);
+    assert.match(generatedResources, /promptFrameDevPublicResources/, templateRoot);
+    assert.match(generatedResources, /readonly PromptFrameDevPublicResource\[\] = \[\]/, templateRoot);
+  }
+});
+
 test('public authoring docs document the current source baseline', async () => {
   for (const docPath of [
     'README.md',

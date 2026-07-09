@@ -13,6 +13,7 @@ import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import Component from './Component';
 import previewEnvelope from './preview-props.json';
+import { promptFrameDevPublicResources, type PromptFrameDevPublicResource } from './promptframe-dev-public-resources.generated';
 import { propsSchema, type ComponentProps } from './schema';
 
 const preview = previewEnvelope as {
@@ -68,6 +69,7 @@ type PreviewMessageKey =
   | 'previewControlsAria'
   | 'props'
   | 'propsStress'
+  | 'publicResources'
   | 'schemaValidationFailed';
 
 const previewMessages: Record<PreviewLocale, Record<PreviewMessageKey, string>> = {
@@ -92,6 +94,7 @@ const previewMessages: Record<PreviewLocale, Record<PreviewMessageKey, string>> 
     previewControlsAria: 'PromptFrame preview controls',
     props: 'Props',
     propsStress: 'Props stress',
+    publicResources: 'Public resources',
     schemaValidationFailed: 'Schema validation failed.',
   },
   zh: {
@@ -115,6 +118,7 @@ const previewMessages: Record<PreviewLocale, Record<PreviewMessageKey, string>> 
     previewControlsAria: 'PromptFrame 预览控制台',
     props: '属性',
     propsStress: '属性压力',
+    publicResources: '公共资源',
     schemaValidationFailed: 'Schema 校验失败。',
   },
 };
@@ -246,6 +250,54 @@ function previewCaseCoverageLabel(previewCase: PromptFramePreviewCase<ComponentP
   return previewCase.probeCoverage === 'platform_probe_equivalent'
     ? t('platformProbeEquivalent')
     : t('localDiagnosticOnly');
+}
+
+function resourceLabel(resource: PromptFrameDevPublicResource): string {
+  return resource.publicPath.split('/').filter(Boolean).pop() ?? resource.publicPath;
+}
+
+function renderLocalResourcePicker({
+  control,
+  readOnly,
+  onSelect,
+}: {
+  control: { key: string; type: string };
+  readOnly: boolean;
+  onSelect: (value: unknown) => void;
+}) {
+  if (control.type !== 'text' || promptFrameDevPublicResources.length === 0) return null;
+  return (
+    <div
+      data-promptframe-preview-resource-picker={control.key}
+      style={{ display: 'grid', gap: 6, marginTop: 8 }}
+    >
+      <span style={{ color: '#64748b', fontSize: 12, fontWeight: 700 }}>{t('publicResources')}</span>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {promptFrameDevPublicResources.map((resource) => (
+          <button
+            data-promptframe-preview-resource-select={resource.publicPath}
+            key={resource.publicPath}
+            type="button"
+            disabled={readOnly}
+            title={`${resource.publicPath} / ${resource.contentType}`}
+            onClick={() => onSelect(resource.publicPath)}
+            style={{
+              border: '1px solid #cbd5e1',
+              borderRadius: 6,
+              background: '#fff',
+              color: '#111827',
+              cursor: readOnly ? 'not-allowed' : 'pointer',
+              font: 'inherit',
+              fontSize: 12,
+              padding: '5px 8px',
+            }}
+          >
+            {resourceLabel(resource)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function PreviewApp() {
@@ -541,6 +593,7 @@ function PreviewApp() {
             editable
             locale={previewLocale}
             onPreviewPropsChange={updateInputProps}
+            renderResourcePicker={renderLocalResourcePicker}
             renderToolbarActions={() => <></>}
             scrollMode="parent"
           />
