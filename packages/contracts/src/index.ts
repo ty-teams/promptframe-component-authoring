@@ -1210,6 +1210,10 @@ export const authoringStandardReleaseSchema = z.object({
   styleContractVersion: z.literal(PROMPTFRAME_STYLE_CONTRACT_VERSION),
   supportedComponentTypes: z.array(promptFrameComponentTypeSchema).min(1),
   minPackageVersions: authoringPackageFloorSchema,
+  scaffoldTemplates: z.array(z.object({
+    name: nonEmptyStringSchema.max(120),
+    digest: sha256Schema,
+  }).strict()).min(1).max(16),
   uploadTargets: z.array(authoringUploadTargetPolicySchema).min(1),
 }).strict();
 export type AuthoringStandardRelease = z.infer<typeof authoringStandardReleaseSchema>;
@@ -1254,11 +1258,17 @@ export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = 
   styleContractVersion: PROMPTFRAME_STYLE_CONTRACT_VERSION,
   supportedComponentTypes: promptFrameComponentTypeSchema.options,
   minPackageVersions: {
-    contracts: '0.1.19',
+    contracts: '0.1.20',
     componentKit: '0.1.16',
-    cli: '0.1.50',
-    createComponent: '0.1.41',
+    cli: '0.1.51',
+    createComponent: '0.1.42',
   },
+  scaffoldTemplates: [
+    {
+      name: 'react-remotion',
+      digest: 'sha256:93e3ccfc9641b4ce725d03448fd433e0bdacd94e00ad26e9fbca7191656f5096',
+    },
+  ],
   uploadTargets: [
     {
       target: 'marketplace_authoring',

@@ -521,6 +521,7 @@ function upgrade(argv: string[]): void {
     dir,
     apply,
     checkLatest,
+    ...(checkLatest ? { checkLatestMode: 'local_scaffold_freshness' } : {}),
     packageChanges,
     diagnostics,
     diagnostic: diagnostic(
@@ -4732,7 +4733,7 @@ Commands:
   validate <dir>                   Validate manifest and basic source boundaries
   check <dir>                      Validate, report rule IDs, and check standard freshness
   upgrade <dir>                    Update PromptFrame package floors (--dry-run by default)
-    --check-latest                 Include scaffold freshness diagnostics without mutating package.json
+    --check-latest                 Include local scaffold freshness diagnostics without mutating package.json; does not query npm latest
   preview <dir>                    Validate and print local Remotion preview envelope
     --write-local-report           Write .promptframe/local-previews/preview-report.json
   dev <dir>                        Start the local Remotion Player preview server

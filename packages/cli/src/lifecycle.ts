@@ -52,6 +52,7 @@ export type ScaffoldFreshnessDiagnostic = CliDiagnostic & {
   current?: string;
   templateName?: string;
   templateDigest?: string;
+  expectedTemplateDigest?: string;
   repairHint: string;
 };
 
@@ -192,9 +193,18 @@ export function computeScaffoldFreshnessDiagnostics(
   if (!metadata || metadata.createdByPackage !== 'create-promptframe-component') return [];
   const minimum = PROMPTFRAME_AUTHORING_STANDARD_RELEASE.minPackageVersions.createComponent;
   const current = typeof metadata.createdByVersion === 'string' ? metadata.createdByVersion : undefined;
-  if (current && !isBelowRequiredRange(current, minimum)) return [];
   const templateName = typeof metadata.templateName === 'string' ? metadata.templateName : undefined;
   const templateDigest = typeof metadata.templateDigest === 'string' ? metadata.templateDigest : undefined;
+  const expectedTemplateDigest = templateName
+    ? PROMPTFRAME_AUTHORING_STANDARD_RELEASE.scaffoldTemplates.find((template) => template.name === templateName)?.digest
+    : undefined;
+  const versionStale = !current || isBelowRequiredRange(current, minimum);
+  const digestStale = Boolean(expectedTemplateDigest && templateDigest !== expectedTemplateDigest);
+  if (!versionStale && !digestStale) return [];
+  const staleReasons = [
+    versionStale ? `version current=${current ?? '<unknown>'}, minimum=${minimum}` : null,
+    digestStale ? `templateDigest current=${templateDigest ?? '<missing>'}, expected=${expectedTemplateDigest}` : null,
+  ].filter(Boolean).join('; ');
   return [{
     code: 'scaffold.template.stale',
     severity: 'warning',
@@ -203,8 +213,9 @@ export function computeScaffoldFreshnessDiagnostics(
     minimum,
     templateName,
     templateDigest,
-    repairHint: 'Run promptframe upgrade . --check-latest to review current package floors, then regenerate or manually port the latest scaffold shell changes.',
-    message: `PromptFrame scaffold template is stale: current=${current ?? '<unknown>'}, minimum=${minimum}. Review latest scaffold changes before upload.`,
+    expectedTemplateDigest,
+    repairHint: 'Run promptframe upgrade . --check-latest to review local scaffold freshness (package floors and template digest; this does not query npm latest), then regenerate or manually port the latest scaffold shell changes.',
+    message: `PromptFrame scaffold template is stale: ${staleReasons}. Review latest scaffold changes before upload.`,
   }];
 }
 

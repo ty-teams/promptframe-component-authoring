@@ -26,11 +26,17 @@ test('authoring standard release exposes upload targets and package floors', () 
   assert.equal(release.uploadTargets[0].requiresHumanPublishApproval, true);
   assert.equal(release.uploadTargets[1].requiresHumanPublishApproval, false);
   assert.deepEqual(release.minPackageVersions, {
-    contracts: '0.1.19',
+    contracts: '0.1.20',
     componentKit: '0.1.16',
-    cli: '0.1.50',
-    createComponent: '0.1.41',
+    cli: '0.1.51',
+    createComponent: '0.1.42',
   });
+  assert.deepEqual(release.scaffoldTemplates, [
+    {
+      name: 'react-remotion',
+      digest: 'sha256:93e3ccfc9641b4ce725d03448fd433e0bdacd94e00ad26e9fbca7191656f5096',
+    },
+  ]);
 });
 
 test('freshness decision keeps local and current standard fingerprints separate', () => {
