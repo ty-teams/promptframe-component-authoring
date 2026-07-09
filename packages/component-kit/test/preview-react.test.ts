@@ -4,7 +4,12 @@ import test from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
+  createPromptFramePreviewInitialState,
+  PromptFramePreviewApp,
   PromptFramePreviewInspector,
+  promptFramePreviewControlResourceSlot,
+  resetPromptFramePreviewState,
+  resolvePromptFramePreviewLocale,
   buildPromptFramePreviewControlsFromSchema,
   parsePromptFramePreviewInspectorJsonDraft,
   type PromptFramePreviewControl,
@@ -89,6 +94,147 @@ test('PromptFramePreviewInspector preserves explicit null preview prop values', 
   assert.match(markup, /&quot;nullable&quot;: null/);
   assert.match(markup, />null<\/textarea>/);
   assert.doesNotMatch(markup, /fallback/);
+});
+
+test('preview state reset restores props, size, timing, case name and locale as one snapshot', () => {
+  const initialState = createPromptFramePreviewInitialState({
+    props: { title: 'Launch', asset: '/logo.png' },
+    width: 1280,
+    height: 720,
+    fps: 30,
+    durationFrames: 120,
+    caseName: 'baseline',
+    locale: 'zh',
+  });
+
+  const dirtyState = {
+    ...initialState,
+    props: { title: 'Changed', asset: '/changed.png' },
+    size: { label: '9:16', width: 720, height: 1280 },
+    timing: { label: 'slow', fps: 30 as const, durationFrames: 240 },
+    caseName: 'mutated',
+    locale: 'en' as const,
+  };
+
+  assert.notDeepEqual(dirtyState, initialState);
+  assert.deepEqual(resetPromptFramePreviewState(initialState), initialState);
+  assert.deepEqual(resetPromptFramePreviewState(initialState, dirtyState), initialState);
+  assert.notEqual(resetPromptFramePreviewState(initialState), initialState);
+});
+
+test('resolvePromptFramePreviewLocale uses explicit, URL, env and browser-language sources before English fallback', () => {
+  assert.equal(resolvePromptFramePreviewLocale({ explicitLocale: 'zh' }), 'zh');
+  assert.equal(resolvePromptFramePreviewLocale({ search: '?locale=zh-CN' }), 'zh');
+  assert.equal(resolvePromptFramePreviewLocale({ envLocale: 'zh_CN.UTF-8' }), 'zh');
+  assert.equal(resolvePromptFramePreviewLocale({ navigatorLanguages: ['fr-FR', 'zh-Hans'] }), 'zh');
+  assert.equal(resolvePromptFramePreviewLocale({ explicitLocale: 'en' }), 'en');
+  assert.equal(resolvePromptFramePreviewLocale({ search: '?locale=fr' }), 'en');
+});
+
+test('PromptFramePreviewInspector only renders resource pickers for explicit resource slots', () => {
+  const calls: string[] = [];
+  const controls: PromptFramePreviewControl[] = [
+    {
+      key: 'title',
+      type: 'text',
+      label: 'Title',
+      defaultValue: 'Launch',
+      schema: { type: 'string' },
+    },
+    {
+      key: 'backgroundImage',
+      type: 'text',
+      label: 'Background image',
+      defaultValue: '/hero.png',
+      schema: {
+        type: 'string',
+        promptFrameResource: { accept: ['image/*'] },
+      },
+    },
+  ];
+
+  const element = React.createElement(PromptFramePreviewInspector, {
+    controls,
+    previewProps: {
+      title: 'Launch',
+      backgroundImage: '/hero.png',
+    },
+    editable: true,
+    locale: 'en',
+    onPreviewPropsChange: () => undefined,
+    renderResourcePicker: ({ control }) => {
+      calls.push(control.key);
+      return React.createElement('button', { type: 'button', 'data-resource-picker': control.key }, `pick ${control.key}`);
+    },
+  });
+
+  const markup = renderToStaticMarkup(element);
+  assert.deepEqual(calls, ['backgroundImage']);
+  assert.doesNotMatch(markup, /data-resource-picker="title"/);
+  assert.match(markup, /data-resource-picker="backgroundImage"/);
+  assert.deepEqual(promptFramePreviewControlResourceSlot(controls[1]), { accept: ['image/*'] });
+  assert.equal(promptFramePreviewControlResourceSlot(controls[0]), undefined);
+});
+
+test('PromptFramePreviewApp renders the shared preview shell with full-state locale and resource slot wiring', () => {
+  const element = React.createElement(PromptFramePreviewApp, {
+    initialProps: {
+      title: 'Launch',
+      backgroundImage: '/hero.png',
+    },
+    previewEnvelope: {
+      durationFrames: 90,
+      fps: 30,
+      width: 1280,
+      height: 720,
+      props: {
+        title: 'Launch',
+        backgroundImage: '/hero.png',
+      },
+    },
+    propsSchema: {
+      shape: {
+        title: zodLike('ZodString', { description: 'Plain title.' }),
+        backgroundImage: zodLike('ZodString', {
+          description: 'Background image.',
+          promptFrameResource: { accept: ['image/*'] },
+        }),
+      },
+    },
+    publicResources: [
+      {
+        publicPath: '/hero.png',
+        sourcePath: 'public/hero.png',
+        artifactPath: 'resources/public/hero.png',
+        kind: 'image',
+        contentType: 'image/png',
+        sizeBytes: 12,
+        sha256: `sha256:${'a'.repeat(64)}`,
+      },
+      {
+        publicPath: '/voice.mp3',
+        sourcePath: 'public/voice.mp3',
+        artifactPath: 'resources/public/voice.mp3',
+        kind: 'audio',
+        contentType: 'audio/mpeg',
+        sizeBytes: 12,
+        sha256: `sha256:${'b'.repeat(64)}`,
+      },
+    ],
+    locale: 'zh',
+    renderStage: ({ props, width, height }) => (
+      React.createElement('div', { 'data-stage': `${width}x${height}` }, String(props.title))
+    ),
+  });
+
+  const markup = renderToStaticMarkup(element);
+  assert.match(markup, /data-promptframe-preview-app/);
+  assert.match(markup, /data-stage="1280x720"/);
+  assert.match(markup, />预览</);
+  assert.match(markup, /data-promptframe-preview-resource-picker="backgroundImage"/);
+  assert.match(markup, /data-promptframe-preview-resource-select="\/hero\.png"/);
+  assert.doesNotMatch(markup, /data-promptframe-preview-resource-select="\/voice\.mp3"/);
+  assert.doesNotMatch(markup, /data-promptframe-preview-resource-picker="title"/);
 });
 
 test('parsePromptFramePreviewInspectorJsonDraft fails closed for invalid JSON and schema mismatch', () => {
@@ -178,6 +324,28 @@ test('buildPromptFramePreviewControlsFromSchema derives descriptions from Zod-li
     controls.some((control) => control.description === 'No prop description was provided; add schema description or metadata.parameterDescriptions.'),
     false,
   );
+});
+
+test('buildPromptFramePreviewControlsFromSchema preserves Zod-like promptFrameResource metadata', () => {
+  const backgroundField = zodLike('ZodString', {
+    description: 'Background image from public resources.',
+    promptFrameResource: { accept: ['image/*'], maxFileBytes: 1024 },
+  });
+
+  const controls = buildPromptFramePreviewControlsFromSchema({
+    propsSchema: {
+      shape: {
+        backgroundImage: backgroundField,
+      },
+    },
+    defaultProps: {
+      backgroundImage: '/hero.png',
+    },
+  });
+
+  const control = controls.find((candidate) => candidate.key === 'backgroundImage');
+  assert.deepEqual(control?.schema?.promptFrameResource, { accept: ['image/*'], maxFileBytes: 1024 });
+  assert.deepEqual(promptFramePreviewControlResourceSlot(control), { accept: ['image/*'], maxFileBytes: 1024 });
 });
 
 function zodLike(typeName: string, def: Record<string, unknown> = {}) {

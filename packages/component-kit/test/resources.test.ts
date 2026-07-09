@@ -5,8 +5,11 @@ import {
   type ComponentRuntimeResourceManifest,
 } from '@promptframe/contracts';
 import {
+  filterPromptFramePublicResourcesForSlot,
   normalizePromptFramePublicResourcePath,
   promptFramePublicResource,
+  promptFramePublicResourceSlotFromSchema,
+  promptFrameRuntimeResourceMatchesSlot,
 } from '../src/resources.js';
 
 const resources: ComponentRuntimeResourceManifest = {
@@ -21,6 +24,26 @@ const resources: ComponentRuntimeResourceManifest = {
       sizeBytes: 12,
       sha256: `sha256:${'a'.repeat(64)}`,
       url: 'https://preview.example/resources/logo.png?token=signed',
+    },
+    {
+      publicPath: '/voice.mp3',
+      sourcePath: 'public/voice.mp3',
+      artifactPath: 'resources/public/voice.mp3',
+      kind: 'audio',
+      contentType: 'audio/mpeg',
+      sizeBytes: 32,
+      sha256: `sha256:${'b'.repeat(64)}`,
+      url: 'https://preview.example/resources/voice.mp3?token=signed',
+    },
+    {
+      publicPath: '/data.csv',
+      sourcePath: 'public/data.csv',
+      artifactPath: 'resources/public/data.csv',
+      kind: 'text',
+      contentType: 'text/csv',
+      sizeBytes: 2048,
+      sha256: `sha256:${'c'.repeat(64)}`,
+      url: 'https://preview.example/resources/data.csv?token=signed',
     },
   ],
 };
@@ -46,4 +69,40 @@ test('promptFramePublicResource rejects traversal, URLs and unsupported path sha
     assert.equal(promptFramePublicResource(resources, unsafePath, '/fallback.png'), '/fallback.png');
     assert.equal(normalizePromptFramePublicResourcePath(unsafePath), undefined);
   }
+});
+
+test('promptFrame public resource slots parse schema metadata and match candidates by MIME, kind and size', () => {
+  const imageSlot = promptFramePublicResourceSlotFromSchema({
+    type: 'string',
+    promptFrameResource: {
+      accept: ['image/*'],
+      maxFileBytes: 1024,
+    },
+  });
+  const dataSlot = promptFramePublicResourceSlotFromSchema({
+    type: 'string',
+    xPromptFrameResource: {
+      kinds: ['text', 'json'],
+      accept: ['text/csv', 'application/json'],
+      maxFileBytes: 4096,
+    },
+  });
+
+  assert.deepEqual(imageSlot, { accept: ['image/*'], maxFileBytes: 1024 });
+  assert.deepEqual(dataSlot, {
+    kinds: ['text', 'json'],
+    accept: ['text/csv', 'application/json'],
+    maxFileBytes: 4096,
+  });
+  assert.equal(promptFrameRuntimeResourceMatchesSlot(resources.entries[0], imageSlot), true);
+  assert.equal(promptFrameRuntimeResourceMatchesSlot(resources.entries[1], imageSlot), false);
+  assert.equal(promptFrameRuntimeResourceMatchesSlot(resources.entries[2], dataSlot), true);
+  assert.deepEqual(
+    filterPromptFramePublicResourcesForSlot(resources, imageSlot).map((entry) => entry.publicPath),
+    ['/logo.png'],
+  );
+  assert.deepEqual(
+    filterPromptFramePublicResourcesForSlot(resources, dataSlot).map((entry) => entry.publicPath),
+    ['/data.csv'],
+  );
 });

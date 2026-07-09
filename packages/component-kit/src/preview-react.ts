@@ -1,4 +1,17 @@
 import React from 'react';
+import {
+  promptFramePublicResource,
+  promptFramePublicResourceSlotFromSchema,
+  promptFrameRuntimeResourceMatchesSlot,
+  type PromptFramePublicResourceCandidate,
+  type PromptFramePublicResourceSlot,
+} from './resources.js';
+import {
+  createPreviewCaseMatrix,
+  formatPromptFramePreviewPropLabel,
+  type PromptFramePreviewCase,
+  type PromptFramePreviewFps,
+} from './preview.js';
 
 export type PromptFramePreviewLocale = 'en' | 'zh';
 export type PromptFramePreviewJsonSchemaType = 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object' | 'null';
@@ -20,6 +33,8 @@ export interface PromptFramePreviewJsonSchemaLike {
   required?: readonly string[];
   minimum?: number;
   maximum?: number;
+  promptFrameResource?: PromptFramePublicResourceSlot;
+  xPromptFrameResource?: PromptFramePublicResourceSlot;
 }
 
 export interface PromptFramePreviewControl {
@@ -41,6 +56,7 @@ export type PromptFramePreviewInspectorJsonDraftResult =
 
 export interface PromptFramePreviewResourcePickerInput {
   control: PromptFramePreviewControl;
+  resourceSlot: PromptFramePublicResourceSlot;
   value: unknown;
   readOnly: boolean;
   onSelect: (value: unknown) => void;
@@ -71,6 +87,73 @@ export interface PromptFramePreviewControlsFromSchemaOptions {
   propsSchema: unknown;
   defaultProps: Record<string, unknown>;
   labelFormatter?: (key: string) => string;
+}
+
+export interface PromptFramePreviewSize {
+  label: string;
+  width: number;
+  height: number;
+}
+
+export interface PromptFramePreviewTiming {
+  label: string;
+  fps: number;
+  durationFrames: number;
+}
+
+export interface PromptFramePreviewState<TProps extends Record<string, unknown> = Record<string, unknown>> {
+  props: TProps;
+  size: PromptFramePreviewSize;
+  timing: PromptFramePreviewTiming;
+  caseName: string;
+  locale: PromptFramePreviewLocale;
+}
+
+export interface PromptFramePreviewInitialStateInput<TProps extends Record<string, unknown> = Record<string, unknown>> {
+  props: TProps;
+  width: number;
+  height: number;
+  fps: number;
+  durationFrames: number;
+  caseName?: string;
+  locale?: PromptFramePreviewLocale;
+  sizeLabel?: string;
+  timingLabel?: string;
+}
+
+export interface PromptFramePreviewLocaleResolutionInput {
+  explicitLocale?: string | null | undefined;
+  search?: string | null | undefined;
+  envLocale?: string | null | undefined;
+  navigatorLanguages?: readonly string[] | null | undefined;
+}
+
+export interface PromptFramePreviewEnvelope<TProps extends Record<string, unknown> = Record<string, unknown>> {
+  durationFrames: number;
+  fps: 30;
+  width: number;
+  height: number;
+  props?: TProps;
+}
+
+export interface PromptFramePreviewStageRenderInput<TProps extends Record<string, unknown> = Record<string, unknown>> {
+  props: TProps;
+  width: number;
+  height: number;
+  fps: PromptFramePreviewFps;
+  durationFrames: number;
+}
+
+export interface PromptFramePreviewAppProps<TProps extends Record<string, unknown> = Record<string, unknown>> {
+  previewEnvelope: PromptFramePreviewEnvelope<TProps>;
+  initialProps: TProps;
+  propsSchema?: unknown;
+  publicResources?: readonly PromptFramePublicResourceCandidate[];
+  locale?: PromptFramePreviewLocale;
+  validateProps?: (candidate: Record<string, unknown>) => TProps | undefined;
+  renderStage: (input: PromptFramePreviewStageRenderInput<TProps>) => React.ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
 }
 
 type SchemaValueEditorProps = {
@@ -104,6 +187,54 @@ export function buildPromptFramePreviewControlsFromSchema({
       schema,
     };
   });
+}
+
+export function createPromptFramePreviewInitialState<TProps extends Record<string, unknown>>({
+  props,
+  width,
+  height,
+  fps,
+  durationFrames,
+  caseName = 'local-preview-case',
+  locale = 'en',
+  sizeLabel = `${width}:${height}`,
+  timingLabel = `${fps}fps`,
+}: PromptFramePreviewInitialStateInput<TProps>): PromptFramePreviewState<TProps> {
+  return {
+    props: cloneJsonValue(props),
+    size: { label: sizeLabel, width, height },
+    timing: { label: timingLabel, fps, durationFrames },
+    caseName,
+    locale,
+  };
+}
+
+export function resetPromptFramePreviewState<TProps extends Record<string, unknown>>(
+  initialState: PromptFramePreviewState<TProps>,
+  _currentState?: PromptFramePreviewState<TProps>,
+): PromptFramePreviewState<TProps> {
+  return cloneJsonValue(initialState);
+}
+
+export function resolvePromptFramePreviewLocale({
+  explicitLocale,
+  search,
+  envLocale,
+  navigatorLanguages,
+}: PromptFramePreviewLocaleResolutionInput = {}): PromptFramePreviewLocale {
+  const candidates = [
+    explicitLocale,
+    localeFromSearch(search),
+    envLocale,
+    ...(navigatorLanguages ?? []),
+  ];
+  return candidates.some((candidate) => normalizePreviewLocale(candidate) === 'zh') ? 'zh' : 'en';
+}
+
+export function promptFramePreviewControlResourceSlot(
+  control: PromptFramePreviewControl | undefined,
+): PromptFramePublicResourceSlot | undefined {
+  return promptFramePublicResourceSlotFromSchema(control?.schema);
 }
 
 const messages = {
@@ -140,6 +271,43 @@ const messages = {
     object: '对象',
     readOnly: '当前表面只能查看 props，不能直接修改。',
     reset: '重置默认值',
+  },
+} as const;
+
+const previewAppMessages = {
+  en: {
+    aspect: 'Aspect',
+    autoCases: 'Auto cases',
+    baselineReset: 'Baseline reset',
+    diagnostics: 'Diagnostics',
+    exportCase: 'Export case',
+    fps: 'FPS',
+    invalidProps: 'Invalid props',
+    noMatchingResources: 'No matching public resources. You can still type a publicPath manually.',
+    platformProbeEquivalent: 'Platform probe equivalent',
+    preview: 'Preview',
+    previewCaseName: 'Preview case name',
+    previewControlsAria: 'PromptFrame preview controls',
+    props: 'Props',
+    propsStress: 'Props stress',
+    publicResources: 'Public resources',
+  },
+  zh: {
+    aspect: '画幅',
+    autoCases: '自动案例',
+    baselineReset: '基线重置',
+    diagnostics: '诊断',
+    exportCase: '导出案例',
+    fps: '帧率',
+    invalidProps: '参数无效',
+    noMatchingResources: '没有匹配的公共资源；你仍然可以手动输入 publicPath。',
+    platformProbeEquivalent: '平台 Probe 等价',
+    preview: '预览',
+    previewCaseName: '预览案例名称',
+    previewControlsAria: 'PromptFrame 预览控制台',
+    props: '属性',
+    propsStress: '属性压力',
+    publicResources: '公共资源',
   },
 } as const;
 
@@ -260,6 +428,299 @@ export function PromptFramePreviewInspector({
   );
 }
 
+export function PromptFramePreviewApp<TProps extends Record<string, unknown>>({
+  previewEnvelope,
+  initialProps,
+  propsSchema,
+  publicResources = [],
+  locale = 'en',
+  validateProps,
+  renderStage,
+  className,
+  style,
+}: PromptFramePreviewAppProps<TProps>): React.ReactElement {
+  const initialState = React.useMemo(
+    () => createPromptFramePreviewInitialState<TProps>({
+      props: initialProps,
+      width: previewEnvelope.width,
+      height: previewEnvelope.height,
+      fps: previewEnvelope.fps,
+      durationFrames: previewEnvelope.durationFrames,
+      caseName: 'local-preview-case',
+      locale,
+      sizeLabel: previewSizeLabel(previewEnvelope.width, previewEnvelope.height),
+    }),
+    [initialProps, locale, previewEnvelope.durationFrames, previewEnvelope.fps, previewEnvelope.height, previewEnvelope.width],
+  );
+  const [previewState, setPreviewState] = React.useState<PromptFramePreviewState<TProps>>(initialState);
+  const [status, setStatus] = React.useState('');
+
+  React.useEffect(() => {
+    setPreviewState(initialState);
+  }, [initialState]);
+
+  const t = (key: keyof typeof previewAppMessages.en) => previewAppMessages[previewState.locale][key];
+  const controls = React.useMemo(
+    () => buildPromptFramePreviewControlsFromSchema({
+      propsSchema,
+      defaultProps: initialProps,
+      labelFormatter: formatPromptFramePreviewPropLabel,
+    }),
+    [initialProps, propsSchema],
+  );
+  const generatedPreviewCases = React.useMemo(
+    () => createPreviewCaseMatrix<TProps>({
+      basePreview: {
+        durationFrames: previewEnvelope.durationFrames,
+        fps: previewEnvelope.fps,
+        width: previewEnvelope.width,
+        height: previewEnvelope.height,
+      },
+      baseProps: initialProps,
+      validateProps: validateProps
+        ? (candidate) => validateProps(candidate)
+        : undefined,
+      aspectPresets: [],
+      durationScalePresets: [0.5, 2],
+    }),
+    [initialProps, previewEnvelope.durationFrames, previewEnvelope.fps, previewEnvelope.height, previewEnvelope.width, validateProps],
+  );
+  const baselinePreviewCase = generatedPreviewCases.find((previewCase) => previewCase.caseKind === 'baseline_reset');
+  const diagnosticPreviewCases = generatedPreviewCases.filter((previewCase) => (
+    previewCase.caseKind === 'props_stress'
+    || previewCase.caseKind === 'duration_diagnostic'
+  ));
+
+  const updateProps = (nextCandidate: Record<string, unknown>) => {
+    const parsed = validateProps ? validateProps(nextCandidate) : nextCandidate as TProps;
+    if (!parsed) {
+      setStatus(t('invalidProps'));
+      return;
+    }
+    setStatus('');
+    setPreviewState((current) => ({ ...current, props: parsed }));
+  };
+
+  const reset = () => {
+    setStatus('');
+    setPreviewState(resetPromptFramePreviewState(initialState, previewState));
+  };
+
+  const applyGeneratedPreviewCase = (previewCase: PromptFramePreviewCase<TProps>) => {
+    setPreviewState((current) => {
+      const next: PromptFramePreviewState<TProps> = {
+        ...current,
+        caseName: previewCase.id,
+        props: previewCase.props,
+      };
+      if (previewCase.caseKind === 'duration_diagnostic') {
+        next.timing = {
+          label: previewCase.name,
+          fps: previewCase.fps,
+          durationFrames: previewCase.durationFrames,
+        };
+      }
+      return next;
+    });
+  };
+
+  const exportPreviewCase = () => {
+    const previewCase = {
+      name: normalizePreviewCaseName(previewState.caseName),
+      width: previewState.size.width,
+      height: previewState.size.height,
+      fps: previewState.timing.fps,
+      durationFrames: previewState.timing.durationFrames,
+      props: previewState.props,
+      generatedAt: new Date().toISOString(),
+    };
+    const fileName = `${slugifyPreviewCaseName(previewState.caseName)}.json`;
+    const browser = browserDownloadPrimitives();
+    if (browser) {
+      const blob = new browser.Blob([JSON.stringify(previewCase, null, 2)], { type: 'application/json' });
+      const url = browser.URL.createObjectURL(blob);
+      const link = browser.document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      browser.URL.revokeObjectURL(url);
+    }
+    setStatus(previewState.locale === 'zh'
+      ? `已导出 ${fileName}。请保存到 .promptframe/local-previews/。`
+      : `Exported ${fileName}. Save it under .promptframe/local-previews/.`);
+  };
+
+  const fillPlayerByWidth = previewState.size.width >= previewState.size.height;
+
+  return React.createElement(
+    'main',
+    {
+      className,
+      'data-promptframe-preview-app': 'true',
+      style: previewAppShellStyle(style),
+    },
+    React.createElement(
+      'section',
+      {
+        'data-promptframe-preview-stage': 'true',
+        style: previewStageStyle,
+      },
+      React.createElement(
+        'div',
+        {
+          'data-promptframe-preview-player': 'true',
+          style: previewPlayerStyle(previewState.size, fillPlayerByWidth),
+        },
+        renderStage({
+          props: previewState.props,
+          width: previewState.size.width,
+          height: previewState.size.height,
+          fps: previewState.timing.fps as PromptFramePreviewFps,
+          durationFrames: previewState.timing.durationFrames,
+        }),
+      ),
+    ),
+    React.createElement(
+      'aside',
+      {
+        'aria-label': t('previewControlsAria'),
+        style: previewAsideStyle,
+      },
+      React.createElement(
+        'div',
+        {
+          'data-promptframe-preview-controls-scroll': 'true',
+          style: previewScrollStyle,
+        },
+        React.createElement(
+          'section',
+          {
+            'data-promptframe-preview-aspect-toolbar': 'true',
+            style: previewToolbarStickyStyle,
+          },
+          React.createElement('h2', { style: previewHeadingStyle }, t('preview')),
+          React.createElement(
+            'div',
+            { 'aria-label': t('aspect'), style: previewAspectGridStyle },
+            previewAspectPresets.map((preset) => React.createElement(
+              'button',
+              {
+                key: preset.label,
+                'data-promptframe-preview-aspect-case': preset.label,
+                type: 'button',
+                onClick: () => setPreviewState((current) => ({ ...current, size: { ...preset } })),
+                style: previewButtonStyle(previewState.size.label === preset.label),
+              },
+              preset.label,
+            )),
+          ),
+          React.createElement(
+            'p',
+            { style: previewMutedTextStyle },
+            `${t('fps')}: ${previewState.timing.label} / ${previewState.timing.durationFrames} frames`,
+          ),
+          React.createElement(
+            'button',
+            {
+              type: 'button',
+              'data-promptframe-preview-reset': 'true',
+              onClick: reset,
+              style: previewPrimaryButtonStyle,
+            },
+            messages[previewState.locale].reset,
+          ),
+        ),
+        React.createElement(
+          'section',
+          { style: previewSectionStyle },
+          React.createElement(
+            'label',
+            { style: previewLabelStyle },
+            React.createElement('span', { style: previewLabelTextStyle }, t('previewCaseName')),
+            React.createElement('input', {
+              'data-promptframe-preview-case-name': 'true',
+              type: 'text',
+              value: previewState.caseName,
+              onChange: (event: unknown) => {
+                setPreviewState((current) => ({ ...current, caseName: eventValue(event) }));
+              },
+              style: inputStyle,
+            }),
+          ),
+          React.createElement(
+            'button',
+            {
+              'data-promptframe-preview-case-export': 'true',
+              type: 'button',
+              onClick: exportPreviewCase,
+              style: previewPrimaryButtonStyle,
+            },
+            t('exportCase'),
+          ),
+          status ? React.createElement('p', { 'aria-live': 'polite', style: previewMutedTextStyle }, status) : null,
+          React.createElement(
+            'div',
+            { style: previewGeneratedCasesStyle },
+            React.createElement('strong', { style: previewLabelTextStyle }, t('autoCases')),
+            baselinePreviewCase ? React.createElement(
+              'button',
+              {
+                'data-promptframe-preview-baseline-reset': 'true',
+                'data-promptframe-preview-case-apply': baselinePreviewCase.id,
+                'data-promptframe-preview-case-kind': baselinePreviewCase.caseKind,
+                type: 'button',
+                title: baselinePreviewCase.description,
+                onClick: () => applyGeneratedPreviewCase(baselinePreviewCase),
+                style: previewPrimaryButtonStyle,
+              },
+              t('baselineReset'),
+            ) : null,
+            React.createElement('span', { style: previewMutedTextStyle }, `${t('propsStress')} / ${t('diagnostics')}`),
+            React.createElement(
+              'div',
+              { style: previewDiagnosticGridStyle },
+              diagnosticPreviewCases.map((previewCase) => React.createElement(
+                'button',
+                {
+                  key: previewCase.id,
+                  'data-promptframe-preview-case-apply': previewCase.id,
+                  'data-promptframe-preview-case-kind': previewCase.caseKind,
+                  type: 'button',
+                  title: `${previewCase.description} ${previewCaseCoverageLabel(previewCase, previewState.locale)}`,
+                  onClick: () => applyGeneratedPreviewCase(previewCase),
+                  style: previewSecondaryButtonStyle,
+                },
+                React.createElement('span', { style: previewCaseNameStyle }, previewCase.name),
+                React.createElement('span', { style: previewMutedTextStyle }, previewCaseCoverageLabel(previewCase, previewState.locale)),
+              )),
+            ),
+          ),
+        ),
+        React.createElement(
+          'section',
+          { style: previewPropsSectionStyle },
+          React.createElement('h2', { style: previewHeadingStyle }, t('props')),
+          React.createElement(PromptFramePreviewInspector, {
+            controls,
+            initialPreviewProps: initialState.props,
+            previewProps: previewState.props,
+            editable: true,
+            locale: previewState.locale,
+            onPreviewPropsChange: updateProps,
+            renderResourcePicker: (input) => renderPreviewAppResourcePicker({
+              ...input,
+              publicResources,
+              locale: previewState.locale,
+            }),
+            renderToolbarActions: () => null,
+            scrollMode: 'parent',
+          }),
+        ),
+      ),
+    ),
+  );
+}
+
 function ControlEditor({
   control,
   value,
@@ -277,6 +738,7 @@ function ControlEditor({
 }): React.ReactElement {
   const label = controlLabel(control, locale);
   const description = controlDescription(control, locale);
+  const resourceSlot = promptFramePreviewControlResourceSlot(control);
   const commonProps = {
     'aria-readonly': readOnly ? 'true' : undefined,
   };
@@ -335,12 +797,15 @@ function ControlEditor({
       onChange,
     }),
     renderDescription(description, control.key, locale),
-    resourcePicker?.({
-      control,
-      value,
-      readOnly,
-      onSelect: onChange,
-    }) ?? null,
+    resourcePicker && resourceSlot
+      ? resourcePicker({
+        control,
+        resourceSlot,
+        value,
+        readOnly,
+        onSelect: onChange,
+      })
+      : null,
   );
 }
 
@@ -600,6 +1065,80 @@ function renderScalarInput({
   });
 }
 
+const previewAspectPresets: PromptFramePreviewSize[] = [
+  { label: '16:9', width: 1280, height: 720 },
+  { label: '9:16', width: 720, height: 1280 },
+  { label: '1:1', width: 960, height: 960 },
+];
+
+function renderPreviewAppResourcePicker({
+  control,
+  resourceSlot,
+  readOnly,
+  onSelect,
+  publicResources,
+  locale,
+}: PromptFramePreviewResourcePickerInput & {
+  publicResources: readonly PromptFramePublicResourceCandidate[];
+  locale: PromptFramePreviewLocale;
+}): React.ReactElement {
+  const candidates = publicResources.filter((resource) => promptFrameRuntimeResourceMatchesSlot(resource, resourceSlot));
+  return React.createElement(
+    'div',
+    {
+      'data-promptframe-preview-resource-picker': control.key,
+      style: resourcePickerShellStyle,
+    },
+    React.createElement('span', { style: resourcePickerTitleStyle }, previewAppMessages[locale].publicResources),
+    candidates.length === 0
+      ? React.createElement('span', { 'data-promptframe-preview-resource-empty': control.key, style: previewMutedTextStyle }, previewAppMessages[locale].noMatchingResources)
+      : React.createElement(
+        'div',
+        { style: resourcePickerButtonGridStyle },
+        candidates.map((resource) => React.createElement(
+          'button',
+          {
+            key: resource.publicPath,
+            'data-promptframe-preview-resource-select': resource.publicPath,
+            type: 'button',
+            disabled: readOnly,
+            title: `${resource.publicPath} / ${resource.contentType}`,
+            onClick: () => onSelect(promptFramePublicResource(undefined, resource.publicPath, resource.publicPath)),
+            style: previewTinyButtonStyle(readOnly),
+          },
+          resourceLabel(resource),
+        )),
+      ),
+  );
+}
+
+function previewSizeLabel(width: number, height: number): string {
+  return previewAspectPresets.find((preset) => preset.width === width && preset.height === height)?.label ?? 'Custom';
+}
+
+function normalizePreviewCaseName(name: string): string {
+  const trimmed = name.trim();
+  return trimmed.length > 0 ? trimmed : 'local-preview-case';
+}
+
+function slugifyPreviewCaseName(name: string): string {
+  const slug = normalizePreviewCaseName(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug.length > 0 ? slug : 'local-preview-case';
+}
+
+function previewCaseCoverageLabel(previewCase: PromptFramePreviewCase, locale: PromptFramePreviewLocale): string {
+  return previewCase.probeCoverage === 'platform_probe_equivalent'
+    ? previewAppMessages[locale].platformProbeEquivalent
+    : 'Local diagnostic only';
+}
+
+function resourceLabel(resource: PromptFramePublicResourceCandidate): string {
+  return resource.publicPath.split('/').filter(Boolean).pop() ?? resource.publicPath;
+}
+
 function validatePromptFramePreviewValue(
   value: unknown,
   schema?: PromptFramePreviewJsonSchemaLike,
@@ -752,7 +1291,12 @@ function zodLikeToPreviewJsonSchema(schemaLike: unknown, fallbackValue?: unknown
     schema = schemaFromValue(fallbackValue);
   }
 
-  return schema ? { ...schema, ...(description ? { description } : {}) } : undefined;
+  const resourceSlot = promptFramePublicResourceSlotFromSchema(schemaLike) ?? promptFramePublicResourceSlotFromSchema(def);
+  return schema ? {
+    ...schema,
+    ...(description ? { description } : {}),
+    ...(resourceSlot ? { promptFrameResource: resourceSlot } : {}),
+  } : undefined;
 }
 
 function zodLikeObjectShape(schemaLike: unknown): Record<string, unknown> {
@@ -912,6 +1456,86 @@ function cloneJsonValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function browserDownloadPrimitives(): {
+  Blob: new (parts: string[], options: { type: string }) => unknown;
+  URL: {
+    createObjectURL(blob: unknown): string;
+    revokeObjectURL(url: string): void;
+  };
+  document: {
+    createElement(tagName: 'a'): {
+      href: string;
+      download: string;
+      click(): void;
+    };
+  };
+} | undefined {
+  const global = globalThis as unknown as {
+    Blob?: new (parts: string[], options: { type: string }) => unknown;
+    URL?: {
+      createObjectURL?: (blob: unknown) => string;
+      revokeObjectURL?: (url: string) => void;
+    };
+    document?: {
+      createElement?: (tagName: 'a') => {
+        href: string;
+        download: string;
+        click: () => void;
+      };
+    };
+  };
+  if (
+    !global.Blob
+    || !global.URL?.createObjectURL
+    || !global.URL.revokeObjectURL
+    || !global.document?.createElement
+  ) {
+    return undefined;
+  }
+  return {
+    Blob: global.Blob,
+    URL: {
+      createObjectURL: global.URL.createObjectURL,
+      revokeObjectURL: global.URL.revokeObjectURL,
+    },
+    document: {
+      createElement: (tagName) => {
+        const element = global.document?.createElement?.(tagName);
+        if (element) return element;
+        return { href: '', download: '', click: () => undefined };
+      },
+    },
+  };
+}
+
+function localeFromSearch(search: string | null | undefined): string | undefined {
+  if (!search) return undefined;
+  const query = search.startsWith('?') ? search.slice(1) : search;
+  for (const part of query.split('&')) {
+    const [rawKey, rawValue = ''] = part.split('=');
+    const key = decodeURIComponentSafe(rawKey.replace(/\+/g, ' '));
+    if (key !== 'locale' && key !== 'lang') continue;
+    return decodeURIComponentSafe(rawValue.replace(/\+/g, ' '));
+  }
+  return undefined;
+}
+
+function decodeURIComponentSafe(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function normalizePreviewLocale(candidate: string | null | undefined): PromptFramePreviewLocale | undefined {
+  if (!candidate) return undefined;
+  const normalized = candidate.trim().toLowerCase().replace('_', '-');
+  if (normalized === 'zh' || normalized.startsWith('zh-')) return 'zh';
+  if (normalized === 'en' || normalized.startsWith('en-')) return 'en';
+  return undefined;
+}
+
 function eventValue(event: unknown): string {
   const target = eventTarget(event);
   return typeof target.value === 'string' ? target.value : '';
@@ -979,6 +1603,25 @@ const advancedJsonStyle: React.CSSProperties = { display: 'grid', gap: 6 };
 const colorFieldStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8 };
 const colorSwatchStyle: React.CSSProperties = { width: 20, height: 20, borderRadius: 999, border: '1px solid var(--pf-preview-border, #cbd5e1)', display: 'inline-block' };
 const jsonBoxStyle: React.CSSProperties = { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, overflow: 'auto', fontSize: 12 };
+const previewStageStyle: React.CSSProperties = { minWidth: 0, minHeight: 0, width: '100%', height: '100%', display: 'grid', placeItems: 'center', overflow: 'hidden' };
+const previewAsideStyle: React.CSSProperties = { alignSelf: 'stretch', background: '#f8fafc', color: '#111827', borderRadius: 8, boxSizing: 'border-box', maxHeight: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' };
+const previewScrollStyle: React.CSSProperties = { flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: 18, boxSizing: 'border-box', overscrollBehavior: 'contain' };
+const previewToolbarStickyStyle: React.CSSProperties = { position: 'sticky', top: 0, zIndex: 2, background: '#f8fafc', paddingBottom: 12, borderBottom: '1px solid #e2e8f0', display: 'grid', gap: 8 };
+const previewHeadingStyle: React.CSSProperties = { fontSize: 16, margin: 0, letterSpacing: 0 };
+const previewAspectGridStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 };
+const previewMutedTextStyle: React.CSSProperties = { color: '#64748b', fontSize: 12, margin: 0 };
+const previewSectionStyle: React.CSSProperties = { marginTop: 16, display: 'grid', gap: 10 };
+const previewPropsSectionStyle: React.CSSProperties = { marginTop: 22 };
+const previewLabelStyle: React.CSSProperties = { display: 'grid', gap: 6, fontSize: 13 };
+const previewLabelTextStyle: React.CSSProperties = { color: '#334155', fontWeight: 700, fontSize: 13 };
+const previewGeneratedCasesStyle: React.CSSProperties = { display: 'grid', gap: 8 };
+const previewDiagnosticGridStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 };
+const previewPrimaryButtonStyle: React.CSSProperties = { border: '1px solid #111827', borderRadius: 6, background: '#111827', color: '#fff', font: 'inherit', fontSize: 12, fontWeight: 700, padding: '8px 10px', cursor: 'pointer' };
+const previewSecondaryButtonStyle: React.CSSProperties = { border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#111827', font: 'inherit', fontSize: 12, padding: '8px 10px', cursor: 'pointer', display: 'grid', gap: 4 };
+const previewCaseNameStyle: React.CSSProperties = { display: 'block', fontWeight: 700 };
+const resourcePickerShellStyle: React.CSSProperties = { display: 'grid', gap: 6, marginTop: 8 };
+const resourcePickerTitleStyle: React.CSSProperties = { color: '#64748b', fontSize: 12, fontWeight: 700 };
+const resourcePickerButtonGridStyle: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 6 };
 
 function actionButtonStyle(disabled: boolean): React.CSSProperties {
   return {
@@ -988,5 +1631,62 @@ function actionButtonStyle(disabled: boolean): React.CSSProperties {
     background: '#fff',
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.55 : 1,
+  };
+}
+
+function previewAppShellStyle(style: React.CSSProperties | undefined): React.CSSProperties {
+  return {
+    width: '100%',
+    height: '100%',
+    margin: 0,
+    background: '#111827',
+    color: '#f8fafc',
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) minmax(280px, 360px)',
+    gap: 24,
+    padding: 24,
+    boxSizing: 'border-box',
+    overflow: 'hidden',
+    ...style,
+  };
+}
+
+function previewPlayerStyle(size: PromptFramePreviewSize, fillByWidth: boolean): React.CSSProperties {
+  return {
+    width: fillByWidth ? '100%' : 'auto',
+    height: fillByWidth ? 'auto' : '100%',
+    maxWidth: '100%',
+    maxHeight: '100%',
+    aspectRatio: `${size.width} / ${size.height}`,
+    display: 'grid',
+    placeItems: 'center',
+    overflow: 'hidden',
+    background: '#000',
+    boxShadow: '0 18px 60px rgba(0, 0, 0, 0.38)',
+  };
+}
+
+function previewButtonStyle(active: boolean): React.CSSProperties {
+  return {
+    border: '1px solid #cbd5e1',
+    borderRadius: 6,
+    background: active ? '#111827' : '#fff',
+    color: active ? '#fff' : '#111827',
+    font: 'inherit',
+    padding: '8px 10px',
+    cursor: 'pointer',
+  };
+}
+
+function previewTinyButtonStyle(disabled: boolean): React.CSSProperties {
+  return {
+    border: '1px solid #cbd5e1',
+    borderRadius: 6,
+    background: '#fff',
+    color: '#111827',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    font: 'inherit',
+    fontSize: 12,
+    padding: '5px 8px',
   };
 }
