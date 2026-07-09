@@ -34,7 +34,7 @@ test('authoring standard release exposes upload targets and package floors', () 
   assert.deepEqual(release.scaffoldTemplates, [
     {
       name: 'react-remotion',
-      digest: 'sha256:93e3ccfc9641b4ce725d03448fd433e0bdacd94e00ad26e9fbca7191656f5096',
+      digest: 'sha256:4de0df168bcf85bf88e396d23f2ef66266ff8dc64f3c3d992ebd448d84d04dec',
     },
   ]);
 });

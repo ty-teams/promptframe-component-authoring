@@ -3500,7 +3500,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-scaffold-freshness-'));
   try {
     const componentDir = path.join(dir, 'component');
-    const currentReactRemotionTemplateDigest = 'sha256:93e3ccfc9641b4ce725d03448fd433e0bdacd94e00ad26e9fbca7191656f5096';
+    const currentReactRemotionTemplateDigest = 'sha256:4de0df168bcf85bf88e396d23f2ef66266ff8dc64f3c3d992ebd448d84d04dec';
     await writeFixtureComponent(componentDir);
     await mkdir(path.join(componentDir, '.promptframe'), { recursive: true });
     await writeFile(path.join(componentDir, '.promptframe/scaffold.json'), `${JSON.stringify({
@@ -3580,6 +3580,62 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
       '--json',
     ])).stdout);
     assert.equal(currentTemplate.diagnostics.some((item) => item.code === 'scaffold.template.stale'), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('sync refreshes legacy fat preview shell without overwriting author component files', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-sync-preview-shell-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    const componentPath = path.join(componentDir, 'src/Component.tsx');
+    const previewRootPath = path.join(componentDir, 'src/PreviewRoot.tsx');
+    const originalComponent = await readFile(componentPath, 'utf8');
+    await writeFile(previewRootPath, [
+      "import { useState } from 'react';",
+      'const previewMessages = { en: { preview: "Preview" } };',
+      'function PreviewApp() {',
+      '  useState({});',
+      '  return null;',
+      '}',
+    ].join('\n'));
+
+    const dryRun = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'sync',
+      componentDir,
+      '--dry-run',
+      '--json',
+    ])).stdout);
+    assert.equal(dryRun.command, 'sync');
+    assert.equal(dryRun.apply, false);
+    assert.equal(dryRun.previewShell.status, 'legacy_fat_shell');
+    assert.equal(dryRun.files.some((file) => file.path === 'src/PreviewRoot.tsx' && file.action === 'would_update'), true);
+    assert.match(dryRun.diagnostic.message, /thin PreviewRoot/);
+    assert.match(await readFile(previewRootPath, 'utf8'), /function PreviewApp/);
+
+    const applied = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'sync',
+      componentDir,
+      '--apply',
+      '--json',
+    ])).stdout);
+    assert.equal(applied.command, 'sync');
+    assert.equal(applied.apply, true);
+    assert.equal(applied.previewShell.status, 'legacy_fat_shell');
+    assert.equal(applied.files.some((file) => file.path === 'src/PreviewRoot.tsx' && file.action === 'updated'), true);
+    assert.equal(await readFile(componentPath, 'utf8'), originalComponent);
+
+    const previewRoot = await readFile(previewRootPath, 'utf8');
+    const generatedResources = await readFile(path.join(componentDir, 'src/promptframe-dev-public-resources.generated.ts'), 'utf8');
+    assert.match(previewRoot, /PromptFramePreviewApp/);
+    assert.match(previewRoot, /renderStage/);
+    assert.doesNotMatch(previewRoot, /function PreviewApp/);
+    assert.doesNotMatch(previewRoot, /useState/);
+    assert.match(generatedResources, /ComponentPublicResourceKind/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

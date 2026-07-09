@@ -122,6 +122,12 @@ test('public authoring docs and templates expose component public resource contr
 });
 
 test('public templates wire local public resource picker through component-kit inspector', async () => {
+  const sharedPreviewShell = await readFile(path.join(repoRoot, 'packages/component-kit/src/preview-react.ts'), 'utf8');
+  assert.match(sharedPreviewShell, /renderPreviewAppResourcePicker/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /data-promptframe-preview-resource-picker/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /data-promptframe-preview-resource-select/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /promptFrameRuntimeResourceMatchesSlot/, 'component-kit shared preview shell');
+
   for (const templateRoot of [
     'templates/react-remotion',
     'packages/create-component/templates/react-remotion',
@@ -130,9 +136,10 @@ test('public templates wire local public resource picker through component-kit i
     const generatedResources = await readFile(path.join(repoRoot, templateRoot, 'src/promptframe-dev-public-resources.generated.ts'), 'utf8');
 
     assert.match(previewRoot, /promptFrameDevPublicResources/, templateRoot);
-    assert.match(previewRoot, /renderResourcePicker/, templateRoot);
-    assert.match(previewRoot, /data-promptframe-preview-resource-picker/, templateRoot);
-    assert.match(previewRoot, /data-promptframe-preview-resource-select/, templateRoot);
+    assert.match(previewRoot, /PromptFramePreviewApp/, templateRoot);
+    assert.doesNotMatch(previewRoot, /renderResourcePicker/, templateRoot);
+    assert.doesNotMatch(previewRoot, /data-promptframe-preview-resource-picker/, templateRoot);
+    assert.match(generatedResources, /ComponentPublicResourceKind/, templateRoot);
     assert.match(generatedResources, /promptFrameDevPublicResources/, templateRoot);
     assert.match(generatedResources, /readonly PromptFrameDevPublicResource\[\] = \[\]/, templateRoot);
   }
@@ -206,21 +213,26 @@ test('public templates include a real Remotion Player dev preview shell', async 
 });
 
 test('public templates expose schema-derived local controls and aspect presets', async () => {
+  const sharedPreviewShell = await readFile(path.join(repoRoot, 'packages/component-kit/src/preview-react.ts'), 'utf8');
+  assert.match(sharedPreviewShell, /buildPromptFramePreviewControlsFromSchema/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /previewAspectPresets/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /16:9/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /9:16/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /1:1/, 'component-kit shared preview shell');
+
   for (const templateRoot of [
     'templates/react-remotion',
     'packages/create-component/templates/react-remotion',
   ]) {
     const previewRoot = await readFile(path.join(repoRoot, templateRoot, 'src/PreviewRoot.tsx'), 'utf8');
 
-    assert.match(previewRoot, /useState/, templateRoot);
+    assert.doesNotMatch(previewRoot, /useState/, templateRoot);
+    assert.match(previewRoot, /PromptFramePreviewApp/, templateRoot);
     assert.match(previewRoot, /propsSchema\.safeParse/, templateRoot);
-    assert.match(previewRoot, /previewAspectPresets/, templateRoot);
-    assert.match(previewRoot, /16:9/, templateRoot);
-    assert.match(previewRoot, /9:16/, templateRoot);
-    assert.match(previewRoot, /1:1/, templateRoot);
-    assert.match(previewRoot, /previewInspectorControls/, templateRoot);
-    assert.match(previewRoot, /PromptFramePreviewControl/, templateRoot);
-    assert.match(previewRoot, /setInputProps/, templateRoot);
+    assert.doesNotMatch(previewRoot, /previewAspectPresets/, templateRoot);
+    assert.doesNotMatch(previewRoot, /previewInspectorControls/, templateRoot);
+    assert.doesNotMatch(previewRoot, /PromptFramePreviewControl/, templateRoot);
+    assert.doesNotMatch(previewRoot, /setInputProps/, templateRoot);
   }
 });
 
@@ -230,6 +242,12 @@ test('public templates expose saved local preview case export controls', async (
     assert.match(text, /\.promptframe\/local-previews/, docPath);
   }
 
+  const sharedPreviewShell = await readFile(path.join(repoRoot, 'packages/component-kit/src/preview-react.ts'), 'utf8');
+  assert.match(sharedPreviewShell, /exportPreviewCase/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /data-promptframe-preview-case-export/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /generatedAt/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /durationFrames/, 'component-kit shared preview shell');
+
   for (const templateRoot of [
     'templates/react-remotion',
     'packages/create-component/templates/react-remotion',
@@ -237,18 +255,27 @@ test('public templates expose saved local preview case export controls', async (
     const previewRoot = await readFile(path.join(repoRoot, templateRoot, 'src/PreviewRoot.tsx'), 'utf8');
     const readme = await readFile(path.join(repoRoot, templateRoot, 'README.md'), 'utf8');
 
-    assert.match(previewRoot, /buildPreviewCase/, templateRoot);
-    assert.match(previewRoot, /exportPreviewCase/, templateRoot);
-    assert.match(previewRoot, /data-promptframe-preview-case-export/, templateRoot);
-    assert.match(previewRoot, /generatedAt/, templateRoot);
+    assert.match(previewRoot, /PromptFramePreviewApp/, templateRoot);
+    assert.doesNotMatch(previewRoot, /buildPreviewCase/, templateRoot);
+    assert.doesNotMatch(previewRoot, /exportPreviewCase/, templateRoot);
+    assert.doesNotMatch(previewRoot, /data-promptframe-preview-case-export/, templateRoot);
     assert.match(previewRoot, /durationFrames/, templateRoot);
-    assert.match(previewRoot, /inputProps/, templateRoot);
+    assert.doesNotMatch(previewRoot, /const \[inputProps/, templateRoot);
     assert.match(readme, /\.promptframe\/local-previews/, templateRoot);
     assert.match(readme, /导出|保存/, templateRoot);
   }
 });
 
 test('public templates expose the component-kit preview case matrix without default aspect/fps diagnostics', async () => {
+  const sharedPreviewShell = await readFile(path.join(repoRoot, 'packages/component-kit/src/preview-react.ts'), 'utf8');
+  assert.match(sharedPreviewShell, /createPreviewCaseMatrix/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /data-promptframe-preview-case-apply/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /data-promptframe-preview-baseline-reset/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /data-promptframe-preview-aspect-case/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /data-promptframe-preview-case-kind/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /aspectPresets:\s*\[\]/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /durationScalePresets:\s*\[0\.5,\s*2\]/, 'component-kit shared preview shell');
+
   for (const templateRoot of [
     'templates/react-remotion',
     'packages/create-component/templates/react-remotion',
@@ -256,19 +283,12 @@ test('public templates expose the component-kit preview case matrix without defa
     const previewRoot = await readFile(path.join(repoRoot, templateRoot, 'src/PreviewRoot.tsx'), 'utf8');
     const readme = await readFile(path.join(repoRoot, templateRoot, 'README.md'), 'utf8');
 
-    assert.match(previewRoot, /createPreviewCaseMatrix/, templateRoot);
-    assert.match(previewRoot, /data-promptframe-preview-case-apply/, templateRoot);
-    assert.match(previewRoot, /data-promptframe-preview-baseline-reset/, templateRoot);
-    assert.match(previewRoot, /data-promptframe-preview-aspect-case/, templateRoot);
-    assert.match(previewRoot, /data-promptframe-preview-case-kind/, templateRoot);
-    assert.match(previewRoot, /aspectPresets:\s*\[\]/, templateRoot);
-    assert.match(previewRoot, /fpsPresets:\s*\[\]/, templateRoot);
-    assert.match(previewRoot, /durationScalePresets:\s*\[0\.5,\s*2\]/, templateRoot);
-    assert.match(previewRoot, /caseKind === 'props_stress'[\s\S]+caseKind === 'duration_diagnostic'/, templateRoot);
+    assert.match(previewRoot, /PromptFramePreviewApp/, templateRoot);
+    assert.doesNotMatch(previewRoot, /createPreviewCaseMatrix/, templateRoot);
+    assert.doesNotMatch(previewRoot, /data-promptframe-preview-case-apply/, templateRoot);
+    assert.doesNotMatch(previewRoot, /data-promptframe-preview-baseline-reset/, templateRoot);
+    assert.doesNotMatch(previewRoot, /fpsPresets/, templateRoot);
     assert.doesNotMatch(previewRoot, /caseKind === 'fps_diagnostic'/, templateRoot);
-    assert.match(previewRoot, /Auto cases/, templateRoot);
-    assert.match(previewRoot, /Platform probe equivalent/, templateRoot);
-    assert.match(previewRoot, /Local diagnostic only/, templateRoot);
     assert.match(previewRoot, /propsSchema\.safeParse/, templateRoot);
     assert.match(readme, /自动生成.*preview cases|preview cases.*自动生成/, templateRoot);
   }
@@ -296,33 +316,34 @@ test('public templates use CSS Module and slot layout helper instead of all-inli
     assert.equal(manifest.layout?.layoutMode, 'slot_fill_reflow', templateRoot);
     assert.equal(manifest.layout?.recommendedSlot, 'full_screen', templateRoot);
     assert.deepEqual(manifest.layout?.supportedAspectRatios, ['16:9', '9:16', '1:1'], templateRoot);
-    assert.doesNotMatch(previewRoot, /navigator\.language/, templateRoot);
+    assert.doesNotMatch(previewRoot, /navigator\.language\b/, templateRoot);
   }
 });
 
 test('public templates localize PreviewRoot controls and derive readable prop labels', async () => {
+  const sharedPreviewShell = await readFile(path.join(repoRoot, 'packages/component-kit/src/preview-react.ts'), 'utf8');
+  assert.match(sharedPreviewShell, /previewAppMessages/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /formatPromptFramePreviewPropLabel/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /buildPromptFramePreviewControlsFromSchema/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /PromptFramePreviewInspector/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /Aspect/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /画幅/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /Props/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /属性/, 'component-kit shared preview shell');
+
   for (const templateRoot of [
     'templates/react-remotion',
     'packages/create-component/templates/react-remotion',
   ]) {
     const previewRoot = await readFile(path.join(repoRoot, templateRoot, 'src/PreviewRoot.tsx'), 'utf8');
 
-    assert.match(previewRoot, /type PreviewLocale = 'en' \| 'zh'/, templateRoot);
-    assert.match(previewRoot, /previewMessages/, templateRoot);
-    assert.match(previewRoot, /resolvePreviewLocale/, templateRoot);
-    assert.match(previewRoot, /formatPromptFramePreviewPropLabel/, templateRoot);
-    assert.match(previewRoot, /buildPromptFramePreviewControlsFromSchema/, templateRoot);
-    assert.match(previewRoot, /propsSchema,\s*defaultProps:\s*initialProps/, templateRoot);
-    assert.match(previewRoot, /PromptFramePreviewInspector/, templateRoot);
+    assert.match(previewRoot, /resolvePromptFramePreviewLocale/, templateRoot);
+    assert.match(previewRoot, /PromptFramePreviewApp/, templateRoot);
+    assert.doesNotMatch(previewRoot, /previewMessages/, templateRoot);
+    assert.doesNotMatch(previewRoot, /formatPromptFramePreviewPropLabel/, templateRoot);
+    assert.doesNotMatch(previewRoot, /buildPromptFramePreviewControlsFromSchema/, templateRoot);
+    assert.doesNotMatch(previewRoot, /PromptFramePreviewInspector/, templateRoot);
     assert.match(previewRoot, /@promptframe\/component-kit\/preview-react/, templateRoot);
-    assert.match(previewRoot, /isZh/, templateRoot);
-    assert.match(previewRoot, /Aspect/, templateRoot);
-    assert.match(previewRoot, /画幅/, templateRoot);
-    assert.match(previewRoot, /Props/, templateRoot);
-    assert.match(previewRoot, /属性/, templateRoot);
-    assert.match(previewRoot, /<PromptFramePreviewInspector/, templateRoot);
-    assert.match(previewRoot, /onPreviewPropsChange=\{updateInputProps\}/, templateRoot);
-    assert.match(previewRoot, /scrollMode="parent"/, templateRoot);
     assert.doesNotMatch(previewRoot, /navigator\.clipboard/, templateRoot);
     assert.doesNotMatch(previewRoot, /function formatPropLabel/, templateRoot);
     assert.doesNotMatch(previewRoot, /function coerceControlValue/, templateRoot);
@@ -335,6 +356,21 @@ test('public templates localize PreviewRoot controls and derive readable prop la
 });
 
 test('public templates keep the PreviewRoot viewport locked and Player contained with gold shell layout', async () => {
+  const sharedPreviewShell = await readFile(path.join(repoRoot, 'packages/component-kit/src/preview-react.ts'), 'utf8');
+  assert.match(sharedPreviewShell, /height:\s*'100%'/, 'component-kit shared preview shell');
+  assert.doesNotMatch(sharedPreviewShell, /height:\s*'100vh'|width:\s*'100vw'/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /overflow:\s*'hidden'/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /fillPlayerByWidth/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /width:\s*fillByWidth\s*\?\s*'100%'\s*:\s*'auto'/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /height:\s*fillByWidth\s*\?\s*'auto'\s*:\s*'100%'/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /maxWidth:\s*'100%'/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /maxHeight:\s*'100%'/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /position:\s*'sticky'/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /data-promptframe-preview-stage/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /data-promptframe-preview-player/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /data-promptframe-preview-controls-scroll/, 'component-kit shared preview shell');
+  assert.match(sharedPreviewShell, /data-promptframe-preview-aspect-toolbar/, 'component-kit shared preview shell');
+
   for (const templateRoot of [
     'templates/react-remotion',
     'packages/create-component/templates/react-remotion',
@@ -346,24 +382,10 @@ test('public templates keep the PreviewRoot viewport locked and Player contained
     assert.match(indexHtml, /#root/, templateRoot);
     assert.match(indexHtml, /height:\s*100%/, templateRoot);
     assert.match(indexHtml, /margin:\s*0/, templateRoot);
-    assert.match(previewRoot, /height:\s*'100%'/, templateRoot);
-    assert.doesNotMatch(previewRoot, /height:\s*'100vh'|width:\s*'100vw'/, templateRoot);
-    assert.match(previewRoot, /overflow:\s*'hidden'/, templateRoot);
-    assert.match(previewRoot, /fillPlayerByWidth/, templateRoot);
-    assert.match(previewRoot, /width:\s*fillPlayerByWidth\s*\?\s*'100%'\s*:\s*'auto'/, templateRoot);
-    assert.match(previewRoot, /height:\s*fillPlayerByWidth\s*\?\s*'auto'\s*:\s*'100%'/, templateRoot);
-    assert.match(previewRoot, /maxWidth:\s*'100%'/, templateRoot);
-    assert.match(previewRoot, /maxHeight:\s*'100%'/, templateRoot);
-    assert.match(previewRoot, /aspectPresets:\s*\[\]/, templateRoot);
-    assert.match(previewRoot, /fpsPresets:\s*\[\]/, templateRoot);
-    assert.match(previewRoot, /position:\s*'sticky'/, templateRoot);
+    assert.match(previewRoot, /PromptFramePreviewApp/, templateRoot);
+    assert.match(previewRoot, /renderStage/, templateRoot);
     assert.doesNotMatch(previewRoot, /1280px|min\(100%,\s*1280px/, templateRoot);
-    assert.match(previewRoot, /PromptFramePreviewInspector/, templateRoot);
     assert.match(previewRoot, /acknowledgeRemotionLicense/, templateRoot);
-    assert.match(previewRoot, /data-promptframe-preview-stage/, templateRoot);
-    assert.match(previewRoot, /data-promptframe-preview-player/, templateRoot);
-    assert.match(previewRoot, /data-promptframe-preview-controls-scroll/, templateRoot);
-    assert.match(previewRoot, /data-promptframe-preview-aspect-toolbar/, templateRoot);
   }
 });
 
@@ -379,7 +401,7 @@ test('public templates provide JSON fallback controls for complex props', async 
   ]) {
     const previewRoot = await readFile(path.join(repoRoot, templateRoot, 'src/PreviewRoot.tsx'), 'utf8');
 
-    assert.match(previewRoot, /PromptFramePreviewInspector/, templateRoot);
+    assert.match(previewRoot, /PromptFramePreviewApp/, templateRoot);
     assert.match(previewRoot, /@promptframe\/component-kit\/preview-react/, templateRoot);
     assert.doesNotMatch(previewRoot, /isPromptFramePreviewJsonLikeValue/, templateRoot);
     assert.doesNotMatch(previewRoot, /parsePromptFramePreviewJsonDraft/, templateRoot);
@@ -404,8 +426,8 @@ test('public templates render complex props as structured controls before JSON f
   ]) {
     const previewRoot = await readFile(path.join(repoRoot, templateRoot, 'src/PreviewRoot.tsx'), 'utf8');
 
-    assert.match(previewRoot, /PromptFramePreviewInspector/, templateRoot);
-    assert.match(previewRoot, /previewInspectorControls/, templateRoot);
+    assert.match(previewRoot, /PromptFramePreviewApp/, templateRoot);
+    assert.doesNotMatch(previewRoot, /previewInspectorControls/, templateRoot);
     assert.doesNotMatch(previewRoot, /data-promptframe-prop-structured/, templateRoot);
     assert.doesNotMatch(previewRoot, /data-promptframe-prop-field/, templateRoot);
     assert.doesNotMatch(previewRoot, /data-promptframe-prop-array-item/, templateRoot);

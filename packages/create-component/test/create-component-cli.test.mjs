@@ -29,10 +29,16 @@ test('create CLI honors explicit component name independently of target director
     const packageJson = JSON.parse(await readFile(path.join(target, 'package.json'), 'utf8'));
     const scaffold = JSON.parse(await readFile(path.join(target, '.promptframe/scaffold.json'), 'utf8'));
     const createPackage = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'));
+    const previewRoot = await readFile(path.join(target, 'src/PreviewRoot.tsx'), 'utf8');
     assert.equal(manifest.name, 'sales-funnel-pulse');
     assert.equal(manifest.displayName, 'Sales Funnel Pulse');
     assert.equal(manifest.description, 'Sales funnel component');
     assert.equal(packageJson.name, 'sales-funnel-pulse');
+    assert.match(previewRoot, /PromptFramePreviewApp/);
+    assert.match(previewRoot, /renderStage/);
+    assert.doesNotMatch(previewRoot, /function PreviewApp/);
+    assert.doesNotMatch(previewRoot, /useState/);
+    assert.doesNotMatch(previewRoot, /previewMessages/);
     assert.equal(scaffold.schemaVersion, 'promptframe.scaffold.v0.1.0');
     assert.equal(scaffold.createdByPackage, 'create-promptframe-component');
     assert.equal(scaffold.createdByVersion, createPackage.version);
