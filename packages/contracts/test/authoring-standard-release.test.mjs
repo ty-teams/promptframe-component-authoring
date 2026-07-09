@@ -26,21 +26,21 @@ test('authoring standard release exposes upload targets and package floors', () 
   assert.equal(release.uploadTargets[0].requiresHumanPublishApproval, true);
   assert.equal(release.uploadTargets[1].requiresHumanPublishApproval, false);
   assert.deepEqual(release.minPackageVersions, {
-    contracts: '0.1.21',
-    componentKit: '0.1.17',
-    cli: '0.1.53',
-    createComponent: '0.1.43',
+    contracts: '0.1.22',
+    componentKit: '0.1.18',
+    cli: '0.1.54',
+    createComponent: '0.1.44',
   });
   assert.deepEqual(release.recommendedAuthoringPackages, {
-    contracts: '0.1.21',
-    componentKit: '0.1.17',
-    cli: '0.1.53',
-    createComponent: '0.1.43',
+    contracts: '0.1.22',
+    componentKit: '0.1.18',
+    cli: '0.1.54',
+    createComponent: '0.1.44',
   });
   assert.deepEqual(release.scaffoldTemplates, [
     {
       name: 'react-remotion',
-      digest: 'sha256:e924a07652443affbbfba0d7a59bf7c5c502869a9773193921d9a30c8e975a0c',
+      digest: 'sha256:1caf729fa0eb8880744320e7b44305c2c72a52547c2d800995a73195382f0027',
     },
   ]);
 });

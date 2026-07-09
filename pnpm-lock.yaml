@@ -15,7 +15,7 @@ importers:
   packages/cli:
     dependencies:
       '@promptframe/contracts':
-        specifier: ^0.1.21
+        specifier: ^0.1.22
         version: link:../contracts
     devDependencies:
       '@types/node':
@@ -28,7 +28,7 @@ importers:
   packages/component-kit:
     dependencies:
       '@promptframe/contracts':
-        specifier: ^0.1.21
+        specifier: ^0.1.22
         version: link:../contracts
       react:
         specifier: ^19.0.0

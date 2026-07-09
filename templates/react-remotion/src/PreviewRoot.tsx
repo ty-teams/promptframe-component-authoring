@@ -25,7 +25,6 @@ const initialProps: ComponentProps = initialPropsParse.success
 
 const previewLocale = resolvePromptFramePreviewLocale({
   search: typeof window !== 'undefined' ? window.location.search : undefined,
-  navigatorLanguages: typeof navigator !== 'undefined' ? navigator.languages : undefined,
 });
 
 const root = document.getElementById('root');
