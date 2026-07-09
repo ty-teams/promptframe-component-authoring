@@ -2957,7 +2957,7 @@ test('validate blocks install scripts before package or upload transport', async
         '@promptframe/component-kit': '^0.1.7',
       },
       devDependencies: {
-        '@promptframe/cli': '^0.1.22',
+        '@promptframe/cli': '^0.1.23',
       },
     }, null, 2));
     await writeFile(path.join(componentDir, 'pnpm-lock.yaml'), 'lockfileVersion: "9.0"\n');
@@ -2994,11 +2994,11 @@ test('check reports dependency quarantine without marking it public searchable',
       dependencies: {
         react: '^19.1.0',
         '@unknown/visual-engine': '1.2.3',
-        '@promptframe/contracts': '^0.1.22',
-        '@promptframe/component-kit': '^0.1.18',
+        '@promptframe/contracts': '^0.1.23',
+        '@promptframe/component-kit': '^0.1.19',
       },
       devDependencies: {
-        '@promptframe/cli': '^0.1.54',
+        '@promptframe/cli': '^0.1.55',
       },
     }, null, 2));
     await writeFile(path.join(componentDir, 'pnpm-lock.yaml'), 'lockfileVersion: "9.0"\n');
@@ -3317,10 +3317,10 @@ test('local standard, doctor, and validate expose stable JSON diagnostics', asyn
     assert.equal(standard.authoringStandardRelease.standardVersion, 'component-standard.v0.1.0');
     assert.match(standard.authoringStandardRelease.standardSourceHash, /^sha256:[a-f0-9]{64}$/);
     assert.deepEqual(standard.recommendedAuthoringPackages, {
-      contracts: '0.1.22',
-      componentKit: '0.1.18',
-      cli: '0.1.54',
-      createComponent: '0.1.44',
+      contracts: '0.1.23',
+      componentKit: '0.1.19',
+      cli: '0.1.55',
+      createComponent: '0.1.45',
     });
     assert.deepEqual(
       standard.recommendedAuthoringPackages,
@@ -3455,15 +3455,15 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
     assert.ok(upgrade.packageChanges.some((change) => (
       change.name === '@promptframe/contracts'
       && change.current === '^0.1.4'
-      && change.next === '^0.1.22'
+      && change.next === '^0.1.23'
     )));
     assert.ok(upgrade.packageChanges.some((change) => (
       change.name === '@promptframe/component-kit'
-      && change.next === '^0.1.18'
+      && change.next === '^0.1.19'
     )));
     assert.ok(upgrade.packageChanges.some((change) => (
       change.name === '@promptframe/cli'
-      && change.next === '^0.1.54'
+      && change.next === '^0.1.55'
     )));
 
     const applied = JSON.parse((await execFileAsync('node', [
@@ -3478,19 +3478,19 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
     assert.equal(applied.apply, true);
     assert.ok(applied.packageChanges.some((change) => change.name === '@promptframe/contracts'));
     const appliedPackageJson = JSON.parse(await readFile(path.join(componentDir, 'package.json'), 'utf8'));
-    assert.equal(appliedPackageJson.dependencies['@promptframe/contracts'], '^0.1.22');
-    assert.equal(appliedPackageJson.dependencies['@promptframe/component-kit'], '^0.1.18');
-    assert.equal(appliedPackageJson.devDependencies['@promptframe/cli'], '^0.1.54');
+    assert.equal(appliedPackageJson.dependencies['@promptframe/contracts'], '^0.1.23');
+    assert.equal(appliedPackageJson.dependencies['@promptframe/component-kit'], '^0.1.19');
+    assert.equal(appliedPackageJson.devDependencies['@promptframe/cli'], '^0.1.55');
 
     await writeFile(path.join(componentDir, 'package.json'), JSON.stringify({
       name: 'fixture-component',
       version: '0.1.0',
       dependencies: {
-        '@promptframe/contracts': '^0.1.22',
-        '@promptframe/component-kit': '^0.1.18',
+        '@promptframe/contracts': '^0.1.23',
+        '@promptframe/component-kit': '^0.1.19',
       },
       devDependencies: {
-        '@promptframe/cli': '^0.1.54',
+        '@promptframe/cli': '^0.1.55',
       },
     }, null, 2));
     const current = JSON.parse((await execFileAsync('node', [
@@ -3510,7 +3510,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-scaffold-freshness-'));
   try {
     const componentDir = path.join(dir, 'component');
-    const currentReactRemotionTemplateDigest = 'sha256:1caf729fa0eb8880744320e7b44305c2c72a52547c2d800995a73195382f0027';
+    const currentReactRemotionTemplateDigest = 'sha256:63e7d030ab7c465600be52450e22033f6a7783edc62b7d8641d05db137c9fc2f';
     await writeFixtureComponent(componentDir);
     await mkdir(path.join(componentDir, '.promptframe'), { recursive: true });
     await writeFile(path.join(componentDir, '.promptframe/scaffold.json'), `${JSON.stringify({
@@ -3532,7 +3532,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     const doctorDiagnostic = doctor.diagnostics.find((item) => item.code === 'scaffold.template.stale');
     assert.equal(doctorDiagnostic.severity, 'warning');
     assert.equal(doctorDiagnostic.current, '0.1.0');
-    assert.equal(doctorDiagnostic.minimum, '0.1.44');
+    assert.equal(doctorDiagnostic.minimum, '0.1.45');
     assert.equal(doctorDiagnostic.expectedTemplateDigest, currentReactRemotionTemplateDigest);
     assert.match(doctorDiagnostic.repairHint, /local scaffold freshness/);
 
@@ -3557,7 +3557,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     await writeFile(path.join(componentDir, '.promptframe/scaffold.json'), `${JSON.stringify({
       schemaVersion: 'promptframe.scaffold.v0.1.0',
       createdByPackage: 'create-promptframe-component',
-      createdByVersion: '0.1.44',
+      createdByVersion: '0.1.45',
       templateName: 'react-remotion',
       templateDigest: `sha256:${'b'.repeat(64)}`,
       createdAt: '2026-07-01T00:00:00.000Z',
@@ -3570,7 +3570,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     ])).stdout);
     const sameVersionDiagnostic = sameVersionWrongDigest.diagnostics.find((item) => item.code === 'scaffold.template.stale');
     assert.equal(sameVersionDiagnostic.severity, 'warning');
-    assert.equal(sameVersionDiagnostic.current, '0.1.44');
+    assert.equal(sameVersionDiagnostic.current, '0.1.45');
     assert.equal(sameVersionDiagnostic.templateDigest, `sha256:${'b'.repeat(64)}`);
     assert.equal(sameVersionDiagnostic.expectedTemplateDigest, currentReactRemotionTemplateDigest);
     assert.match(sameVersionDiagnostic.message, /templateDigest/i);
@@ -3578,7 +3578,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     await writeFile(path.join(componentDir, '.promptframe/scaffold.json'), `${JSON.stringify({
       schemaVersion: 'promptframe.scaffold.v0.1.0',
       createdByPackage: 'create-promptframe-component',
-      createdByVersion: '0.1.44',
+      createdByVersion: '0.1.45',
       templateName: 'react-remotion',
       templateDigest: currentReactRemotionTemplateDigest,
       createdAt: '2026-07-01T00:00:00.000Z',
@@ -3606,9 +3606,10 @@ test('sync refreshes legacy fat preview shell without overwriting author compone
     await writeFile(previewRootPath, [
       "import { useState } from 'react';",
       'const previewMessages = { en: { preview: "Preview" } };',
+      'const previewLocale = navigator.languages?.[0] ?? "en";',
       'function PreviewApp() {',
       '  useState({});',
-      '  return null;',
+      '  return previewLocale ? null : null;',
       '}',
     ].join('\n'));
 
@@ -3647,6 +3648,46 @@ test('sync refreshes legacy fat preview shell without overwriting author compone
     assert.doesNotMatch(previewRoot, /function PreviewApp/);
     assert.doesNotMatch(previewRoot, /useState/);
     assert.match(generatedResources, /ComponentPublicResourceKind/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('sync still blocks security violations in author component source', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-sync-component-security-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(componentDir, 'src/PreviewRoot.tsx'), [
+      'const previewLocale = navigator.languages?.[0] ?? "en";',
+      'export function PreviewRoot() {',
+      '  return previewLocale ? null : null;',
+      '}',
+    ].join('\n'));
+    await writeFile(path.join(componentDir, 'src/Component.tsx'), [
+      "import { AbsoluteFill } from 'remotion';",
+      "export function Component() {",
+      "  const locale = navigator.languages?.[0];",
+      "  return <AbsoluteFill>{locale}</AbsoluteFill>;",
+      "}",
+    ].join('\n'));
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'sync',
+        componentDir,
+        '--apply',
+        '--json',
+      ]),
+      (error) => {
+        const output = `${error.stdout ?? ''}\n${error.stderr ?? ''}`;
+        assert.match(output, /browser\.fingerprint/);
+        assert.match(output, /src\/Component\.tsx/);
+        assert.doesNotMatch(output, /src\/PreviewRoot\.tsx/);
+        return true;
+      },
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -4373,11 +4414,11 @@ async function writeFixtureComponent(componentDir) {
       name: 'fixture-component',
       version: '0.1.0',
       dependencies: {
-        '@promptframe/contracts': '^0.1.22',
-        '@promptframe/component-kit': '^0.1.18',
+        '@promptframe/contracts': '^0.1.23',
+        '@promptframe/component-kit': '^0.1.19',
       },
       devDependencies: {
-        '@promptframe/cli': '^0.1.54',
+        '@promptframe/cli': '^0.1.55',
       },
     }),
     'pnpm-lock.yaml': 'lockfileVersion: "9.0"\n',

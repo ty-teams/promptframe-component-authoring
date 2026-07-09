@@ -83,6 +83,8 @@ const LOCKFILE_EVIDENCE_FILE_NAME = 'promptframe-lockfile-evidence.json';
 const DEV_PUBLIC_RESOURCES_SCHEMA_VERSION = 'promptframe.dev-public-resources.v0.1.0';
 const DEV_PUBLIC_RESOURCES_REPORT_PATH = '.promptframe/dev-public-resources.json';
 const DEV_PUBLIC_RESOURCES_MODULE_PATH = 'src/promptframe-dev-public-resources.generated.ts';
+const GENERATED_PREVIEW_ROOT_PATH = 'src/PreviewRoot.tsx';
+const REPAIRABLE_GENERATED_FILE_PATHS = new Set<string>([GENERATED_PREVIEW_ROOT_PATH]);
 const PROMPTFRAME_WORKSPACE_SCHEMA_VERSION = 'promptframe-workspace.v0.1.0';
 const PROMPTFRAME_WORKFLOW_VERSION = 2;
 const PROMPTFRAME_PROJECT_CONTEXT_SCHEMA_VERSION = 'promptframe-project-context.v0.1.0';
@@ -547,6 +549,9 @@ function upgrade(argv: string[]): void {
   printDiagnostics(diagnostics);
 }
 
+type ComponentDirectoryValidationOptions = {
+  allowGeneratedPreviewRootRepair?: boolean;
+};
 type SyncFileAction = 'updated' | 'would_update' | 'unchanged';
 type PreviewShellStatus = 'missing' | 'thin_shell' | 'legacy_fat_shell' | 'custom_or_unknown';
 
@@ -555,15 +560,15 @@ function sync(argv: string[]): void {
   if (hasFlag(argv, '--apply') && hasFlag(argv, '--dry-run')) {
     fail('sync accepts either --apply or --dry-run, not both.', 'sync.mode.conflict', 2);
   }
-  validateComponentDirectory(dir);
-  const apply = hasFlag(argv, '--apply');
-  const previewRootPath = join(dir, 'src/PreviewRoot.tsx');
+  const previewRootPath = join(dir, GENERATED_PREVIEW_ROOT_PATH);
   const currentPreviewRoot = existsSync(previewRootPath) ? readFileSync(previewRootPath, 'utf8') : undefined;
   const previewShellStatus = classifyPreviewShell(currentPreviewRoot);
+  validateComponentDirectory(dir, { allowGeneratedPreviewRootRepair: true });
+  const apply = hasFlag(argv, '--apply');
   const publicResources = evaluateDirectoryPublicResources(dir);
   const nextFiles = [
     {
-      path: 'src/PreviewRoot.tsx',
+      path: GENERATED_PREVIEW_ROOT_PATH,
       contents: renderPromptFrameThinPreviewRoot(),
     },
     {
@@ -724,16 +729,16 @@ function packageComponent(argv: string[]): void {
   });
 }
 
-function validateComponentDirectory(dir: string): ComponentManifest {
-  assertRequiredFiles(dir);
+function validateComponentDirectory(dir: string, options: ComponentDirectoryValidationOptions = {}): ComponentManifest {
+  assertRequiredFiles(dir, options);
   assertDependencyPolicyAccepted(evaluateDirectoryDependencyPolicy(dir));
   const manifestPath = join(dir, 'manifest.json');
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
   const parsed = parseComponentManifest(normalizeLegacyManifest(manifest));
-  assertLayoutPolicyAccepted(dir, parsed);
+  assertLayoutPolicyAccepted(dir, parsed, options);
   validatePreviewProps(dir, parsed);
-  validateSourceSafety(dir);
-  validateSecurityPolicy(dir);
+  validateSourceSafety(dir, options);
+  validateSecurityPolicy(dir, options);
   checkImportBoundary(dir);
   return parsed;
 }
@@ -3604,8 +3609,10 @@ async function fetchJson(url: string, init: RequestInit, code: string): Promise<
   return payload;
 }
 
-function assertRequiredFiles(dir: string): void {
-  const missing = REQUIRED_COMPONENT_FILES.filter((file) => !existsSync(join(dir, file)));
+function assertRequiredFiles(dir: string, options: ComponentDirectoryValidationOptions = {}): void {
+  const missing = REQUIRED_COMPONENT_FILES
+    .filter((file) => !(options.allowGeneratedPreviewRootRepair && REPAIRABLE_GENERATED_FILE_PATHS.has(file)))
+    .filter((file) => !existsSync(join(dir, file)));
   if (missing.length > 0) {
     fail(`Missing required files: ${missing.join(', ')}`, 'doctor.required_files.missing');
   }
@@ -3872,23 +3879,36 @@ function evaluateDirectoryReusability(
   });
 }
 
-function assertLayoutPolicyAccepted(dir: string, manifest: ComponentManifest): void {
-  const firstError = layoutPolicyDiagnostics(dir, manifest).find((item) => item.severity === 'error');
+function assertLayoutPolicyAccepted(
+  dir: string,
+  manifest: ComponentManifest,
+  options: ComponentDirectoryValidationOptions = {},
+): void {
+  const firstError = layoutPolicyDiagnostics(dir, manifest, options).find((item) => item.severity === 'error');
   if (!firstError) return;
   fail(firstError.message, firstError.code, 1, firstError.repairHint);
 }
 
-function layoutPolicyDiagnostics(dir: string, manifest: ComponentManifest): ComponentDiagnostic[] {
+function layoutPolicyDiagnostics(
+  dir: string,
+  manifest: ComponentManifest,
+  options: ComponentDirectoryValidationOptions = {},
+): ComponentDiagnostic[] {
   return evaluatePromptFrameLayoutPolicy({
     manifest,
     componentSourceText: readIfExists(join(dir, manifest.entry.sourcePath)),
-    files: collectLayoutPolicyTextFiles(dir, manifest.entry.sourcePath),
+    files: collectLayoutPolicyTextFiles(dir, manifest.entry.sourcePath, options),
   }).diagnostics;
 }
 
-function collectLayoutPolicyTextFiles(dir: string, primarySourcePath: string): Array<{ path: string; sourceText: string }> {
+function collectLayoutPolicyTextFiles(
+  dir: string,
+  primarySourcePath: string,
+  options: ComponentDirectoryValidationOptions = {},
+): Array<{ path: string; sourceText: string }> {
   return collectPackageFiles(dir)
     .filter((entry) => entry.name !== primarySourcePath)
+    .filter((entry) => !shouldSkipGeneratedPreviewRoot(entry.name, options))
     .filter((entry) => /^src\/.+\.(?:css|tsx?|jsx?)$/i.test(entry.name))
     .map((entry) => ({
       path: entry.name,
@@ -3939,8 +3959,9 @@ async function runDevServer(dir: string, commandLine: string[]): Promise<void> {
   }
 }
 
-function validateSourceSafety(dir: string): void {
+function validateSourceSafety(dir: string, options: ComponentDirectoryValidationOptions = {}): void {
   for (const entry of collectPackageFiles(dir)) {
+    if (shouldSkipGeneratedPreviewRoot(entry.name, options)) continue;
     if (!isSourceSafetyScannableFile(entry.name)) continue;
     const source = entry.data.toString('utf8');
     for (const rule of PROMPTFRAME_PUBLIC_STANDARD_POLICY.sourceSafetyRules) {
@@ -3961,8 +3982,9 @@ function sourceSafetyRuleFlags(ruleId: string): string {
   return 'i';
 }
 
-function validateSecurityPolicy(dir: string): void {
+function validateSecurityPolicy(dir: string, options: ComponentDirectoryValidationOptions = {}): void {
   for (const entry of collectPackageFiles(dir)) {
+    if (shouldSkipGeneratedPreviewRoot(entry.name, options)) continue;
     if (!isSecurityScannableFile(entry.name)) continue;
     const source = entry.data.toString('utf8');
     const finding = firstBlockingSecurityFindingFromEvaluator(entry.name, source);
@@ -4032,6 +4054,10 @@ function isSourceSafetyScannableFile(fileName: string): boolean {
 
 function isSecurityScannableFile(fileName: string): boolean {
   return /\.(tsx?|jsx?|mjs|cjs|json|md|mdx)$/i.test(fileName);
+}
+
+function shouldSkipGeneratedPreviewRoot(fileName: string, options: ComponentDirectoryValidationOptions): boolean {
+  return options.allowGeneratedPreviewRootRepair === true && fileName === GENERATED_PREVIEW_ROOT_PATH;
 }
 
 function isDocumentationSecurityFile(fileName: string): boolean {
