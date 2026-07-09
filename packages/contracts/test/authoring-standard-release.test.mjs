@@ -26,10 +26,10 @@ test('authoring standard release exposes upload targets and package floors', () 
   assert.equal(release.uploadTargets[0].requiresHumanPublishApproval, true);
   assert.equal(release.uploadTargets[1].requiresHumanPublishApproval, false);
   assert.deepEqual(release.minPackageVersions, {
-    contracts: '0.1.17',
-    componentKit: '0.1.14',
-    cli: '0.1.48',
-    createComponent: '0.1.39',
+    contracts: '0.1.18',
+    componentKit: '0.1.15',
+    cli: '0.1.49',
+    createComponent: '0.1.40',
   });
 });
 
