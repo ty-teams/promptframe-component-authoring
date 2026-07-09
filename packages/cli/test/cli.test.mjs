@@ -2068,6 +2068,66 @@ test('upload blocks stale remote standard source hash before package upload tran
   }
 });
 
+test('upload explains platform-behind standard skew without telling authors to upgrade again', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-upload-platform-behind-'));
+  const calls = [];
+  const server = await createServer(async (req, res) => {
+    calls.push(req.url);
+    if (req.url === '/components/standard') {
+      writeJson(res, {
+        success: true,
+        sourceVersion: 'component-standard.v0.1.0',
+        sourceHash: `sha256:${'8'.repeat(64)}`,
+        authoringStandardRelease: {
+          minPackageVersions: {
+            contracts: '0.1.5',
+            componentKit: '0.1.6',
+            cli: '0.1.6',
+            createComponent: '0.1.4',
+          },
+        },
+      });
+      return;
+    }
+    if (req.url === '/components/marketplace/upload') {
+      writeJson(res, { success: true, buildId: 'should-not-upload', status: 'queued' });
+      return;
+    }
+    writeJson(res, { success: false, error: `unexpected path: ${req.url}` }, 404);
+  });
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'upload',
+        componentDir,
+        '--endpoint',
+        server.url,
+        '--target',
+        'marketplace_authoring',
+        '--json',
+      ]),
+      (error) => {
+        assert.equal(error.code, 1);
+        const stderrEvents = parseStderrJsonLines(error.stderr);
+        const payload = stderrEvents.at(-1);
+        assert.equal(payload.command, 'upload');
+        assert.equal(payload.diagnostic.code, 'standard.freshness.platform_behind');
+        assert.match(payload.diagnostic.message, /newer than this platform deployment/i);
+        assert.doesNotMatch(payload.diagnostic.message, /Run promptframe upgrade/i);
+        return true;
+      },
+    );
+    assert.deepEqual(calls, ['/components/standard']);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('check reports offline degraded freshness when no platform endpoint is configured', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-check-offline-'));
   try {
@@ -3105,6 +3165,71 @@ test('dev prepares a real Remotion Player local preview command', async () => {
     assert.match(generated, /promptFrameDevPublicResources/);
     assert.ok(generated.includes('"/assets/logo.png"'));
   } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('dev and check warn instead of blocking when the platform standard is behind local authoring', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-platform-behind-dev-'));
+  const calls = [];
+  const server = await createServer(async (req, res) => {
+    calls.push(req.url);
+    if (req.url === '/components/standard') {
+      writeJson(res, {
+        success: true,
+        sourceVersion: 'component-standard.v0.1.0',
+        sourceHash: `sha256:${'8'.repeat(64)}`,
+        authoringStandardRelease: {
+          minPackageVersions: {
+            contracts: '0.1.5',
+            componentKit: '0.1.6',
+            cli: '0.1.6',
+            createComponent: '0.1.4',
+          },
+        },
+      });
+      return;
+    }
+    writeJson(res, { success: false, error: `unexpected path: ${req.url}` }, 404);
+  });
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+
+    const dev = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'dev',
+      componentDir,
+      '--endpoint',
+      server.url,
+      '--dry-run',
+      '--json',
+    ])).stdout);
+    assert.equal(dev.command, 'dev');
+    assert.equal(dev.freshness.status, 'warning');
+    assert.equal(dev.freshness.diagnostic.code, 'standard.freshness.platform_behind');
+    assert.match(dev.freshness.diagnostic.message, /newer than this platform deployment/i);
+    assert.equal(dev.diagnostic.code, 'dev.ready');
+
+    const check = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'check',
+      componentDir,
+      '--endpoint',
+      server.url,
+      '--target',
+      'marketplace_authoring',
+      '--json',
+    ])).stdout);
+    assert.equal(check.command, 'check');
+    assert.equal(check.freshness.status, 'warning');
+    assert.equal(check.freshness.diagnostic.code, 'standard.freshness.platform_behind');
+    assert.match(check.freshness.diagnostic.message, /wait for platform rollout/i);
+    assert.equal(check.diagnostic.code, 'check.completed');
+
+    assert.deepEqual(calls, ['/components/standard', '/components/standard']);
+  } finally {
+    await server.close();
     await rm(dir, { recursive: true, force: true });
   }
 });

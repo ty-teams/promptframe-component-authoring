@@ -1092,7 +1092,8 @@ async function assertRemoteStandardFreshness(endpoint: string, argv: string[]): 
     fail('PromptFrame standard endpoint did not return a sourceHash.', 'standard.freshness.remote_invalid');
   }
   if (remoteSourceHash !== COMPONENT_STANDARD_SOURCE_HASH) {
-    fail(formatRemoteStandardStaleFailure(remoteSourceHash), 'standard.freshness.upload_blocking');
+    const skew = remoteStandardSkewDiagnostic(payload, remoteSourceHash);
+    fail(skew.message, skew.code);
   }
 }
 
@@ -1130,7 +1131,11 @@ async function resolveSoftRemoteStandardFreshness(
     );
   }
   if (remoteSourceHash !== COMPONENT_STANDARD_SOURCE_HASH) {
-    fail(formatRemoteStandardStaleFailure(remoteSourceHash), 'standard.freshness.upload_blocking');
+    const skew = remoteStandardSkewDiagnostic(payload, remoteSourceHash);
+    if (skew.code === 'standard.freshness.platform_behind') {
+      return buildFreshnessWarningDecision(target, skew.code, skew.message);
+    }
+    fail(skew.message, skew.code);
   }
   return buildFreshnessDecision(
     target,
@@ -1158,6 +1163,57 @@ function buildFreshnessWarningDecision(
 
 function formatRemoteStandardStaleFailure(remoteSourceHash: string): string {
   return `PromptFrame component standard is stale: local=${COMPONENT_STANDARD_SOURCE_HASH}, platform=${remoteSourceHash}. Run promptframe upgrade . --apply before upload.`;
+}
+
+function remoteStandardSkewDiagnostic(
+  payload: Record<string, unknown>,
+  remoteSourceHash: string,
+): { code: string; message: string } {
+  if (classifyRemoteStandardSkew(payload) === 'platform_behind') {
+    return {
+      code: 'standard.freshness.platform_behind',
+      message: [
+        `PromptFrame component standard is newer than this platform deployment: local=${COMPONENT_STANDARD_SOURCE_HASH}, platform=${remoteSourceHash}.`,
+        'Local dev/check may continue with a warning, but upload is blocked until the platform rollout catches up.',
+        'Use the platform-compatible CLI version advertised by this deployment, or wait for platform rollout; promptframe upgrade . --apply cannot fix platform-behind skew.',
+      ].join(' '),
+    };
+  }
+  return {
+    code: 'standard.freshness.upload_blocking',
+    message: formatRemoteStandardStaleFailure(remoteSourceHash),
+  };
+}
+
+function classifyRemoteStandardSkew(payload: Record<string, unknown>): 'platform_behind' | 'local_behind_or_unknown' {
+  const remoteFloors = asRecord(asRecord(payload.authoringStandardRelease)?.minPackageVersions);
+  if (!remoteFloors) return 'local_behind_or_unknown';
+  const localFloors = PROMPTFRAME_AUTHORING_STANDARD_RELEASE.minPackageVersions;
+  const comparisons = (['contracts', 'componentKit', 'cli', 'createComponent'] as const).map((key) => {
+    const remote = compareSemverCore(stringValue(remoteFloors[key]), localFloors[key]);
+    return remote;
+  });
+  if (comparisons.some((item) => item === undefined)) return 'local_behind_or_unknown';
+  const ordered = comparisons as number[];
+  if (ordered.every((item) => item <= 0) && ordered.some((item) => item < 0)) return 'platform_behind';
+  return 'local_behind_or_unknown';
+}
+
+function compareSemverCore(left: string | undefined, right: string | undefined): number | undefined {
+  const leftParts = parseSemverCore(left);
+  const rightParts = parseSemverCore(right);
+  if (!leftParts || !rightParts) return undefined;
+  for (let index = 0; index < 3; index += 1) {
+    const diff = leftParts[index]! - rightParts[index]!;
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+function parseSemverCore(value: string | undefined): [number, number, number] | undefined {
+  const match = value?.trim().match(/^(\d+)\.(\d+)\.(\d+)/);
+  if (!match) return undefined;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
 }
 
 function workspace(argv: string[]): void {
