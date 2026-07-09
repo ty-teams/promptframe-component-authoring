@@ -172,7 +172,7 @@ test('public authoring docs document the current source baseline', async () => {
     const text = await readFile(path.join(repoRoot, docPath), 'utf8');
     assert.match(text, /Current source baseline is/, docPath);
     assert.match(text, /@promptframe\/contracts@0.1.22/, docPath);
-    assert.match(text, /@promptframe\/component-kit@0\.1\.17/, docPath);
+    assert.match(text, /@promptframe\/component-kit@0\.1\.18/, docPath);
     assert.match(text, /@promptframe\/cli@0.1.54/, docPath);
     assert.match(text, /create-promptframe-component@0.1.44/, docPath);
     assert.match(text, /workspace root lockfile|workspace root lockfile evidence|pnpm workspace root lockfile/, docPath);
