@@ -77,7 +77,7 @@ Formal platform identity comes from browser Device Code login or a scoped token.
 
 The generated local preview shell uses `@remotion/player`, renders object / array props as structured controls with an `Advanced JSON` fallback, and passes `acknowledgeRemotionLicense` so local authoring is not interrupted by repeated prompts. This does not replace the author's responsibility to review the Remotion license for their own usage and distribution model.
 
-Automation can add `--json` to `standard`, `doctor`, `validate`, `check`, `upgrade`, `preview`, `login`, `whoami`, `logout`, `upload`, `status`, `reindex`, and `probe`. Use `dev --dry-run --json` to inspect the local preview command without starting a long-running server. Use `upgrade --dry-run --json` to inspect package floor changes before editing. Read `diagnostic.code`, `checkedRuleIds`, `securityPolicyDigest`, `securityEvaluatorMode`, `failureReason`, and `retryable` instead of scraping prose logs.
+Automation can add `--json` to `standard`, `doctor`, `validate`, `check`, `upgrade`, `preview`, `login`, `whoami`, `logout`, `upload`, `status`, `reindex`, and `probe`. Use `dev --dry-run --json` to inspect the local preview command without starting a long-running server. Use `upgrade --dry-run --json` to inspect package floor changes before editing, and add `--check-latest` when you need scaffold freshness diagnostics from `.promptframe/scaffold.json`. Read `diagnostic.code`, `checkedRuleIds`, `securityPolicyDigest`, `securityEvaluatorMode`, `failureReason`, and `retryable` instead of scraping prose logs.
 
 `validate` / `check` use the public security policy from `@promptframe/contracts`; current source candidates evaluate JS / TS / TSX through the contracts AST-aware evaluator. Treat `securityEvaluatorMode: "ast"` and the `securityPolicyDigest` as the public rule-cohort identity. If validation reports a browser or dynamic-code rule such as `browser.broadcast_channel`, `browser.image_beacon`, `browser.worker_context`, `browser.window_open`, `browser.cross_context_message`, `storage.browser_storage`, `dom.dangerous_html`, `code.dynamic_import`, or `code.string_timer`, remove the capability instead of hiding it behind aliases.
 
@@ -238,6 +238,7 @@ component/
 When `promptframe validate --json` or platform admission returns one of these diagnostics, fix source code rather than editing metadata or search text:
 
 - `doctor.required_files.missing`: restore `manifest.json`, `package.json`, `src/Component.tsx`, `src/schema.ts`, `src/index.ts`, and `src/preview-props.json`.
+- `scaffold.template.stale`: the generated shell metadata says this project came from an older `create-promptframe-component`; run `promptframe upgrade . --dry-run --check-latest --json`, then regenerate or manually port the latest scaffold shell changes.
 - `component_standard.source.no_math_random`: replace `Math.random()` with props, frame-derived values, or deterministic seeded helpers.
 - `code.eval`, `code.new_function`, `code.string_timer`: remove dynamic string execution; component logic must be deterministic TypeScript/React code.
 - `runtime.deterministic.fps_hardcoded_timing`: manual-review validation gate; replace hardcoded frame counts in timing contexts with `secondsToFrames(seconds, fps)`, `createDurationTimeline()` / `timeline.at()`, `createRevealPhases()`, or `createFillProgress()`.

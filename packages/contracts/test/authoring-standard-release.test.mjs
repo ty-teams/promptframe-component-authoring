@@ -25,8 +25,12 @@ test('authoring standard release exposes upload targets and package floors', () 
   ]);
   assert.equal(release.uploadTargets[0].requiresHumanPublishApproval, true);
   assert.equal(release.uploadTargets[1].requiresHumanPublishApproval, false);
-  assert.match(release.minPackageVersions.contracts, /^\d+\.\d+\.\d+/);
-  assert.match(release.minPackageVersions.cli, /^\d+\.\d+\.\d+/);
+  assert.deepEqual(release.minPackageVersions, {
+    contracts: '0.1.17',
+    componentKit: '0.1.14',
+    cli: '0.1.48',
+    createComponent: '0.1.39',
+  });
 });
 
 test('freshness decision keeps local and current standard fingerprints separate', () => {

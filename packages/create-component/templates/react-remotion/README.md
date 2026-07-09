@@ -80,7 +80,9 @@ npx promptframe status <buildId> --endpoint <promptframe-api-base>
 
 ## 安全策略
 
-安全规则来自平台标准 API。CLI 本地 `promptframe validate . --json` / `promptframe check . --json` 和服务端准入会使用同一套公开 ruleId 口径；机器读取时看 `checkedRuleIds`、`diagnostic.code`、`failureReason` 和 `retryable`。依赖版本过旧时先跑 `promptframe upgrade . --dry-run --json` 查看需要更新的 PromptFrame 包。
+安全规则来自平台标准 API。CLI 本地 `promptframe validate . --json` / `promptframe check . --json` 和服务端准入会使用同一套公开 ruleId 口径；机器读取时看 `checkedRuleIds`、`diagnostic.code`、`failureReason` 和 `retryable`。依赖版本过旧时先跑 `promptframe upgrade . --dry-run --json` 查看需要更新的 PromptFrame 包；需要检查脚手架壳子是否过期时跑 `promptframe upgrade . --dry-run --check-latest --json`，它只输出 `scaffold.template.stale` 这类 warning，不会自动改 `package.json`。
+
+脚手架生成时会写入 `.promptframe/scaffold.json`，记录 create 包版本、模板名、模板 digest 和创建时间。不要手工删这个文件；`doctor` / `check` 会用它提示旧壳子风险。
 
 - 不要使用 `eval`、`new Function`、字符串定时器、`node:fs`、`child_process`、`process.env`。
 - `runtime.deterministic.fps_hardcoded_timing` 是 manual-review 阻断规则；看到它时把硬编码帧数改成 `secondsToFrames(seconds, fps)`、`createDurationTimeline()` / `timeline.at()`、`createRevealPhases()` 或 `createFillProgress()`。

@@ -54,9 +54,12 @@ import {
   buildFreshnessDecision,
   computePackageChanges,
   computePackageFreshnessDiagnostics,
+  computeScaffoldFreshnessDiagnostics,
   resolveLocalPreviewScript,
   type ComponentPackageJson,
   type PackageFreshnessDiagnostic,
+  type ScaffoldFreshnessDiagnostic,
+  type ScaffoldMetadata,
 } from './lifecycle.js';
 import {
   evaluateLocalReusability,
@@ -93,6 +96,8 @@ const PROJECT_CONTEXT_FORBIDDEN_KEY_NAMES = new Set([
   'token',
   'tokensecret',
 ]);
+type PrintableDiagnostic = LocalReusabilityDiagnostic | ComponentDiagnostic | ScaffoldFreshnessDiagnostic;
+
 const PACKAGE_MANAGER_LOCKFILE_NAMES = [
   'package-lock.json',
   'npm-shrinkwrap.json',
@@ -320,10 +325,12 @@ function standard(): void {
 function doctor(argv: string[]): void {
   const dir = resolve(firstPositionalArg(argv) ?? '.');
   assertRequiredFiles(dir);
+  const diagnostics = scaffoldFreshnessDiagnostics(dir);
   const output = {
     command: 'doctor',
     dir,
     requiredFiles: REQUIRED_COMPONENT_FILES,
+    diagnostics,
     diagnostic: diagnostic('doctor.completed', 'info', 'Component directory contains required authoring files.'),
   };
   if (hasFlag(argv, '--json')) {
@@ -449,7 +456,7 @@ function buildCheckOutput(
   localReusability: ReturnType<typeof evaluateDirectoryReusability>;
   dependencyPolicy: PromptFrameDependencyPolicyReceipt;
   publicResources: PublicResourceReport;
-  diagnostics: Array<LocalReusabilityDiagnostic | ComponentDiagnostic>;
+  diagnostics: PrintableDiagnostic[];
   diagnostic: { code: string; severity: 'info' | 'warning' | 'error'; message: string };
 } {
   const dir = input.dir;
@@ -468,6 +475,7 @@ function buildCheckOutput(
     ...dependencyPolicy.diagnostics,
     ...publicResources.diagnostics,
     ...workflowTemplateDiagnosticsForInput(input),
+    ...scaffoldFreshnessDiagnostics(dir),
   ];
   const output = {
     command: 'check' as const,
@@ -494,9 +502,11 @@ function upgrade(argv: string[]): void {
     fail('upgrade accepts either --apply or --dry-run, not both.', 'upgrade.mode.conflict', 2);
   }
   const apply = hasFlag(argv, '--apply');
+  const checkLatest = hasFlag(argv, '--check-latest');
   const packagePath = join(dir, 'package.json');
   const packageJson = readPackageManifest(packagePath);
   const packageChanges = computePackageChanges(packageJson);
+  const diagnostics = checkLatest ? scaffoldFreshnessDiagnostics(dir) : [];
 
   if (apply && packageChanges.length > 0) {
     const nextPackageJson = applyPackageChanges(packageJson, packageChanges);
@@ -507,7 +517,9 @@ function upgrade(argv: string[]): void {
     command: 'upgrade',
     dir,
     apply,
+    checkLatest,
     packageChanges,
+    diagnostics,
     diagnostic: diagnostic(
       apply ? 'upgrade.applied' : 'upgrade.dry_run',
       'info',
@@ -524,6 +536,7 @@ function upgrade(argv: string[]): void {
   for (const change of packageChanges) {
     console.log(`${change.dependencySet} ${change.name}: ${change.current ?? '<missing>'} -> ${change.next}`);
   }
+  printDiagnostics(diagnostics);
 }
 
 function preview(argv: string[]): void {
@@ -655,6 +668,23 @@ function readPackageManifest(path: string): ComponentPackageJson {
     return JSON.parse(readFileSync(path, 'utf8')) as ComponentPackageJson;
   } catch {
     fail('package.json must be valid JSON before running upgrade.', 'upgrade.package_json.invalid');
+  }
+}
+
+function scaffoldFreshnessDiagnostics(dir: string): ScaffoldFreshnessDiagnostic[] {
+  return computeScaffoldFreshnessDiagnostics(readScaffoldMetadata(dir));
+}
+
+function readScaffoldMetadata(dir: string): ScaffoldMetadata | undefined {
+  const path = join(dir, '.promptframe/scaffold.json');
+  if (!existsSync(path)) return undefined;
+  try {
+    const value = JSON.parse(readFileSync(path, 'utf8')) as unknown;
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? value as ScaffoldMetadata
+      : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -4497,7 +4527,7 @@ function diagnostic(
   return { code, severity, message, ...(repairHint ? { repairHint } : {}) };
 }
 
-function printDiagnostics(diagnostics: Array<LocalReusabilityDiagnostic | ComponentDiagnostic>): void {
+function printDiagnostics(diagnostics: PrintableDiagnostic[]): void {
   for (const item of diagnostics) {
     console.log(`${item.severity.toUpperCase()} ${item.code}: ${item.message}`);
     if (item.repairHint) console.log(`Hint: ${item.repairHint}`);
@@ -4642,6 +4672,7 @@ Commands:
   validate <dir>                   Validate manifest and basic source boundaries
   check <dir>                      Validate, report rule IDs, and check standard freshness
   upgrade <dir>                    Update PromptFrame package floors (--dry-run by default)
+    --check-latest                 Include scaffold freshness diagnostics without mutating package.json
   preview <dir>                    Validate and print local Remotion preview envelope
     --write-local-report           Write .promptframe/local-previews/preview-report.json
   dev <dir>                        Start the local Remotion Player preview server

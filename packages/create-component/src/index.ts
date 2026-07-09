@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +25,8 @@ const displayName = valueAfter(argv, '--display-name') ?? toTitle(componentName)
 const description = valueAfter(argv, '--description') ?? `${displayName} PromptFrame component`;
 const packageRoot = dirname(fileURLToPath(import.meta.url));
 const templateDir = resolve(packageRoot, '../templates/react-remotion');
+const createPackageJson = readJsonObject(resolve(packageRoot, '../package.json'));
+const createPackageVersion = typeof createPackageJson?.version === 'string' ? createPackageJson.version : '0.0.0';
 
 if (isWorkspaceMode) {
   createWorkspace(targetDir, argv, templateDir);
@@ -32,6 +35,10 @@ if (isWorkspaceMode) {
     __COMPONENT_NAME__: componentName,
     __DISPLAY_NAME__: displayName,
     __DESCRIPTION__: description,
+  });
+  writeScaffoldMetadata(templateDir, targetDir, {
+    createdByVersion: createPackageVersion,
+    templateName: 'react-remotion',
   });
 
   console.log(`Created PromptFrame component at ${targetDir}`);
@@ -59,6 +66,10 @@ function createWorkspace(root: string, argv: string[], templateDir: string): voi
     __DISPLAY_NAME__: workspaceDisplayName,
     __DESCRIPTION__: workspaceDescription,
   }, { skipEntries: new Set(['.github']) });
+  writeScaffoldMetadata(templateDir, componentDir, {
+    createdByVersion: createPackageVersion,
+    templateName: 'react-remotion',
+  });
   writeWorkspaceRootFiles(root, {
     workspaceRootName,
     componentId,
@@ -211,6 +222,47 @@ function writeComponentManifestId(componentDir: string, componentId: string): vo
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
   manifest.id = componentId;
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+}
+
+function writeScaffoldMetadata(templateDir: string, componentDir: string, input: {
+  createdByVersion: string;
+  templateName: string;
+}): void {
+  const metadataDir = join(componentDir, '.promptframe');
+  mkdirSync(metadataDir, { recursive: true });
+  writeFileSync(join(metadataDir, 'scaffold.json'), `${JSON.stringify({
+    schemaVersion: 'promptframe.scaffold.v0.1.0',
+    createdByPackage: 'create-promptframe-component',
+    createdByVersion: input.createdByVersion,
+    templateName: input.templateName,
+    templateDigest: hashTemplateDirectory(templateDir),
+    createdAt: new Date().toISOString(),
+  }, null, 2)}\n`, 'utf8');
+}
+
+function hashTemplateDirectory(root: string): string {
+  const hash = createHash('sha256');
+  for (const relativePath of listTemplateFiles(root)) {
+    hash.update(relativePath);
+    hash.update('\0');
+    hash.update(readFileSync(join(root, relativePath)));
+    hash.update('\0');
+  }
+  return `sha256:${hash.digest('hex')}`;
+}
+
+function listTemplateFiles(root: string, prefix = ''): string[] {
+  const output: string[] = [];
+  for (const entry of readdirSync(join(root, prefix)).sort((a, b) => a.localeCompare(b))) {
+    const relativePath = prefix ? `${prefix}/${entry}` : entry;
+    const stat = statSync(join(root, relativePath));
+    if (stat.isDirectory()) {
+      output.push(...listTemplateFiles(root, relativePath));
+      continue;
+    }
+    if (stat.isFile()) output.push(relativePath);
+  }
+  return output;
 }
 
 function workspaceGlobForPath(componentPath: string): string {

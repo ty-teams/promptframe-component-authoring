@@ -27,10 +27,18 @@ test('create CLI honors explicit component name independently of target director
 
     const manifest = JSON.parse(await readFile(path.join(target, 'manifest.json'), 'utf8'));
     const packageJson = JSON.parse(await readFile(path.join(target, 'package.json'), 'utf8'));
+    const scaffold = JSON.parse(await readFile(path.join(target, '.promptframe/scaffold.json'), 'utf8'));
+    const createPackage = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'));
     assert.equal(manifest.name, 'sales-funnel-pulse');
     assert.equal(manifest.displayName, 'Sales Funnel Pulse');
     assert.equal(manifest.description, 'Sales funnel component');
     assert.equal(packageJson.name, 'sales-funnel-pulse');
+    assert.equal(scaffold.schemaVersion, 'promptframe.scaffold.v0.1.0');
+    assert.equal(scaffold.createdByPackage, 'create-promptframe-component');
+    assert.equal(scaffold.createdByVersion, createPackage.version);
+    assert.equal(scaffold.templateName, 'react-remotion');
+    assert.match(scaffold.templateDigest, /^sha256:[a-f0-9]{64}$/);
+    assert.match(scaffold.createdAt, /^\d{4}-\d{2}-\d{2}T/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -96,10 +104,14 @@ test('create CLI scaffolds an advanced workspace with one component', async () =
     assert.match(pnpmWorkspace, /packages\/\*/);
 
     const manifest = JSON.parse(await readFile(path.join(target, 'components/image-particle-remotion/manifest.json'), 'utf8'));
+    const scaffold = JSON.parse(await readFile(path.join(target, 'components/image-particle-remotion/.promptframe/scaffold.json'), 'utf8'));
     assert.equal(manifest.id, '@marketplace/image-particle-remotion');
     assert.equal(manifest.name, 'image-particle-remotion');
     assert.equal(manifest.displayName, 'Image Particle Remotion');
     assert.equal(manifest.description, 'Image particle workspace fixture');
+    assert.equal(scaffold.createdByPackage, 'create-promptframe-component');
+    assert.equal(scaffold.templateName, 'react-remotion');
+    assert.match(scaffold.templateDigest, /^sha256:[a-f0-9]{64}$/);
     assert.equal(await fileExists(path.join(target, 'components/image-particle-remotion/.github/workflows/promptframe-component.yml')), false);
   } finally {
     await rm(dir, { recursive: true, force: true });

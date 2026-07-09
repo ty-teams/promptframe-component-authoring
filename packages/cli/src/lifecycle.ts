@@ -37,6 +37,24 @@ export type PackageFreshnessDiagnostic = CliDiagnostic & {
   dependencySet?: keyof Pick<ComponentPackageJson, 'dependencies' | 'devDependencies' | 'peerDependencies' | 'optionalDependencies'>;
 };
 
+export type ScaffoldMetadata = Record<string, unknown> & {
+  schemaVersion?: string;
+  createdByPackage?: string;
+  createdByVersion?: string;
+  templateName?: string;
+  templateDigest?: string;
+  createdAt?: string;
+};
+
+export type ScaffoldFreshnessDiagnostic = CliDiagnostic & {
+  packageName: 'create-promptframe-component';
+  minimum: string;
+  current?: string;
+  templateName?: string;
+  templateDigest?: string;
+  repairHint: string;
+};
+
 type PackageFreshnessRule = {
   name: string;
   floorKey: keyof typeof PROMPTFRAME_AUTHORING_STANDARD_RELEASE.minPackageVersions;
@@ -166,6 +184,28 @@ export function computePackageFreshnessDiagnostics(
   }
 
   return diagnostics;
+}
+
+export function computeScaffoldFreshnessDiagnostics(
+  metadata: ScaffoldMetadata | undefined,
+): ScaffoldFreshnessDiagnostic[] {
+  if (!metadata || metadata.createdByPackage !== 'create-promptframe-component') return [];
+  const minimum = PROMPTFRAME_AUTHORING_STANDARD_RELEASE.minPackageVersions.createComponent;
+  const current = typeof metadata.createdByVersion === 'string' ? metadata.createdByVersion : undefined;
+  if (current && !isBelowRequiredRange(current, minimum)) return [];
+  const templateName = typeof metadata.templateName === 'string' ? metadata.templateName : undefined;
+  const templateDigest = typeof metadata.templateDigest === 'string' ? metadata.templateDigest : undefined;
+  return [{
+    code: 'scaffold.template.stale',
+    severity: 'warning',
+    packageName: 'create-promptframe-component',
+    current,
+    minimum,
+    templateName,
+    templateDigest,
+    repairHint: 'Run promptframe upgrade . --check-latest to review current package floors, then regenerate or manually port the latest scaffold shell changes.',
+    message: `PromptFrame scaffold template is stale: current=${current ?? '<unknown>'}, minimum=${minimum}. Review latest scaffold changes before upload.`,
+  }];
 }
 
 export function applyPackageChanges(
