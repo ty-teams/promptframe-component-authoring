@@ -1149,6 +1149,8 @@ export const authoringPackageFloorSchema = z.object({
   createComponent: semverSchema,
 }).strict();
 export type AuthoringPackageFloor = z.infer<typeof authoringPackageFloorSchema>;
+export const recommendedAuthoringPackagesSchema = authoringPackageFloorSchema;
+export type RecommendedAuthoringPackages = z.infer<typeof recommendedAuthoringPackagesSchema>;
 
 export const componentReusabilityTargetVisibilitySchema = z.enum([
   'project_private',
@@ -1210,6 +1212,7 @@ export const authoringStandardReleaseSchema = z.object({
   styleContractVersion: z.literal(PROMPTFRAME_STYLE_CONTRACT_VERSION),
   supportedComponentTypes: z.array(promptFrameComponentTypeSchema).min(1),
   minPackageVersions: authoringPackageFloorSchema,
+  recommendedAuthoringPackages: recommendedAuthoringPackagesSchema,
   scaffoldTemplates: z.array(z.object({
     name: nonEmptyStringSchema.max(120),
     digest: sha256Schema,
@@ -1241,6 +1244,7 @@ export const authoringStandardFreshnessDecisionSchema = z.object({
   currentStandardVersion: z.literal(COMPONENT_STANDARD_VERSION),
   currentStandardSourceHash: sha256Schema,
   minPackageVersions: authoringPackageFloorSchema,
+  recommendedAuthoringPackages: recommendedAuthoringPackagesSchema,
   diagnostic: authoringFreshnessDiagnosticSchema,
   retryable: z.boolean().default(false),
 }).strict();
@@ -1258,15 +1262,21 @@ export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = 
   styleContractVersion: PROMPTFRAME_STYLE_CONTRACT_VERSION,
   supportedComponentTypes: promptFrameComponentTypeSchema.options,
   minPackageVersions: {
-    contracts: '0.1.20',
-    componentKit: '0.1.16',
-    cli: '0.1.51',
-    createComponent: '0.1.42',
+    contracts: '0.1.21',
+    componentKit: '0.1.17',
+    cli: '0.1.53',
+    createComponent: '0.1.43',
+  },
+  recommendedAuthoringPackages: {
+    contracts: '0.1.21',
+    componentKit: '0.1.17',
+    cli: '0.1.53',
+    createComponent: '0.1.43',
   },
   scaffoldTemplates: [
     {
       name: 'react-remotion',
-      digest: 'sha256:4de0df168bcf85bf88e396d23f2ef66266ff8dc64f3c3d992ebd448d84d04dec',
+      digest: 'sha256:e924a07652443affbbfba0d7a59bf7c5c502869a9773193921d9a30c8e975a0c',
     },
   ],
   uploadTargets: [

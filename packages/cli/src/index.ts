@@ -318,6 +318,7 @@ function standard(): void {
     dependencyPolicy: PROMPTFRAME_PUBLIC_DEPENDENCY_POLICY,
     previewLimits: PROMPTFRAME_PUBLIC_STANDARD_POLICY.previewLimits,
     authoringStandardRelease: PROMPTFRAME_AUTHORING_STANDARD_RELEASE,
+    recommendedAuthoringPackages: PROMPTFRAME_AUTHORING_STANDARD_RELEASE.recommendedAuthoringPackages,
     securityPolicyDigest: PROMPTFRAME_PUBLIC_SECURITY_POLICY_DIGEST,
     securityEvaluatorMode: SECURITY_EVALUATOR_MODE,
     freshness: buildFreshnessDecision(
@@ -1234,13 +1235,17 @@ function buildFreshnessWarningDecision(
     currentStandardVersion: COMPONENT_STANDARD_VERSION,
     currentStandardSourceHash: COMPONENT_STANDARD_SOURCE_HASH,
     minPackageVersions: PROMPTFRAME_AUTHORING_STANDARD_RELEASE.minPackageVersions,
+    recommendedAuthoringPackages: PROMPTFRAME_AUTHORING_STANDARD_RELEASE.recommendedAuthoringPackages,
     diagnostic: diagnostic(code, 'warning', message),
     retryable: true,
   };
 }
 
 function formatRemoteStandardStaleFailure(remoteSourceHash: string): string {
-  return `PromptFrame component standard is stale: local=${COMPONENT_STANDARD_SOURCE_HASH}, platform=${remoteSourceHash}. Run promptframe upgrade . --apply before upload.`;
+  return [
+    `PromptFrame component standard is stale: local=${COMPONENT_STANDARD_SOURCE_HASH}, platform=${remoteSourceHash}.`,
+    `Run ${formatRecommendedAuthoringPackageCommand(PROMPTFRAME_AUTHORING_STANDARD_RELEASE.recommendedAuthoringPackages)} and then promptframe sync . --apply before upload.`,
+  ].join(' ');
 }
 
 function remoteStandardSkewDiagnostic(
@@ -1275,6 +1280,10 @@ function classifyRemoteStandardSkew(payload: Record<string, unknown>): 'platform
   const ordered = comparisons as number[];
   if (ordered.every((item) => item <= 0) && ordered.some((item) => item < 0)) return 'platform_behind';
   return 'local_behind_or_unknown';
+}
+
+function formatRecommendedAuthoringPackageCommand(packages: typeof PROMPTFRAME_AUTHORING_STANDARD_RELEASE.recommendedAuthoringPackages): string {
+  return `pnpm add @promptframe/contracts@${packages.contracts} @promptframe/component-kit@${packages.componentKit} && pnpm add -D @promptframe/cli@${packages.cli} create-promptframe-component@${packages.createComponent}`;
 }
 
 function compareSemverCore(left: string | undefined, right: string | undefined): number | undefined {

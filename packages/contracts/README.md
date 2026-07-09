@@ -6,7 +6,7 @@ This package is intentionally small and safe to consume from authoring tools, te
 
 Key public exports:
 
-- `PROMPTFRAME_AUTHORING_STANDARD_RELEASE`: current authoring standard release metadata, source hash, package floors, supported component types, and upload target policy.
+- `PROMPTFRAME_AUTHORING_STANDARD_RELEASE`: current authoring standard release metadata, source hash, minimum package floors, recommended authoring package versions, supported component types, and upload target policy.
 - `layoutModeSchema` / `LayoutMode`: controlled layout-mode machine contract for `slot_fill_reflow`, `fixed_aspect_fit`, and `floating_ornament`; new strict authoring uploads must declare it inside `manifest.layout`.
 - `authoringStandardFreshnessDecisionSchema`: shared shape for local tooling and platform admission to explain whether an authoring package is current, warning-only, upload-blocking, or security-breaking.
 - `authoringUploadTargetSchema`: public upload lanes for `marketplace_authoring` and `project_private_generation`.

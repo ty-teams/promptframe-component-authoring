@@ -2994,11 +2994,11 @@ test('check reports dependency quarantine without marking it public searchable',
       dependencies: {
         react: '^19.1.0',
         '@unknown/visual-engine': '1.2.3',
-        '@promptframe/contracts': '^0.1.20',
-        '@promptframe/component-kit': '^0.1.16',
+        '@promptframe/contracts': '^0.1.21',
+        '@promptframe/component-kit': '^0.1.17',
       },
       devDependencies: {
-        '@promptframe/cli': '^0.1.51',
+        '@promptframe/cli': '^0.1.53',
       },
     }, null, 2));
     await writeFile(path.join(componentDir, 'pnpm-lock.yaml'), 'lockfileVersion: "9.0"\n');
@@ -3316,6 +3316,16 @@ test('local standard, doctor, and validate expose stable JSON diagnostics', asyn
     assert.equal(standard.authoringStandardRelease.releaseVersion, 'authoring-standard-release.v0.1.0');
     assert.equal(standard.authoringStandardRelease.standardVersion, 'component-standard.v0.1.0');
     assert.match(standard.authoringStandardRelease.standardSourceHash, /^sha256:[a-f0-9]{64}$/);
+    assert.deepEqual(standard.recommendedAuthoringPackages, {
+      contracts: '0.1.21',
+      componentKit: '0.1.17',
+      cli: '0.1.53',
+      createComponent: '0.1.43',
+    });
+    assert.deepEqual(
+      standard.recommendedAuthoringPackages,
+      standard.authoringStandardRelease.recommendedAuthoringPackages,
+    );
     assert.deepEqual(standard.authoringStandardRelease.uploadTargets.map((target) => target.target), [
       'marketplace_authoring',
       'project_private_generation',
@@ -3445,15 +3455,15 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
     assert.ok(upgrade.packageChanges.some((change) => (
       change.name === '@promptframe/contracts'
       && change.current === '^0.1.4'
-      && change.next === '^0.1.20'
+      && change.next === '^0.1.21'
     )));
     assert.ok(upgrade.packageChanges.some((change) => (
       change.name === '@promptframe/component-kit'
-      && change.next === '^0.1.16'
+      && change.next === '^0.1.17'
     )));
     assert.ok(upgrade.packageChanges.some((change) => (
       change.name === '@promptframe/cli'
-      && change.next === '^0.1.51'
+      && change.next === '^0.1.53'
     )));
 
     const applied = JSON.parse((await execFileAsync('node', [
@@ -3468,19 +3478,19 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
     assert.equal(applied.apply, true);
     assert.ok(applied.packageChanges.some((change) => change.name === '@promptframe/contracts'));
     const appliedPackageJson = JSON.parse(await readFile(path.join(componentDir, 'package.json'), 'utf8'));
-    assert.equal(appliedPackageJson.dependencies['@promptframe/contracts'], '^0.1.20');
-    assert.equal(appliedPackageJson.dependencies['@promptframe/component-kit'], '^0.1.16');
-    assert.equal(appliedPackageJson.devDependencies['@promptframe/cli'], '^0.1.51');
+    assert.equal(appliedPackageJson.dependencies['@promptframe/contracts'], '^0.1.21');
+    assert.equal(appliedPackageJson.dependencies['@promptframe/component-kit'], '^0.1.17');
+    assert.equal(appliedPackageJson.devDependencies['@promptframe/cli'], '^0.1.53');
 
     await writeFile(path.join(componentDir, 'package.json'), JSON.stringify({
       name: 'fixture-component',
       version: '0.1.0',
       dependencies: {
-        '@promptframe/contracts': '^0.1.20',
-        '@promptframe/component-kit': '^0.1.16',
+        '@promptframe/contracts': '^0.1.21',
+        '@promptframe/component-kit': '^0.1.17',
       },
       devDependencies: {
-        '@promptframe/cli': '^0.1.51',
+        '@promptframe/cli': '^0.1.53',
       },
     }, null, 2));
     const current = JSON.parse((await execFileAsync('node', [
@@ -3500,7 +3510,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-scaffold-freshness-'));
   try {
     const componentDir = path.join(dir, 'component');
-    const currentReactRemotionTemplateDigest = 'sha256:4de0df168bcf85bf88e396d23f2ef66266ff8dc64f3c3d992ebd448d84d04dec';
+    const currentReactRemotionTemplateDigest = 'sha256:e924a07652443affbbfba0d7a59bf7c5c502869a9773193921d9a30c8e975a0c';
     await writeFixtureComponent(componentDir);
     await mkdir(path.join(componentDir, '.promptframe'), { recursive: true });
     await writeFile(path.join(componentDir, '.promptframe/scaffold.json'), `${JSON.stringify({
@@ -3522,7 +3532,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     const doctorDiagnostic = doctor.diagnostics.find((item) => item.code === 'scaffold.template.stale');
     assert.equal(doctorDiagnostic.severity, 'warning');
     assert.equal(doctorDiagnostic.current, '0.1.0');
-    assert.equal(doctorDiagnostic.minimum, '0.1.42');
+    assert.equal(doctorDiagnostic.minimum, '0.1.43');
     assert.equal(doctorDiagnostic.expectedTemplateDigest, currentReactRemotionTemplateDigest);
     assert.match(doctorDiagnostic.repairHint, /local scaffold freshness/);
 
@@ -3547,7 +3557,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     await writeFile(path.join(componentDir, '.promptframe/scaffold.json'), `${JSON.stringify({
       schemaVersion: 'promptframe.scaffold.v0.1.0',
       createdByPackage: 'create-promptframe-component',
-      createdByVersion: '0.1.42',
+      createdByVersion: '0.1.43',
       templateName: 'react-remotion',
       templateDigest: `sha256:${'b'.repeat(64)}`,
       createdAt: '2026-07-01T00:00:00.000Z',
@@ -3560,7 +3570,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     ])).stdout);
     const sameVersionDiagnostic = sameVersionWrongDigest.diagnostics.find((item) => item.code === 'scaffold.template.stale');
     assert.equal(sameVersionDiagnostic.severity, 'warning');
-    assert.equal(sameVersionDiagnostic.current, '0.1.42');
+    assert.equal(sameVersionDiagnostic.current, '0.1.43');
     assert.equal(sameVersionDiagnostic.templateDigest, `sha256:${'b'.repeat(64)}`);
     assert.equal(sameVersionDiagnostic.expectedTemplateDigest, currentReactRemotionTemplateDigest);
     assert.match(sameVersionDiagnostic.message, /templateDigest/i);
@@ -3568,7 +3578,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     await writeFile(path.join(componentDir, '.promptframe/scaffold.json'), `${JSON.stringify({
       schemaVersion: 'promptframe.scaffold.v0.1.0',
       createdByPackage: 'create-promptframe-component',
-      createdByVersion: '0.1.42',
+      createdByVersion: '0.1.43',
       templateName: 'react-remotion',
       templateDigest: currentReactRemotionTemplateDigest,
       createdAt: '2026-07-01T00:00:00.000Z',
@@ -4362,11 +4372,11 @@ async function writeFixtureComponent(componentDir) {
       name: 'fixture-component',
       version: '0.1.0',
       dependencies: {
-        '@promptframe/contracts': '^0.1.20',
-        '@promptframe/component-kit': '^0.1.16',
+        '@promptframe/contracts': '^0.1.21',
+        '@promptframe/component-kit': '^0.1.17',
       },
       devDependencies: {
-        '@promptframe/cli': '^0.1.51',
+        '@promptframe/cli': '^0.1.53',
       },
     }),
     'pnpm-lock.yaml': 'lockfileVersion: "9.0"\n',

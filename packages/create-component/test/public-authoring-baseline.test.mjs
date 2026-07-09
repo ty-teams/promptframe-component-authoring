@@ -11,11 +11,11 @@ test('public templates use the current PromptFrame authoring package baseline', 
     'packages/create-component/templates/react-remotion/package.json',
   ]) {
     const packageJson = JSON.parse(await readFile(path.join(repoRoot, templatePackagePath), 'utf8'));
-    assert.equal(packageJson.dependencies?.['@promptframe/component-kit'], '^0.1.16', templatePackagePath);
-    assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.20', templatePackagePath);
+    assert.equal(packageJson.dependencies?.['@promptframe/component-kit'], '^0.1.17', templatePackagePath);
+    assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.21', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@remotion/player'], '^4.0.0', templatePackagePath);
     assert.equal(packageJson.devDependencies?.['@vitejs/plugin-react'], '^6.0.1', templatePackagePath);
-    assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.51', templatePackagePath);
+    assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.53', templatePackagePath);
     assert.equal(packageJson.devDependencies?.typescript, '~6.0.2', templatePackagePath);
     assert.equal(packageJson.devDependencies?.vite, '^8.0.10', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@vitejs/plugin-react'], undefined, templatePackagePath);
@@ -26,7 +26,23 @@ test('public templates use the current PromptFrame authoring package baseline', 
 
 test('create package version is bumped for the next template release', async () => {
   const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'packages/create-component/package.json'), 'utf8'));
-  assert.equal(packageJson.version, '0.1.42');
+  assert.equal(packageJson.version, '0.1.43');
+});
+
+test('public authoring docs include a single AUTHORING recovery entrypoint', async () => {
+  for (const docPath of [
+    'AUTHORING.md',
+    'templates/react-remotion/AUTHORING.md',
+    'packages/create-component/templates/react-remotion/AUTHORING.md',
+  ]) {
+    const text = await readFile(path.join(repoRoot, docPath), 'utf8');
+    assert.match(text, /promptframe sync \. --apply/, docPath);
+    assert.match(text, /PromptFramePreviewApp/, docPath);
+    assert.match(text, /resource slot|资源槽/i, docPath);
+    assert.match(text, /locale|语言/i, docPath);
+    assert.match(text, /reset|重置/i, docPath);
+    assert.match(text, /freshness|标准新鲜度|版本新鲜度/i, docPath);
+  }
 });
 
 test('public templates expose PromptFrame CLI lifecycle scripts', async () => {
@@ -154,10 +170,10 @@ test('public authoring docs document the current source baseline', async () => {
   ]) {
     const text = await readFile(path.join(repoRoot, docPath), 'utf8');
     assert.match(text, /Current source baseline is/, docPath);
-    assert.match(text, /@promptframe\/contracts@0\.1\.20/, docPath);
-    assert.match(text, /@promptframe\/component-kit@0\.1\.16/, docPath);
-    assert.match(text, /@promptframe\/cli@0\.1\.51/, docPath);
-    assert.match(text, /create-promptframe-component@0\.1\.42/, docPath);
+    assert.match(text, /@promptframe\/contracts@0\.1\.21/, docPath);
+    assert.match(text, /@promptframe\/component-kit@0\.1\.17/, docPath);
+    assert.match(text, /@promptframe\/cli@0\.1\.53/, docPath);
+    assert.match(text, /create-promptframe-component@0\.1\.43/, docPath);
     assert.match(text, /workspace root lockfile|workspace root lockfile evidence|pnpm workspace root lockfile/, docPath);
     assert.doesNotMatch(text, /source candidate|source tree prepares|until Trusted Publishing completes/, docPath);
   }

@@ -26,15 +26,21 @@ test('authoring standard release exposes upload targets and package floors', () 
   assert.equal(release.uploadTargets[0].requiresHumanPublishApproval, true);
   assert.equal(release.uploadTargets[1].requiresHumanPublishApproval, false);
   assert.deepEqual(release.minPackageVersions, {
-    contracts: '0.1.20',
-    componentKit: '0.1.16',
-    cli: '0.1.51',
-    createComponent: '0.1.42',
+    contracts: '0.1.21',
+    componentKit: '0.1.17',
+    cli: '0.1.53',
+    createComponent: '0.1.43',
+  });
+  assert.deepEqual(release.recommendedAuthoringPackages, {
+    contracts: '0.1.21',
+    componentKit: '0.1.17',
+    cli: '0.1.53',
+    createComponent: '0.1.43',
   });
   assert.deepEqual(release.scaffoldTemplates, [
     {
       name: 'react-remotion',
-      digest: 'sha256:4de0df168bcf85bf88e396d23f2ef66266ff8dc64f3c3d992ebd448d84d04dec',
+      digest: 'sha256:e924a07652443affbbfba0d7a59bf7c5c502869a9773193921d9a30c8e975a0c',
     },
   ]);
 });
@@ -48,6 +54,7 @@ test('freshness decision keeps local and current standard fingerprints separate'
     currentStandardVersion: COMPONENT_STANDARD_VERSION,
     currentStandardSourceHash: COMPONENT_STANDARD_SOURCE_HASH,
     minPackageVersions: PROMPTFRAME_AUTHORING_STANDARD_RELEASE.minPackageVersions,
+    recommendedAuthoringPackages: PROMPTFRAME_AUTHORING_STANDARD_RELEASE.recommendedAuthoringPackages,
     diagnostic: {
       code: 'standard.freshness.upload_blocking',
       severity: 'error',

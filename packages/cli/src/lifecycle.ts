@@ -111,6 +111,7 @@ export function buildFreshnessDecision(
     currentStandardVersion: COMPONENT_STANDARD_VERSION,
     currentStandardSourceHash: COMPONENT_STANDARD_SOURCE_HASH,
     minPackageVersions: PROMPTFRAME_AUTHORING_STANDARD_RELEASE.minPackageVersions,
+    recommendedAuthoringPackages: PROMPTFRAME_AUTHORING_STANDARD_RELEASE.recommendedAuthoringPackages,
     diagnostic,
     retryable: false,
   };
