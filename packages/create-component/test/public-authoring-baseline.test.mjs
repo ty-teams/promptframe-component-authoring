@@ -11,11 +11,11 @@ test('public templates use the current PromptFrame authoring package baseline', 
     'packages/create-component/templates/react-remotion/package.json',
   ]) {
     const packageJson = JSON.parse(await readFile(path.join(repoRoot, templatePackagePath), 'utf8'));
-    assert.equal(packageJson.dependencies?.['@promptframe/component-kit'], '^0.1.19', templatePackagePath);
-    assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.25', templatePackagePath);
+    assert.equal(packageJson.dependencies?.['@promptframe/component-kit'], '^0.1.20', templatePackagePath);
+    assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.26', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@remotion/player'], '^4.0.0', templatePackagePath);
     assert.equal(packageJson.devDependencies?.['@vitejs/plugin-react'], '^6.0.1', templatePackagePath);
-    assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.57', templatePackagePath);
+    assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.58', templatePackagePath);
     assert.equal(packageJson.devDependencies?.typescript, '~6.0.2', templatePackagePath);
     assert.equal(packageJson.devDependencies?.vite, '^8.0.10', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@vitejs/plugin-react'], undefined, templatePackagePath);
@@ -26,7 +26,7 @@ test('public templates use the current PromptFrame authoring package baseline', 
 
 test('create package version is bumped for the next template release', async () => {
   const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'packages/create-component/package.json'), 'utf8'));
-  assert.equal(packageJson.version, '0.1.47');
+  assert.equal(packageJson.version, '0.1.48');
 });
 
 test('public authoring docs include a single AUTHORING recovery entrypoint', async () => {
@@ -171,10 +171,10 @@ test('public authoring docs document the current source baseline', async () => {
   ]) {
     const text = await readFile(path.join(repoRoot, docPath), 'utf8');
     assert.match(text, /Current source baseline is/, docPath);
-    assert.match(text, /@promptframe\/contracts@0.1.25/, docPath);
-    assert.match(text, /@promptframe\/component-kit@0\.1\.19/, docPath);
-    assert.match(text, /@promptframe\/cli@0.1.57/, docPath);
-    assert.match(text, /create-promptframe-component@0.1.47/, docPath);
+    assert.match(text, /@promptframe\/contracts@0.1.26/, docPath);
+    assert.match(text, /@promptframe\/component-kit@0\.1\.20/, docPath);
+    assert.match(text, /@promptframe\/cli@0.1.58/, docPath);
+    assert.match(text, /create-promptframe-component@0.1.48/, docPath);
     assert.match(text, /workspace root lockfile|workspace root lockfile evidence|pnpm workspace root lockfile/, docPath);
     assert.doesNotMatch(text, /source candidate|source tree prepares|until Trusted Publishing completes/, docPath);
   }

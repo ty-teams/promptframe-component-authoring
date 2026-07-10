@@ -10,7 +10,7 @@ PromptFrame 标准视频组件模板。
 
 CodingAI 不能读取 PromptFrame 平台源码、内部协作看板、REQ/TASK/QA、内部协作收件箱、secret、内部部署脚本或私有 endpoint 默认值。
 
-版本事实：Current source baseline is `@promptframe/cli@0.1.57`, `@promptframe/contracts@0.1.25`, `@promptframe/component-kit@0.1.19`, and `create-promptframe-component@0.1.47`. The published CLI consumes the contracts AST-aware public security policy evaluator, blocks red-team browser capability vectors, enforces Slot-first layout/source diagnostics, supports pnpm workspace root lockfile evidence, workspace root check/upload, workflow v2 upgrade diagnostics, `workspace:*` shared-package diagnostics, preview props/schema unknown-prop diagnostics, required public prop descriptions, stderr NDJSON upload progress for `--json`, human-readable token kind/expiry summaries, server version auto-bump notes, and reports `securityPolicyDigest` / `securityEvaluatorMode` / `publicResources` in JSON output.
+版本事实：Current source baseline is `@promptframe/cli@0.1.58`, `@promptframe/contracts@0.1.26`, `@promptframe/component-kit@0.1.20`, and `create-promptframe-component@0.1.48`. The published CLI consumes the contracts AST-aware public security policy evaluator, blocks red-team browser capability vectors, enforces Slot-first layout/source diagnostics, supports pnpm workspace root lockfile evidence, workspace root check/upload, workflow v2 upgrade diagnostics, `workspace:*` shared-package diagnostics, preview props/schema unknown-prop diagnostics, required public prop descriptions, stderr NDJSON upload progress for `--json`, human-readable token kind/expiry summaries, server version auto-bump notes, and reports `securityPolicyDigest` / `securityEvaluatorMode` / `publicResources` in JSON output.
 
 ## 本地开发
 

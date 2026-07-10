@@ -28,19 +28,26 @@ const allowList = new Map([
 const findings = [];
 
 const releaseWorkflows = [
-  ['.github/workflows/publish-contracts.yml', 'contracts-v', 'packages/contracts/package.json'],
-  ['.github/workflows/publish-component-kit.yml', 'component-kit-v', 'packages/component-kit/package.json'],
-  ['.github/workflows/publish-cli.yml', 'cli-v', 'packages/cli/package.json'],
-  ['.github/workflows/publish-create-component.yml', 'create-component-v', 'packages/create-component/package.json'],
+  ['.github/workflows/publish-contracts.yml', 'contracts'],
+  ['.github/workflows/publish-component-kit.yml', 'componentKit'],
+  ['.github/workflows/publish-cli.yml', 'cli'],
+  ['.github/workflows/publish-create-component.yml', 'createComponent'],
 ];
 
-for (const [workflow, tagPrefix, packageFile] of releaseWorkflows) {
+for (const [workflow, packageKey] of releaseWorkflows) {
   const text = readFileSync(join(root, workflow), 'utf8');
-  if (!text.includes('npm publish --tag next')) {
-    findings.push(`release.candidate_tag_missing: ${workflow}`);
+  if (!text.includes("- 'authoring-release-*'") || !text.includes('id-token: write')) {
+    findings.push(`release.oidc_tag_guard_missing: ${workflow}`);
   }
-  if (!text.includes('GITHUB_REF_NAME') || !text.includes(tagPrefix) || !text.includes(packageFile)) {
-    findings.push(`release.source_tag_guard_missing: ${workflow}`);
+  if (
+    !text.includes(`PROMPTFRAME_AUTHORING_RELEASE_PACKAGE_KEY: ${packageKey}`)
+    || !text.includes('node scripts/authoring-release-publish.mjs')
+    || !text.includes('environment: npm-production')
+  ) {
+    findings.push(`release.receipt_controller_missing: ${workflow}`);
+  }
+  if (/npm publish|npm dist-tag|pnpm install|npm install/.test(text)) {
+    findings.push(`release.unbounded_publish_path: ${workflow}`);
   }
 }
 
