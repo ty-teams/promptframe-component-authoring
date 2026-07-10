@@ -122,18 +122,18 @@ export function buildFreshnessDecision(
 }
 
 export function computePackageChanges(packageJson: ComponentPackageJson): PackageChange[] {
-  const floors = PROMPTFRAME_AUTHORING_STANDARD_RELEASE.minPackageVersions;
+  const recommendations = PROMPTFRAME_AUTHORING_STANDARD_RELEASE.recommendedAuthoringPackages;
   const requirements: Array<{ name: string; next: string; dependencySet: PackageDependencySet }> = packageFreshnessRules
     .filter((rule) => rule.requiredForMarketplace)
     .map((rule) => ({
       name: rule.name,
-      next: `^${floors[rule.floorKey]}`,
+      next: `^${recommendations[rule.floorKey]}`,
       dependencySet: rule.defaultDependencySet,
     }));
   if (hasDependency(packageJson, 'create-promptframe-component')) {
     requirements.push({
       name: 'create-promptframe-component',
-      next: `^${floors.createComponent}`,
+      next: `^${recommendations.createComponent}`,
       dependencySet: 'devDependencies',
     });
   }
@@ -196,7 +196,7 @@ export function computeScaffoldFreshnessDiagnostics(
   metadata: ScaffoldMetadata | undefined,
 ): ScaffoldFreshnessDiagnostic[] {
   if (!metadata || metadata.createdByPackage !== 'create-promptframe-component') return [];
-  const minimum = PROMPTFRAME_AUTHORING_STANDARD_RELEASE.minPackageVersions.createComponent;
+  const minimum = PROMPTFRAME_AUTHORING_STANDARD_RELEASE.recommendedAuthoringPackages.createComponent;
   const current = typeof metadata.createdByVersion === 'string' ? metadata.createdByVersion : undefined;
   const templateName = typeof metadata.templateName === 'string' ? metadata.templateName : undefined;
   const templateDigest = typeof metadata.templateDigest === 'string' ? metadata.templateDigest : undefined;

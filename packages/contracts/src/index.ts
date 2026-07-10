@@ -1290,10 +1290,17 @@ export const PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS = authoringPackageFlo
   createComponent: PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_COHORT.createComponent.version,
 });
 
+export const PROMPTFRAME_MIN_AUTHORING_PACKAGE_VERSIONS = authoringPackageFloorSchema.parse({
+  contracts: '0.1.25',
+  componentKit: '0.1.19',
+  cli: '0.1.57',
+  createComponent: '0.1.47',
+});
+
 export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = authoringStandardReleaseSchema.parse({
   releaseVersion: AUTHORING_STANDARD_RELEASE_VERSION,
   releaseId: AUTHORING_STANDARD_RELEASE_ID,
-  releaseDigest: 'sha256:ce2c8eece1403f9c250c241a1b28dc3056c5ecca3623fb034cecfcdbca2cf71b',
+  releaseDigest: 'sha256:564d80af72f61a4b78d8666de7e9b7094cceb99525838d0fd40185589fac679c',
   contractsVersion: PROMPTFRAME_CONTRACTS_VERSION,
   manifestSchemaVersion: COMPONENT_MANIFEST_SCHEMA_VERSION,
   componentRefVersion: COMPONENT_REF_VERSION,
@@ -1304,7 +1311,7 @@ export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = 
   styleContractVersion: PROMPTFRAME_STYLE_CONTRACT_VERSION,
   supportedComponentTypes: promptFrameComponentTypeSchema.options,
   activePackageCohort: PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_COHORT,
-  minPackageVersions: PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS,
+  minPackageVersions: PROMPTFRAME_MIN_AUTHORING_PACKAGE_VERSIONS,
   recommendedAuthoringPackages: PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS,
   scaffoldTemplates: [
     {

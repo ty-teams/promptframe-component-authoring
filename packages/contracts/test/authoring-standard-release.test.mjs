@@ -15,6 +15,7 @@ import {
   COMPONENT_STANDARD_VERSION,
   PROMPTFRAME_AUTHORING_STANDARD_RELEASE,
   PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_COHORT,
+  PROMPTFRAME_MIN_AUTHORING_PACKAGE_VERSIONS,
   PROMPTFRAME_PUBLIC_RESOURCE_POLICY,
 } from '../dist/index.js';
 
@@ -33,12 +34,19 @@ test('authoring standard release exposes one digest-bound package cohort', async
   assert.equal(release.uploadTargets[0].requiresHumanPublishApproval, true);
   assert.equal(release.uploadTargets[1].requiresHumanPublishApproval, false);
   assert.deepEqual(release.minPackageVersions, {
+    contracts: '0.1.25',
+    componentKit: '0.1.19',
+    cli: '0.1.57',
+    createComponent: '0.1.47',
+  });
+  assert.deepEqual(release.minPackageVersions, PROMPTFRAME_MIN_AUTHORING_PACKAGE_VERSIONS);
+  assert.notDeepEqual(release.recommendedAuthoringPackages, release.minPackageVersions);
+  assert.deepEqual(release.recommendedAuthoringPackages, {
     contracts: '0.1.27',
     componentKit: '0.1.21',
     cli: '0.1.59',
     createComponent: '0.1.49',
   });
-  assert.deepEqual(release.recommendedAuthoringPackages, release.minPackageVersions);
   assert.deepEqual(release.scaffoldTemplates, [
     {
       name: 'react-remotion',
