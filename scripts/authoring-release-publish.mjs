@@ -49,8 +49,14 @@ export async function executeAuthoringPackagePublish(input) {
   if (beforeState !== 'absent') throw new Error('authoring_release.existing_version_not_complete');
 
   await publisher.publish(packageEntry);
-  const after = await registry.readPackage(packageEntry.name);
-  if (classifyRegistryState(after, packageEntry) !== 'complete') {
+  const readbackComplete = await waitForPackageComplete({
+    packageEntry,
+    registry,
+    maxAttempts: input.maxReadbackAttempts ?? 60,
+    sleep: input.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))),
+    delayMs: input.readbackDelayMs ?? 5000,
+  });
+  if (!readbackComplete) {
     throw new Error('authoring_release.publish_readback_mismatch');
   }
   return publishResult(authorization, packageKey, packageEntry, 'published');
@@ -135,6 +141,16 @@ async function waitForDependencies(input) {
     }
     if (!complete) throw new Error('authoring_release.dependency_not_complete');
   }
+}
+
+async function waitForPackageComplete(input) {
+  for (let attempt = 0; attempt < input.maxAttempts; attempt += 1) {
+    if (classifyRegistryState(await input.registry.readPackage(input.packageEntry.name), input.packageEntry) === 'complete') {
+      return true;
+    }
+    if (attempt + 1 < input.maxAttempts) await input.sleep(input.delayMs);
+  }
+  return false;
 }
 
 function classifyRegistryState(metadata, packageEntry) {

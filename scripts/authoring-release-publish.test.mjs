@@ -88,10 +88,41 @@ test('package publisher fails closed when dependencies or readback are incomplet
       ...fixture,
       packageKey: 'createComponent',
       registry: readback,
+      maxReadbackAttempts: 1,
       publisher: { async publish() {} },
     }),
     /publish_readback_mismatch/,
   );
+});
+
+test('package publisher polls bounded registry propagation after publish', async () => {
+  const fixture = await createFixture();
+  const registry = createRegistry(fixture.candidate, []);
+  let published = false;
+  let postPublishReads = 0;
+  let sleeps = 0;
+  const delayedRegistry = {
+    async readPackage(name) {
+      if (!published) return registry.readPackage(name);
+      postPublishReads += 1;
+      if (postPublishReads < 3) return null;
+      registry.complete('contracts');
+      return registry.readPackage(name);
+    },
+  };
+  const result = await executeAuthoringPackagePublish({
+    ...fixture,
+    packageKey: 'contracts',
+    registry: delayedRegistry,
+    maxReadbackAttempts: 3,
+    readbackDelayMs: 0,
+    sleep: async () => { sleeps += 1; },
+    publisher: { async publish() { published = true; } },
+  });
+
+  assert.equal(result.status, 'published');
+  assert.equal(postPublishReads, 3);
+  assert.equal(sleeps, 2);
 });
 
 test('OIDC publisher refuses long-lived credentials and uses a bounded npm publish command', async () => {
