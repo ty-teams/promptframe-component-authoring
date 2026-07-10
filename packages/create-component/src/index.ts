@@ -79,7 +79,7 @@ function createWorkspace(root: string, argv: string[], templateDir: string): voi
 
   console.log(`Created PromptFrame component workspace at ${root}`);
   console.log(`Component: ${componentId} -> ${componentPath}`);
-  console.log('Next steps: npm install && npm run check');
+  console.log('Next steps: pnpm install && pnpm run check');
 }
 
 function writeWorkspaceRootFiles(root: string, options: {
@@ -141,7 +141,7 @@ function writeMergedRootPackage(root: string, options: {
       ...existingScripts,
     },
     devDependencies: {
-      '@promptframe/cli': '^0.1.56',
+      '@promptframe/cli': '^0.1.57',
       ...existingDevDependencies,
     },
   };

@@ -40,6 +40,7 @@ import {
   type ComponentDiagnostic,
   type ComponentPublicResourceEntry,
   type ComponentPublicResourceKind,
+  type AuthoringReleaseStage,
   type AuthoringStandardFreshnessDecision,
   type AuthoringUploadTarget,
   type PublicPolicyRuleId,
@@ -1226,6 +1227,8 @@ async function resolveSoftRemoteStandardFreshness(
       evaluation.recommendedAuthoringPackages,
       evaluation.currentReleaseId,
       evaluation.currentReleaseDigest,
+      evaluation.currentReleaseStage,
+      evaluation.promotionResponsibility,
     );
   }
   const decision = buildFreshnessDecision(
@@ -1236,6 +1239,8 @@ async function resolveSoftRemoteStandardFreshness(
     ...decision,
     currentReleaseId: evaluation.currentReleaseId ?? decision.currentReleaseId,
     currentReleaseDigest: evaluation.currentReleaseDigest ?? decision.currentReleaseDigest,
+    ...(evaluation.currentReleaseStage ? { currentReleaseStage: evaluation.currentReleaseStage } : {}),
+    ...(evaluation.promotionResponsibility ? { promotionResponsibility: evaluation.promotionResponsibility } : {}),
     minPackageVersions: evaluation.minPackageVersions ?? decision.minPackageVersions,
     recommendedAuthoringPackages: evaluation.recommendedAuthoringPackages ?? decision.recommendedAuthoringPackages,
   };
@@ -1249,6 +1254,8 @@ function buildFreshnessWarningDecision(
   recommendedAuthoringPackages = PROMPTFRAME_AUTHORING_STANDARD_RELEASE.recommendedAuthoringPackages,
   currentReleaseId?: string,
   currentReleaseDigest?: `sha256:${string}`,
+  currentReleaseStage?: AuthoringReleaseStage,
+  promotionResponsibility?: string,
 ): AuthoringStandardFreshnessDecision {
   return {
     status: 'warning',
@@ -1261,6 +1268,8 @@ function buildFreshnessWarningDecision(
     currentStandardSourceHash: COMPONENT_STANDARD_SOURCE_HASH,
     ...(currentReleaseId ? { currentReleaseId } : {}),
     ...(currentReleaseDigest ? { currentReleaseDigest } : {}),
+    ...(currentReleaseStage ? { currentReleaseStage } : {}),
+    ...(promotionResponsibility ? { promotionResponsibility } : {}),
     minPackageVersions,
     recommendedAuthoringPackages,
     diagnostic: diagnostic(code, 'warning', message),
@@ -1279,6 +1288,8 @@ type RemoteStandardFreshnessEvaluation = {
   recommendedAuthoringPackages?: AuthoringPackageVersions;
   currentReleaseId?: string;
   currentReleaseDigest?: `sha256:${string}`;
+  currentReleaseStage?: AuthoringReleaseStage;
+  promotionResponsibility?: string;
 };
 
 const authoringPackageVersionKeys = ['contracts', 'componentKit', 'cli', 'createComponent'] as const;
@@ -1293,12 +1304,36 @@ function evaluateRemoteStandardFreshness(
   const currentReleaseDigest = remoteReleaseDigest && /^sha256:[a-f0-9]{64}$/.test(remoteReleaseDigest)
     ? remoteReleaseDigest as `sha256:${string}`
     : undefined;
+  const promotion = asRecord(payload.releasePromotion) ?? asRecord(payload.promotion);
+  const rawReleaseStage = stringValue(promotion?.stage) ?? stringValue(payload.releaseStage);
+  const currentReleaseStage: AuthoringReleaseStage | undefined = rawReleaseStage === 'candidate' || rawReleaseStage === 'stable'
+    ? rawReleaseStage
+    : undefined;
+  const promotionResponsibility = stringValue(promotion?.responsibility);
+  const releaseMetadata = {
+    currentReleaseId,
+    currentReleaseDigest,
+    currentReleaseStage,
+    promotionResponsibility,
+  };
   const minPackageVersions = extractAuthoringPackageVersions(remoteRelease?.minPackageVersions);
   const recommendedAuthoringPackages = extractAuthoringPackageVersions(remoteRelease?.recommendedAuthoringPackages)
     ?? extractAuthoringPackageVersions(payload.recommendedAuthoringPackages);
   const localCohort = PROMPTFRAME_AUTHORING_STANDARD_RELEASE.recommendedAuthoringPackages;
   const floorRelation = compareAuthoringPackageVersions(minPackageVersions, localCohort);
   const recommendedRelation = compareAuthoringPackageVersions(recommendedAuthoringPackages, localCohort);
+
+  if (rawReleaseStage && !currentReleaseStage) {
+    return {
+      kind: 'blocking',
+      uploadBlocking: true,
+      code: 'standard.freshness.release_promotion_invalid',
+      message: 'PromptFrame platform returned an invalid authoring release promotion stage. Wait for platform rollout recovery; do not infer stable/current completion.',
+      minPackageVersions,
+      recommendedAuthoringPackages,
+      ...releaseMetadata,
+    };
+  }
 
   if (floorRelation === 'mixed' || recommendedRelation === 'mixed') {
     return {
@@ -1308,8 +1343,7 @@ function evaluateRemoteStandardFreshness(
       message: 'PromptFrame platform returned a mixed authoring package cohort that cannot be ordered against the local release. Wait for platform rollout recovery; do not change local packages from this response.',
       minPackageVersions,
       recommendedAuthoringPackages,
-      currentReleaseId,
-      currentReleaseDigest,
+      ...releaseMetadata,
     };
   }
 
@@ -1325,8 +1359,7 @@ function evaluateRemoteStandardFreshness(
       ].join(' '),
       minPackageVersions,
       recommendedAuthoringPackages,
-      currentReleaseId,
-      currentReleaseDigest,
+      ...releaseMetadata,
     };
   }
 
@@ -1344,8 +1377,7 @@ function evaluateRemoteStandardFreshness(
       ].join(' '),
       minPackageVersions,
       recommendedAuthoringPackages,
-      currentReleaseId,
-      currentReleaseDigest,
+      ...releaseMetadata,
     };
   }
 
@@ -1360,8 +1392,7 @@ function evaluateRemoteStandardFreshness(
       ].join(' '),
       minPackageVersions,
       recommendedAuthoringPackages,
-      currentReleaseId,
-      currentReleaseDigest,
+      ...releaseMetadata,
     };
   }
 
@@ -1376,8 +1407,25 @@ function evaluateRemoteStandardFreshness(
       ].join(' '),
       minPackageVersions,
       recommendedAuthoringPackages,
-      currentReleaseId,
-      currentReleaseDigest,
+      ...releaseMetadata,
+    };
+  }
+
+  if (currentReleaseStage === 'candidate') {
+    const responsibility = promotionResponsibility ?? 'platform_release_maintainer';
+    return {
+      kind: 'warning',
+      uploadBlocking: false,
+      code: 'standard.release.promoting',
+      message: [
+        `This endpoint is serving candidate authoring release ${currentReleaseId ?? 'unknown'}; stable promotion is still pending.`,
+        `Candidate cohort: ${formatAuthoringPackageVersions(recommendedAuthoringPackages ?? minPackageVersions ?? localCohort)}.`,
+        `Responsibility: ${responsibility}; local package upgrades cannot complete npm latest/platform promotion.`,
+        'Dev/check and isolated canary upload may continue, but this result does not claim stable/current release completion.',
+      ].join(' '),
+      minPackageVersions,
+      recommendedAuthoringPackages,
+      ...releaseMetadata,
     };
   }
 
@@ -1388,8 +1436,7 @@ function evaluateRemoteStandardFreshness(
     message: 'Local authoring standard and package cohort match the platform release.',
     minPackageVersions,
     recommendedAuthoringPackages,
-    currentReleaseId,
-    currentReleaseDigest,
+    ...releaseMetadata,
   };
 }
 
@@ -1422,6 +1469,10 @@ function compareAuthoringPackageVersions(
 
 function formatRecommendedAuthoringPackageCommand(packages: AuthoringPackageVersions): string {
   return `pnpm add @promptframe/contracts@${packages.contracts} @promptframe/component-kit@${packages.componentKit} && pnpm add -D @promptframe/cli@${packages.cli} create-promptframe-component@${packages.createComponent}`;
+}
+
+function formatAuthoringPackageVersions(packages: AuthoringPackageVersions): string {
+  return authoringPackageVersionKeys.map((key) => `${key}=${packages[key]}`).join(', ');
 }
 
 function compareSemverCore(left: string | undefined, right: string | undefined): number | undefined {

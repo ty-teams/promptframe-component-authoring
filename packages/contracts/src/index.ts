@@ -18,7 +18,7 @@ export const COMPONENT_STANDARD_POLICY_VERSION = 'component-standard-policy.v0.1
 export const COMPONENT_SECURITY_POLICY_VERSION = 'component-security-policy.v0.1.0' as const;
 export const PROMPTFRAME_STYLE_CONTRACT_VERSION = 'promptframe-style.v0.1.0' as const;
 export const AUTHORING_STANDARD_RELEASE_VERSION = 'authoring-standard-release.v0.1.0' as const;
-export const AUTHORING_STANDARD_RELEASE_ID = 'authoring-release-2026-07-10.1' as const;
+export const AUTHORING_STANDARD_RELEASE_ID = 'authoring-release-2026-07-10.2' as const;
 export const COMPONENT_REUSABILITY_CONTRACT_VERSION = 'component-reusability.v0.1.0' as const;
 export const COMPONENT_DEPENDENCY_POLICY_VERSION = 'component-dependency-policy.v0.1.0' as const;
 export const COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION = 'component-public-resources.v0.1.0' as const;
@@ -1246,6 +1246,9 @@ export const authoringStandardFreshnessStatusSchema = z.enum([
 ]);
 export type AuthoringStandardFreshnessStatus = z.infer<typeof authoringStandardFreshnessStatusSchema>;
 
+export const authoringReleaseStageSchema = z.enum(['candidate', 'stable']);
+export type AuthoringReleaseStage = z.infer<typeof authoringReleaseStageSchema>;
+
 export const authoringFreshnessDiagnosticSchema = z.object({
   code: nonEmptyStringSchema.max(160),
   severity: z.enum(['info', 'warning', 'error']),
@@ -1264,6 +1267,8 @@ export const authoringStandardFreshnessDecisionSchema = z.object({
   currentStandardSourceHash: sha256Schema,
   currentReleaseId: z.string().trim().min(1).max(160).optional(),
   currentReleaseDigest: sha256Schema.optional(),
+  currentReleaseStage: authoringReleaseStageSchema.optional(),
+  promotionResponsibility: z.string().trim().min(1).max(160).optional(),
   minPackageVersions: authoringPackageFloorSchema,
   recommendedAuthoringPackages: recommendedAuthoringPackagesSchema,
   diagnostic: authoringFreshnessDiagnosticSchema,
@@ -1272,10 +1277,10 @@ export const authoringStandardFreshnessDecisionSchema = z.object({
 export type AuthoringStandardFreshnessDecision = z.infer<typeof authoringStandardFreshnessDecisionSchema>;
 
 export const PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_COHORT: AuthoringPackageCohort = authoringPackageCohortSchema.parse({
-  contracts: { name: '@promptframe/contracts', version: '0.1.24' },
+  contracts: { name: '@promptframe/contracts', version: '0.1.25' },
   componentKit: { name: '@promptframe/component-kit', version: '0.1.19' },
-  cli: { name: '@promptframe/cli', version: '0.1.56' },
-  createComponent: { name: 'create-promptframe-component', version: '0.1.46' },
+  cli: { name: '@promptframe/cli', version: '0.1.57' },
+  createComponent: { name: 'create-promptframe-component', version: '0.1.47' },
 });
 
 export const PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS = authoringPackageFloorSchema.parse({
@@ -1288,7 +1293,7 @@ export const PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS = authoringPackageFlo
 export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = authoringStandardReleaseSchema.parse({
   releaseVersion: AUTHORING_STANDARD_RELEASE_VERSION,
   releaseId: AUTHORING_STANDARD_RELEASE_ID,
-  releaseDigest: 'sha256:e86e34d96358fa416f39eccc3f89e8017f45532eb43935f064f1bfadbef635e9',
+  releaseDigest: 'sha256:61f74a6a56f874ce991b5584d65e263edd88dac0a9eae754339026c31604b460',
   contractsVersion: PROMPTFRAME_CONTRACTS_VERSION,
   manifestSchemaVersion: COMPONENT_MANIFEST_SCHEMA_VERSION,
   componentRefVersion: COMPONENT_REF_VERSION,
@@ -1304,7 +1309,7 @@ export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = 
   scaffoldTemplates: [
     {
       name: 'react-remotion',
-      digest: 'sha256:4e58eacf702387f7cbfe57a623e2b7eb4712a53480b3a215a86571ee4750c5af',
+      digest: 'sha256:1ee68b2f6a59f480e33d88380b573b34da6abb3056022d22504cfa4bb7fb841f',
     },
   ],
   uploadTargets: [

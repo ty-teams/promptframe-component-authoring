@@ -33,16 +33,16 @@ test('authoring standard release exposes one digest-bound package cohort', async
   assert.equal(release.uploadTargets[0].requiresHumanPublishApproval, true);
   assert.equal(release.uploadTargets[1].requiresHumanPublishApproval, false);
   assert.deepEqual(release.minPackageVersions, {
-    contracts: '0.1.24',
+    contracts: '0.1.25',
     componentKit: '0.1.19',
-    cli: '0.1.56',
-    createComponent: '0.1.46',
+    cli: '0.1.57',
+    createComponent: '0.1.47',
   });
   assert.deepEqual(release.recommendedAuthoringPackages, release.minPackageVersions);
   assert.deepEqual(release.scaffoldTemplates, [
     {
       name: 'react-remotion',
-      digest: 'sha256:4e58eacf702387f7cbfe57a623e2b7eb4712a53480b3a215a86571ee4750c5af',
+      digest: 'sha256:1ee68b2f6a59f480e33d88380b573b34da6abb3056022d22504cfa4bb7fb841f',
     },
   ]);
 
@@ -77,6 +77,8 @@ test('freshness decision keeps local and current standard fingerprints separate'
     currentStandardSourceHash: COMPONENT_STANDARD_SOURCE_HASH,
     currentReleaseId: PROMPTFRAME_AUTHORING_STANDARD_RELEASE.releaseId,
     currentReleaseDigest: PROMPTFRAME_AUTHORING_STANDARD_RELEASE.releaseDigest,
+    currentReleaseStage: 'stable',
+    promotionResponsibility: 'platform_release_maintainer',
     minPackageVersions: PROMPTFRAME_AUTHORING_STANDARD_RELEASE.minPackageVersions,
     recommendedAuthoringPackages: PROMPTFRAME_AUTHORING_STANDARD_RELEASE.recommendedAuthoringPackages,
     diagnostic: {
@@ -90,6 +92,8 @@ test('freshness decision keeps local and current standard fingerprints separate'
   assert.equal(decision.status, 'upload_blocking');
   assert.notEqual(decision.localStandardSourceHash, decision.currentStandardSourceHash);
   assert.notEqual(decision.localReleaseDigest, decision.currentReleaseDigest);
+  assert.equal(decision.currentReleaseStage, 'stable');
+  assert.equal(decision.promotionResponsibility, 'platform_release_maintainer');
   assert.equal(decision.diagnostic.code, 'standard.freshness.upload_blocking');
 });
 
