@@ -86,8 +86,7 @@ export function parseAuthoringReleaseIntent(value, options = {}) {
     throw new Error('authoring_release.intent_schema_unsupported');
   }
   assertBoundedId(intent.releaseId, 'authoring_release.release_id_invalid');
-  const expectedTag = `authoring-candidate-${intent.releaseId.replace(/^authoring-release-/, '')}`;
-  if (intent.artifactTag !== expectedTag) throw new Error('authoring_release.artifact_tag_invalid');
+  assertArtifactTag(intent.releaseId, intent.artifactTag);
   if (intent.registry !== AUTHORING_RELEASE_REGISTRY) throw new Error('authoring_release.registry_invalid');
   const { createdAt, expiresAt } = validateWindow(intent, options, 'authoring_release');
   const packages = parseExactPackages(intent.packages, INTENT_PACKAGE_KEYS, (entry) => {
@@ -187,8 +186,7 @@ export function parseAuthoringCandidateManifest(value, options = {}) {
     throw new Error('authoring_release.candidate_schema_unsupported');
   }
   assertBoundedId(candidate.releaseId, 'authoring_release.release_id_invalid');
-  const expectedTag = `authoring-candidate-${candidate.releaseId.replace(/^authoring-release-/, '')}`;
-  if (candidate.artifactTag !== expectedTag) throw new Error('authoring_release.artifact_tag_invalid');
+  assertArtifactTag(candidate.releaseId, candidate.artifactTag);
   assertCommit(candidate.sourceCommit, 'authoring_release.source_commit_invalid');
   if (candidate.registry !== AUTHORING_RELEASE_REGISTRY) throw new Error('authoring_release.registry_invalid');
   validateWindow(candidate, options, 'authoring_release');
@@ -252,9 +250,7 @@ export function parseAuthoringReleaseAuthorization(value, options = {}) {
   if (authorization.state !== 'publish_ready') throw new Error('authoring_release.authorization_state_invalid');
   assertBoundedId(authorization.releaseId, 'authoring_release.release_id_invalid');
   const suffix = authorization.releaseId.replace(/^authoring-release-/, '');
-  if (authorization.artifactTag !== `authoring-candidate-${suffix}`) {
-    throw new Error('authoring_release.artifact_tag_invalid');
-  }
+  assertArtifactTag(authorization.releaseId, authorization.artifactTag);
   if (authorization.releaseTag !== `authoring-release-${suffix}`) {
     throw new Error('authoring_release.release_tag_invalid');
   }
@@ -394,6 +390,14 @@ function assertString(value, code) {
 function assertBoundedId(value, code) {
   assertString(value, code);
   if (!/^authoring-release-[A-Za-z0-9][A-Za-z0-9._-]{2,120}$/.test(value)) throw new Error(code);
+}
+
+function assertArtifactTag(releaseId, artifactTag) {
+  const base = `authoring-candidate-${releaseId.replace(/^authoring-release-/, '')}`;
+  if (artifactTag === base) return;
+  if (!artifactTag.startsWith(base) || !/^-r[1-9]\d*$/.test(artifactTag.slice(base.length))) {
+    throw new Error('authoring_release.artifact_tag_invalid');
+  }
 }
 
 function assertVersion(value, code) {

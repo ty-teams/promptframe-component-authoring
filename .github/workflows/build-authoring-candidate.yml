@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: npm-production
     env:
-      PROMPTFRAME_AUTHORING_CANDIDATE_OUTPUT: ${{ runner.temp }}/promptframe-authoring-candidate
+      PROMPTFRAME_AUTHORING_CANDIDATE_OUTPUT: /tmp/promptframe-authoring-candidate-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v6
         with:

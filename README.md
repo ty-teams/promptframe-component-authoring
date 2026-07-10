@@ -163,7 +163,7 @@ Release configuration:
 
 - GitHub repo: `ty-teams/promptframe-component-authoring`
 - Environment: `npm-production`
-- Candidate workflow: `build-authoring-candidate.yml`, tag `authoring-candidate-<release-suffix>`
+- Candidate workflow: `build-authoring-candidate.yml`, tag `authoring-candidate-<release-suffix>[-rN]`
 - Final release tag: `authoring-release-<release-suffix>`
 - `@promptframe/contracts`: Trusted Publisher workflow `publish-contracts.yml`
 - `@promptframe/component-kit`: Trusted Publisher workflow `publish-component-kit.yml`
@@ -171,6 +171,8 @@ Release configuration:
 - `create-promptframe-component`: Trusted Publisher workflow `publish-create-component.yml`
 
 A candidate tag builds and tests the whole workspace, packs all four final unpublished versions once, and creates a no-clobber prerelease containing the tarballs plus `candidate-manifest.json`. The manifest binds source commit, package versions, artifact names, sizes, SHA-256, SHA-512 integrity, intent digest, release digest, and expiry. Platform QA must install those exact tarball bytes; npm `next` is not candidate authority.
+
+Candidate tags are never moved or deleted. If a workflow-file defect prevents every job from being created and no candidate prerelease or asset exists, preserve the failed tag and runs, revise the active intent to the next `-rN` artifact tag, and push that new tag. A candidate revision keeps the same unpublished package cohort but produces a new source-bound manifest; after any candidate asset exists, recovery requires a new versioned cohort instead.
 
 After the exact candidate passes platform/Docker/live gates, a protected authorization receipt binds its manifest digest and platform gate digest. The shared final release tag starts all four existing Trusted Publisher workflows. They download and verify the same candidate assets, wait for dependencies, and publish directly as `latest` with OIDC and no long-lived npm write credential. Partial success only retries forward: an existing version is skipped only when its official integrity and `latest` tag already match the receipt. The platform stays on the previous stable cohort until all four packages and the official-registry Docker runtime converge.
 

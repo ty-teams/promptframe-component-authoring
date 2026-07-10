@@ -28,6 +28,7 @@ test('active release intent binds the exact unpublished source cohort', async ()
   const intent = await readAuthoringReleaseIntent(undefined, { root, now });
 
   assert.equal(intent.releaseId, 'authoring-release-2026-07-10.3');
+  assert.equal(intent.artifactTag, 'authoring-candidate-2026-07-10.3-r1');
   assert.deepEqual(intent.packages.map((entry) => entry.name), AUTHORING_RELEASE_PACKAGES.map((entry) => entry.name));
   assert.equal(await validateIntentAgainstRepository(intent, { root }), true);
 });
@@ -86,6 +87,11 @@ test('release intent rejects policy mutation, extra packages and noncanonical pa
   unknown.packages[0].name = '@promptframe/not-allowed';
   unknown.intentDigest = computeAuthoringReleaseIntentDigest(unknown);
   assert.throws(() => parseAuthoringReleaseIntent(unknown, { now }), /package_allowlist_invalid/);
+
+  const invalidRevision = structuredClone(intent);
+  invalidRevision.artifactTag = 'authoring-candidate-2026-07-10.3-retry';
+  invalidRevision.intentDigest = computeAuthoringReleaseIntentDigest(invalidRevision);
+  assert.throws(() => parseAuthoringReleaseIntent(invalidRevision, { now }), /artifact_tag_invalid/);
 
   await assert.rejects(
     readAuthoringReleaseIntent(path.join(root, '..', 'active-intent.json'), { root, now }),

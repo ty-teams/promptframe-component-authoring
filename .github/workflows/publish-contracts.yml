@@ -20,7 +20,7 @@ jobs:
     environment: npm-production
     env:
       PROMPTFRAME_AUTHORING_RELEASE_PACKAGE_KEY: contracts
-      PROMPTFRAME_AUTHORING_RELEASE_ARTIFACT_ROOT: ${{ runner.temp }}/promptframe-authoring-release
+      PROMPTFRAME_AUTHORING_RELEASE_ARTIFACT_ROOT: /tmp/promptframe-authoring-release-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v6
         with:
