@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "promptframe-authoring-release-failure/v1",
+  "releaseId": "authoring-release-2026-07-10.5",
+  "releaseTag": "authoring-release-2026-07-10.5",
+  "sourceCommit": "d069c453afb8360177bd08478d5ca7aa8174d78f",
+  "authorizationDigest": "sha256:41568b403aa9a585e19c4d1723304881e7627cc66290bdca63b7c7aafb143f16",
+  "failedAt": "2026-07-10T15:47:28.000Z",
+  "failureCode": "authoring_release.long_lived_credential_present",
+  "cause": "actions/setup-node registry-url injected NODE_AUTH_TOKEN into the OIDC publish step",
+  "registryMutation": false,
+  "workflowRuns": {
+    "contracts": 29104978270,
+    "componentKit": 29104978381,
+    "cli": 29104977814,
+    "createComponent": 29104977996
+  },
+  "supersededBy": "authoring-release-2026-07-10.5-r1"
+}

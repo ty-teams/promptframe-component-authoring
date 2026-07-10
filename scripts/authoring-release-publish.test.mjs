@@ -146,6 +146,7 @@ test('existing Trusted Publisher workflows keep filenames and publish one shared
     assert.match(text, new RegExp(`PROMPTFRAME_AUTHORING_RELEASE_PACKAGE_KEY: ${packageKey}`), filename);
     assert.match(text, /gh release download/, filename);
     assert.match(text, /node scripts\/authoring-release-publish\.mjs/, filename);
+    assert.doesNotMatch(text, /registry-url:/, filename);
     assert.doesNotMatch(text, /\$\{\{ runner\.temp \}\}/, filename);
     assert.doesNotMatch(text, /npm publish|npm dist-tag|pnpm install|npm install|workflow_dispatch/, filename);
   }
@@ -168,7 +169,7 @@ async function createFixture() {
     schemaVersion: 'promptframe-authoring-release-authorization/v1',
     state: 'publish_ready',
     releaseId: candidate.releaseId,
-    releaseTag: 'authoring-release-2026-07-10.5',
+    releaseTag: candidate.releaseId,
     artifactTag: candidate.artifactTag,
     sourceCommit: candidate.sourceCommit,
     candidateManifestDigest: candidate.manifestDigest,
