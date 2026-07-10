@@ -4191,6 +4191,77 @@ test('validate rejects public props without schema descriptions', async () => {
   }
 });
 
+test('validate resolves described named fields through a proven transparent resource wrapper', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-schema-transparent-wrapper-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(componentDir, 'src/schema.ts'), [
+      "import { z } from 'zod';",
+      'const imageResourceSlot = { kinds: [\'image\'], accept: [\'image/*\'] } as const;',
+      'function withImageResourceSlot<T extends z.ZodTypeAny>(schema: T): T {',
+      '  const def = (schema as { _def?: Record<string, unknown> })._def;',
+      '  if (def) def.promptFrameResource = imageResourceSlot;',
+      '  return schema;',
+      '}',
+      'const heroImageField = withImageResourceSlot(',
+      "  z.string().describe('Hero background image path under public/.'),",
+      ');',
+      'export const propsSchema = z.object({',
+      "  heroImage: heroImageField.default('/aurora-hero.svg'),",
+      "  title: z.string().describe('Visible title.').default('Aurora'),",
+      '});',
+      'export type ComponentProps = z.infer<typeof propsSchema>;',
+    ].join('\n'));
+    await writeFile(path.join(componentDir, 'src/preview-props.json'), JSON.stringify({
+      durationFrames: 60,
+      fps: 30,
+      width: 1280,
+      height: 720,
+      props: {
+        heroImage: '/aurora-hero.svg',
+        title: 'Aurora',
+      },
+    }, null, 2));
+
+    const result = await execFileAsync('node', [cliPath, 'validate', componentDir, '--json']);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.diagnostic.code, 'validate.completed');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('validate fails visibly instead of unwrapping an unknown schema helper', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-schema-unknown-wrapper-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(componentDir, 'src/schema.ts'), [
+      "import { z } from 'zod';",
+      "import { wrapSchema } from 'third-party';",
+      'export const propsSchema = z.object({',
+      "  title: wrapSchema(z.string().describe('Visible title.')),",
+      '});',
+      'export type ComponentProps = z.infer<typeof propsSchema>;',
+    ].join('\n'));
+
+    await assert.rejects(
+      execFileAsync('node', [cliPath, 'validate', componentDir, '--json']),
+      (error) => {
+        assert.equal(error.code, 1);
+        const payload = JSON.parse(error.stderr);
+        assert.equal(payload.diagnostic.code, 'component_standard.props.schema_unresolved');
+        assert.match(payload.failureReason, /wrapSchema|schema\.wrapper_unresolved|transparent schema wrapper/);
+        assert.match(payload.diagnostic.repairHint ?? '', /Unknown\/dynamic wrappers|not executed|not guessed/);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('validate compares preview props against propsSchema when helper z.object definitions appear first', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-preview-schema-root-'));
   try {

@@ -19,6 +19,10 @@
       "import": "./dist/security-policy-evaluator.js",
       "types": "./dist/security-policy-evaluator.d.ts"
     },
+    "./schema-evaluator": {
+      "import": "./dist/schema-evaluator.js",
+      "types": "./dist/schema-evaluator.d.ts"
+    },
     "./package.json": {
       "default": "./package.json"
     }

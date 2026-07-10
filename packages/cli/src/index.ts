@@ -51,6 +51,10 @@ import {
   type PromptFrameSecurityPolicyFinding,
 } from '@promptframe/contracts/security-evaluator';
 import {
+  evaluatePromptFrameSchemaSource,
+  type PromptFrameSchemaFacts,
+} from '@promptframe/contracts/schema-evaluator';
+import {
   applyPackageChanges,
   buildFreshnessDecision,
   computePackageChanges,
@@ -3806,8 +3810,12 @@ function validatePreviewProps(dir: string, manifest: ComponentManifest): void {
   const preview = readPreviewProps(dir);
   assertPreviewEnvelope(preview, 'src/preview-props.json', fail);
   assertPreviewDurationMatchesManifest(preview, manifest);
-  assertPreviewPropsMatchStaticSchema(dir, manifest, preview);
-  assertStaticPropsHaveDescriptions(readIfExists(join(dir, manifest.entry.propsSchemaPath)), manifest.entry.propsSchemaPath);
+  const schemaFacts = evaluatePromptFrameSchemaSource(
+    readIfExists(join(dir, manifest.entry.propsSchemaPath)),
+  );
+  assertStaticSchemaResolved(schemaFacts, manifest.entry.propsSchemaPath);
+  assertPreviewPropsMatchStaticSchema(manifest, preview, schemaFacts);
+  assertStaticPropsHaveDescriptions(schemaFacts, manifest.entry.propsSchemaPath);
 }
 
 function assertPreviewDurationMatchesManifest(preview: Record<string, unknown>, manifest: ComponentManifest): void {
@@ -3830,14 +3838,14 @@ function readPreviewProps(dir: string): Record<string, unknown> {
 }
 
 function assertPreviewPropsMatchStaticSchema(
-  dir: string,
   manifest: ComponentManifest,
   preview: Record<string, unknown>,
+  schemaFacts: PromptFrameSchemaFacts,
 ): void {
   const previewProps = asRecord(preview.props) ?? {};
   const previewPropNames = Object.keys(previewProps);
   if (previewPropNames.length === 0) return;
-  const schemaKeys = extractStaticZodObjectKeys(readIfExists(join(dir, manifest.entry.propsSchemaPath)));
+  const schemaKeys = new Set(schemaFacts.propKeys);
   if (schemaKeys.size === 0) return;
   const unknown = previewPropNames.filter((name) => !schemaKeys.has(name));
   if (unknown.length === 0) return;
@@ -3847,22 +3855,24 @@ function assertPreviewPropsMatchStaticSchema(
   );
 }
 
-function extractStaticZodObjectKeys(source: string): Set<string> {
-  return new Set(extractStaticZodObjectProps(source).map((prop) => prop.key));
+function assertStaticSchemaResolved(facts: PromptFrameSchemaFacts, sourcePath: string): void {
+  if (facts.status === 'resolved') return;
+  const diagnostic = facts.diagnostics.find((item) => item.code !== 'schema.props_schema_not_static');
+  // Legacy zero-prop fixtures may omit propsSchema entirely. Preserve that compatibility,
+  // while any declared but unresolved schema remains fail-visible.
+  if (!diagnostic) return;
+  const location = diagnostic ? ` at ${diagnostic.line}:${diagnostic.column}` : '';
+  const prop = diagnostic?.propPath ? ` for ${diagnostic.propPath}` : '';
+  fail(
+    `${sourcePath} could not be resolved by ${facts.evaluatorVersion}${prop}${location}: ${diagnostic?.message ?? 'schema is not static'}`,
+    'component_standard.props.schema_unresolved',
+    1,
+    'Use inline Zod expressions, named static schemas, an official PromptFrame helper, or a locally provable transparent wrapper. Unknown/dynamic wrappers are not executed or guessed.',
+  );
 }
 
-function extractStaticZodObjectProps(source: string): Array<{ key: string; valueSource: string }> {
-  const openBrace = findPropsSchemaZodObjectOpenBrace(source) ?? findFirstZodObjectOpenBrace(source);
-  if (openBrace < 0) return [];
-  const closeBrace = findMatchingBrace(source, openBrace);
-  if (closeBrace < 0) return [];
-  return collectTopLevelObjectProps(source.slice(openBrace + 1, closeBrace));
-}
-
-function assertStaticPropsHaveDescriptions(source: string, sourcePath: string): void {
-  const missingProps = extractStaticZodObjectProps(source)
-    .filter((prop) => !hasStaticZodDescription(prop.valueSource))
-    .map((prop) => prop.key);
+function assertStaticPropsHaveDescriptions(facts: PromptFrameSchemaFacts, sourcePath: string): void {
+  const missingProps = facts.propKeys.filter((key) => !facts.properties[key]?.description?.trim());
   if (missingProps.length === 0) return;
   const missingText = missingProps.join(', ');
   fail(
@@ -3871,182 +3881,6 @@ function assertStaticPropsHaveDescriptions(source: string, sourcePath: string): 
     1,
     'Add .describe("...") to each public propsSchema field, or provide equivalent metadata.parameterDescriptions before upload.',
   );
-}
-
-function hasStaticZodDescription(source: string): boolean {
-  return /\.describe\s*\(\s*(?:"[^"]+"|'[^']+'|`[^`]+`)\s*\)/m.test(source);
-}
-
-function findPropsSchemaZodObjectOpenBrace(source: string): number | undefined {
-  const propsSchemaMatch = /\bpropsSchema\s*=\s*z\s*\.\s*object\s*\(/.exec(source);
-  if (!propsSchemaMatch) return undefined;
-  const openParen = source.indexOf('(', propsSchemaMatch.index);
-  if (openParen < 0) return undefined;
-  const openBrace = nextNonWhitespaceIndex(source, openParen + 1);
-  return openBrace >= 0 && source[openBrace] === '{' ? openBrace : undefined;
-}
-
-function findFirstZodObjectOpenBrace(source: string): number {
-  const objectCallMatch = /\bz\s*\.\s*object\s*\(/.exec(source);
-  if (!objectCallMatch) return -1;
-  const openParen = source.indexOf('(', objectCallMatch.index);
-  if (openParen < 0) return -1;
-  const openBrace = nextNonWhitespaceIndex(source, openParen + 1);
-  return openBrace >= 0 && source[openBrace] === '{' ? openBrace : -1;
-}
-
-function nextNonWhitespaceIndex(source: string, start: number): number {
-  for (let index = start; index < source.length; index += 1) {
-    if (!/\s/.test(source[index])) return index;
-  }
-  return -1;
-}
-
-function findMatchingBrace(source: string, openIndex: number): number {
-  let depth = 0;
-  let quote: string | undefined;
-  let escaped = false;
-  for (let index = openIndex; index < source.length; index += 1) {
-    const char = source[index];
-    const next = source[index + 1];
-    if (quote) {
-      if (escaped) {
-        escaped = false;
-      } else if (char === '\\') {
-        escaped = true;
-      } else if (char === quote) {
-        quote = undefined;
-      }
-      continue;
-    }
-    if (char === '/' && next === '/') {
-      index = skipLineComment(source, index + 2);
-      continue;
-    }
-    if (char === '/' && next === '*') {
-      index = skipBlockComment(source, index + 2);
-      continue;
-    }
-    if (char === '"' || char === '\'' || char === '`') {
-      quote = char;
-      continue;
-    }
-    if (char === '{') depth += 1;
-    if (char === '}') {
-      depth -= 1;
-      if (depth === 0) return index;
-    }
-  }
-  return -1;
-}
-
-function collectTopLevelObjectProps(body: string): Array<{ key: string; valueSource: string }> {
-  const props: Array<{ key: string; valueSource: string }> = [];
-  let index = 0;
-  while (index < body.length) {
-    index = skipWhitespaceAndCommas(body, index);
-    if (index >= body.length) break;
-    if (body.startsWith('...', index)) {
-      index = skipTopLevelValue(body, index + 3);
-      continue;
-    }
-    const keyResult = readObjectKey(body, index);
-    if (!keyResult) {
-      index += 1;
-      continue;
-    }
-    index = skipWhitespaceAndCommas(body, keyResult.nextIndex);
-    if (body[index] === ':') {
-      const valueStart = index + 1;
-      const valueEnd = skipTopLevelValue(body, valueStart);
-      props.push({
-        key: keyResult.key,
-        valueSource: body.slice(valueStart, valueEnd),
-      });
-      index = valueEnd;
-      continue;
-    }
-    index = keyResult.nextIndex;
-  }
-  return props;
-}
-
-function skipWhitespaceAndCommas(source: string, start: number): number {
-  let index = start;
-  while (index < source.length && (/[\s,]/.test(source[index]))) index += 1;
-  return index;
-}
-
-function readObjectKey(source: string, start: number): { key: string; nextIndex: number } | undefined {
-  const char = source[start];
-  if (char === '"' || char === '\'') {
-    let escaped = false;
-    let value = '';
-    for (let index = start + 1; index < source.length; index += 1) {
-      const current = source[index];
-      if (escaped) {
-        value += current;
-        escaped = false;
-        continue;
-      }
-      if (current === '\\') {
-        escaped = true;
-        continue;
-      }
-      if (current === char) return { key: value, nextIndex: index + 1 };
-      value += current;
-    }
-    return undefined;
-  }
-  const identifier = /^[A-Za-z_$][\w$]*/.exec(source.slice(start));
-  if (!identifier) return undefined;
-  return { key: identifier[0], nextIndex: start + identifier[0].length };
-}
-
-function skipTopLevelValue(source: string, start: number): number {
-  let depth = 0;
-  let quote: string | undefined;
-  let escaped = false;
-  for (let index = start; index < source.length; index += 1) {
-    const char = source[index];
-    const next = source[index + 1];
-    if (quote) {
-      if (escaped) {
-        escaped = false;
-      } else if (char === '\\') {
-        escaped = true;
-      } else if (char === quote) {
-        quote = undefined;
-      }
-      continue;
-    }
-    if (char === '/' && next === '/') {
-      index = skipLineComment(source, index + 2);
-      continue;
-    }
-    if (char === '/' && next === '*') {
-      index = skipBlockComment(source, index + 2);
-      continue;
-    }
-    if (char === '"' || char === '\'' || char === '`') {
-      quote = char;
-      continue;
-    }
-    if (char === '(' || char === '[' || char === '{') depth += 1;
-    if (char === ')' || char === ']' || char === '}') depth -= 1;
-    if (char === ',' && depth <= 0) return index + 1;
-  }
-  return source.length;
-}
-
-function skipLineComment(source: string, start: number): number {
-  const nextLine = source.indexOf('\n', start);
-  return nextLine < 0 ? source.length : nextLine;
-}
-
-function skipBlockComment(source: string, start: number): number {
-  const end = source.indexOf('*/', start);
-  return end < 0 ? source.length : end + 1;
 }
 
 function evaluateDirectoryReusability(
@@ -4287,7 +4121,9 @@ function assertZipPropsHaveDescriptions(path: string): void {
   }
   const schemaEntry = readZipEntry(zip, (entryName) => isComponentSourceZipEntry(entryName, manifest.entry.propsSchemaPath));
   if (!schemaEntry) return;
-  assertStaticPropsHaveDescriptions(schemaEntry.toString('utf8'), manifest.entry.propsSchemaPath);
+  const facts = evaluatePromptFrameSchemaSource(schemaEntry.toString('utf8'));
+  assertStaticSchemaResolved(facts, manifest.entry.propsSchemaPath);
+  assertStaticPropsHaveDescriptions(facts, manifest.entry.propsSchemaPath);
 }
 
 function packageArtifactFromZip(path: string): ComponentPackageArtifact {
