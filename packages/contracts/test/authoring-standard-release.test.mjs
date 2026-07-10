@@ -33,10 +33,10 @@ test('authoring standard release exposes one digest-bound package cohort', async
   assert.equal(release.uploadTargets[0].requiresHumanPublishApproval, true);
   assert.equal(release.uploadTargets[1].requiresHumanPublishApproval, false);
   assert.deepEqual(release.minPackageVersions, {
-    contracts: '0.1.26',
-    componentKit: '0.1.20',
-    cli: '0.1.58',
-    createComponent: '0.1.48',
+    contracts: '0.1.27',
+    componentKit: '0.1.21',
+    cli: '0.1.59',
+    createComponent: '0.1.49',
   });
   assert.deepEqual(release.recommendedAuthoringPackages, release.minPackageVersions);
   assert.deepEqual(release.scaffoldTemplates, [

@@ -27,8 +27,8 @@ const now = new Date('2026-07-11T00:00:00.000Z');
 test('active release intent binds the exact unpublished source cohort', async () => {
   const intent = await readAuthoringReleaseIntent(undefined, { root, now });
 
-  assert.equal(intent.releaseId, 'authoring-release-2026-07-10.3');
-  assert.equal(intent.artifactTag, 'authoring-candidate-2026-07-10.3-r1');
+  assert.equal(intent.releaseId, 'authoring-release-2026-07-10.4');
+  assert.equal(intent.artifactTag, 'authoring-candidate-2026-07-10.4-r1');
   assert.deepEqual(intent.packages.map((entry) => entry.name), AUTHORING_RELEASE_PACKAGES.map((entry) => entry.name));
   assert.equal(await validateIntentAgainstRepository(intent, { root }), true);
 });
@@ -50,7 +50,7 @@ test('publish authorization binds platform gate and exact candidate receipt', as
     schemaVersion: 'promptframe-authoring-release-authorization/v1',
     state: 'publish_ready',
     releaseId: candidate.releaseId,
-    releaseTag: 'authoring-release-2026-07-10.3',
+    releaseTag: 'authoring-release-2026-07-10.4',
     artifactTag: candidate.artifactTag,
     sourceCommit: candidate.sourceCommit,
     candidateManifestDigest: candidate.manifestDigest,
@@ -89,7 +89,7 @@ test('release intent rejects policy mutation, extra packages and noncanonical pa
   assert.throws(() => parseAuthoringReleaseIntent(unknown, { now }), /package_allowlist_invalid/);
 
   const invalidRevision = structuredClone(intent);
-  invalidRevision.artifactTag = 'authoring-candidate-2026-07-10.3-retry';
+  invalidRevision.artifactTag = 'authoring-candidate-2026-07-10.4-retry';
   invalidRevision.intentDigest = computeAuthoringReleaseIntentDigest(invalidRevision);
   assert.throws(() => parseAuthoringReleaseIntent(invalidRevision, { now }), /artifact_tag_invalid/);
 

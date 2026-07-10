@@ -117,13 +117,13 @@ test('OIDC publisher refuses long-lived credentials and uses a bounded npm publi
     },
   });
   await publisher.publish({
-    artifactName: 'promptframe-contracts-0.1.26.tgz',
+    artifactName: 'promptframe-contracts-0.1.27.tgz',
   });
   assert.deepEqual(calls[0].args, ['--version']);
   assert.equal(calls[1].command, 'npm');
   assert.deepEqual(calls[1].args.slice(0, 4), [
     'publish',
-    '/tmp/authoring-release-fixture/promptframe-contracts-0.1.26.tgz',
+    '/tmp/authoring-release-fixture/promptframe-contracts-0.1.27.tgz',
     '--tag',
     'latest',
   ]);
@@ -168,7 +168,7 @@ async function createFixture() {
     schemaVersion: 'promptframe-authoring-release-authorization/v1',
     state: 'publish_ready',
     releaseId: candidate.releaseId,
-    releaseTag: 'authoring-release-2026-07-10.3',
+    releaseTag: 'authoring-release-2026-07-10.4',
     artifactTag: candidate.artifactTag,
     sourceCommit: candidate.sourceCommit,
     candidateManifestDigest: candidate.manifestDigest,

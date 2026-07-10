@@ -26,7 +26,7 @@ test('component-kit standard stamp is sourced from public contracts', async () =
   ) as { dependencies?: Record<string, string> };
 
   assert.match(source, /from '@promptframe\/contracts'/);
-  assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '0.1.26');
+  assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '0.1.27');
   assert.doesNotMatch(source, /component-standard\.v0\.1\.0/);
   assert.doesNotMatch(source, /component-manifest\.v0\.1\.0/);
   assert.doesNotMatch(source, /sha256:8c1e01c36155b4b646981064d24df9bd8cda501fd9cd9da93e5b62f40db22d52/);
