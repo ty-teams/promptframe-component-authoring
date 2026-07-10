@@ -18,7 +18,7 @@ export const COMPONENT_STANDARD_POLICY_VERSION = 'component-standard-policy.v0.1
 export const COMPONENT_SECURITY_POLICY_VERSION = 'component-security-policy.v0.1.0' as const;
 export const PROMPTFRAME_STYLE_CONTRACT_VERSION = 'promptframe-style.v0.1.0' as const;
 export const AUTHORING_STANDARD_RELEASE_VERSION = 'authoring-standard-release.v0.1.0' as const;
-export const AUTHORING_STANDARD_RELEASE_ID = 'authoring-release-2026-07-10.4' as const;
+export const AUTHORING_STANDARD_RELEASE_ID = 'authoring-release-2026-07-10.5' as const;
 export const COMPONENT_REUSABILITY_CONTRACT_VERSION = 'component-reusability.v0.1.0' as const;
 export const COMPONENT_DEPENDENCY_POLICY_VERSION = 'component-dependency-policy.v0.1.0' as const;
 export const COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION = 'component-public-resources.v0.1.0' as const;
@@ -1277,10 +1277,10 @@ export const authoringStandardFreshnessDecisionSchema = z.object({
 export type AuthoringStandardFreshnessDecision = z.infer<typeof authoringStandardFreshnessDecisionSchema>;
 
 export const PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_COHORT: AuthoringPackageCohort = authoringPackageCohortSchema.parse({
-  contracts: { name: '@promptframe/contracts', version: '0.1.27' },
-  componentKit: { name: '@promptframe/component-kit', version: '0.1.21' },
-  cli: { name: '@promptframe/cli', version: '0.1.59' },
-  createComponent: { name: 'create-promptframe-component', version: '0.1.49' },
+  contracts: { name: '@promptframe/contracts', version: '0.1.28' },
+  componentKit: { name: '@promptframe/component-kit', version: '0.1.22' },
+  cli: { name: '@promptframe/cli', version: '0.1.60' },
+  createComponent: { name: 'create-promptframe-component', version: '0.1.50' },
 });
 
 export const PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS = authoringPackageFloorSchema.parse({
@@ -1300,7 +1300,7 @@ export const PROMPTFRAME_MIN_AUTHORING_PACKAGE_VERSIONS = authoringPackageFloorS
 export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = authoringStandardReleaseSchema.parse({
   releaseVersion: AUTHORING_STANDARD_RELEASE_VERSION,
   releaseId: AUTHORING_STANDARD_RELEASE_ID,
-  releaseDigest: 'sha256:564d80af72f61a4b78d8666de7e9b7094cceb99525838d0fd40185589fac679c',
+  releaseDigest: 'sha256:dcea279e29d88d4aa344746edfb96a573edfa5a6726ea18596c70d2b4e34d529',
   contractsVersion: PROMPTFRAME_CONTRACTS_VERSION,
   manifestSchemaVersion: COMPONENT_MANIFEST_SCHEMA_VERSION,
   componentRefVersion: COMPONENT_REF_VERSION,

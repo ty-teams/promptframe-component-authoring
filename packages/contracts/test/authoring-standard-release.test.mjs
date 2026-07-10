@@ -42,10 +42,10 @@ test('authoring standard release exposes one digest-bound package cohort', async
   assert.deepEqual(release.minPackageVersions, PROMPTFRAME_MIN_AUTHORING_PACKAGE_VERSIONS);
   assert.notDeepEqual(release.recommendedAuthoringPackages, release.minPackageVersions);
   assert.deepEqual(release.recommendedAuthoringPackages, {
-    contracts: '0.1.27',
-    componentKit: '0.1.21',
-    cli: '0.1.59',
-    createComponent: '0.1.49',
+    contracts: '0.1.28',
+    componentKit: '0.1.22',
+    cli: '0.1.60',
+    createComponent: '0.1.50',
   });
   assert.deepEqual(release.scaffoldTemplates, [
     {

@@ -68,13 +68,6 @@ interface ResolvedSchema {
   diagnostics: PromptFrameSchemaDiagnostic[];
 }
 
-const TRUSTED_IDENTITY_WRAPPERS = new Map<string, Set<string>>([
-  ['@promptframe/component-kit/schema', new Set([
-    'promptFrameResourceSlot',
-    'withPromptFrameResourceSlot',
-  ])],
-]);
-
 const ALLOWED_TRANSPARENT_METADATA_PATHS = new Set([
   '_def.promptFrameResource',
   '_def.xPromptFrameResource',
@@ -217,11 +210,8 @@ function resolveWrapperCall(
 ): ResolvedSchema {
   const firstArg = call.arguments[0];
   if (!firstArg) return unresolvedWrapper(call, callee.text, context);
-  const imported = context.imports.get(callee.text);
-  const trustedImport = imported
-    && TRUSTED_IDENTITY_WRAPPERS.get(imported.source)?.has(imported.imported);
   const localFunction = context.functions.get(callee.text);
-  if (!trustedImport && (!localFunction || !isProvenTransparentSchemaWrapper(localFunction))) {
+  if (!localFunction || !isProvenTransparentSchemaWrapper(localFunction)) {
     return unresolvedWrapper(call, callee.text, context);
   }
   return resolveSchemaExpression(firstArg, context);
@@ -352,41 +342,84 @@ function isProvenTransparentSchemaWrapper(fn: ts.FunctionDeclaration): boolean {
   if (!fn.body || fn.parameters.length === 0 || !ts.isIdentifier(fn.parameters[0].name)) return false;
   const parameter = fn.parameters[0].name.text;
   const aliases = new Map<string, string>([[parameter, '']]);
-  let returnCount = 0;
-  let safe = true;
+  const statements = [...fn.body.statements];
+  const finalStatement = statements.pop();
+  if (
+    !finalStatement
+    || !ts.isReturnStatement(finalStatement)
+    || !finalStatement.expression
+  ) {
+    return false;
+  }
+  if (!statements.every((statement) => validateTransparentWrapperStatement(statement, aliases))) return false;
+  return readAliasPath(finalStatement.expression, aliases) === '';
+}
 
+function validateTransparentWrapperStatement(
+  statement: ts.Statement,
+  aliases: Map<string, string>,
+): boolean {
+  if (ts.isVariableStatement(statement)) {
+    return statement.declarationList.declarations.every((declaration) => {
+      if (!ts.isIdentifier(declaration.name) || !declaration.initializer) return false;
+      const path = readAliasPath(declaration.initializer, aliases);
+      if (path === null) return false;
+      aliases.set(declaration.name.text, path);
+      return true;
+    });
+  }
+  if (ts.isExpressionStatement(statement)) {
+    return isAllowedTransparentMetadataAssignment(statement.expression, aliases);
+  }
+  if (ts.isIfStatement(statement)) {
+    if (statement.elseStatement || readAliasPath(statement.expression, aliases) === null) return false;
+    const guardedStatements = ts.isBlock(statement.thenStatement)
+      ? statement.thenStatement.statements
+      : [statement.thenStatement];
+    return guardedStatements.length > 0
+      && guardedStatements.every((guarded) => (
+        ts.isExpressionStatement(guarded)
+        && isAllowedTransparentMetadataAssignment(guarded.expression, aliases)
+      ));
+  }
+  return false;
+}
+
+function isAllowedTransparentMetadataAssignment(
+  expression: ts.Expression,
+  aliases: Map<string, string>,
+): boolean {
+  const current = unwrapExpression(expression);
+  if (!ts.isBinaryExpression(current) || current.operatorToken.kind !== ts.SyntaxKind.EqualsToken) return false;
+  const targetPath = readAliasPath(current.left, aliases);
+  return targetPath !== null
+    && ALLOWED_TRANSPARENT_METADATA_PATHS.has(targetPath)
+    && isSideEffectFreeMetadataValue(current.right);
+}
+
+function isSideEffectFreeMetadataValue(expression: ts.Expression): boolean {
+  let safe = true;
   function visit(node: ts.Node): void {
     if (!safe) return;
-    if (ts.isFunctionLike(node) && node !== fn) {
+    if (
+      ts.isCallExpression(node)
+      || ts.isNewExpression(node)
+      || ts.isAwaitExpression(node)
+      || ts.isYieldExpression(node)
+      || ts.isDeleteExpression(node)
+      || ts.isPostfixUnaryExpression(node)
+      || (ts.isPrefixUnaryExpression(node)
+        && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken))
+      || (ts.isBinaryExpression(node) && isAssignmentOperator(node.operatorToken.kind))
+      || ts.isFunctionLike(node)
+    ) {
       safe = false;
-      return;
-    }
-    if (ts.isCallExpression(node) || ts.isNewExpression(node) || ts.isAwaitExpression(node) || ts.isYieldExpression(node)) {
-      safe = false;
-      return;
-    }
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-      const path = readAliasPath(node.initializer, aliases);
-      if (path !== null) aliases.set(node.name.text, path);
-    }
-    if (ts.isBinaryExpression(node) && isAssignmentOperator(node.operatorToken.kind)) {
-      const targetPath = readAliasPath(node.left, aliases);
-      if (targetPath === null || !ALLOWED_TRANSPARENT_METADATA_PATHS.has(targetPath)) {
-        safe = false;
-        return;
-      }
-    }
-    if (ts.isReturnStatement(node)) {
-      returnCount += 1;
-      const returnedPath = node.expression ? readAliasPath(node.expression, aliases) : null;
-      if (returnedPath !== '') safe = false;
       return;
     }
     ts.forEachChild(node, visit);
   }
-
-  visit(fn.body);
-  return safe && returnCount > 0;
+  visit(expression);
+  return safe;
 }
 
 function readAliasPath(node: ts.Node, aliases: Map<string, string>): string | null {

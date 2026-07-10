@@ -81,7 +81,46 @@ test('schema evaluator does not trust a transparent-looking wrapper name with al
   assert.equal(facts.diagnostics[0]?.wrapperName, 'withImageResourceSlot');
 });
 
-test('schema evaluator recognizes exact trusted public helper imports', () => {
+test('schema evaluator rejects wrappers without an unconditional top-level identity return', () => {
+  const facts = evaluatePromptFrameSchemaSource(`
+    import { z } from 'zod';
+    function withImageResourceSlot(schema: z.ZodTypeAny) {
+      if (schema) return schema;
+    }
+    export const propsSchema = z.object({
+      image: withImageResourceSlot(z.string().describe('Image path.')),
+    });
+  `);
+
+  assert.equal(facts.status, 'partial');
+  assert.equal(facts.diagnostics[0]?.code, 'schema.wrapper_unresolved');
+  assert.equal(facts.diagnostics[0]?.wrapperName, 'withImageResourceSlot');
+});
+
+test('schema evaluator rejects destructive and update side effects in wrappers', () => {
+  for (const sideEffect of [
+    'delete schema._def;',
+    'schema._def.promptFrameResource++;',
+    'schema._def.promptFrameResource += imageResourceSlot;',
+  ]) {
+    const facts = evaluatePromptFrameSchemaSource(`
+      import { z } from 'zod';
+      const imageResourceSlot = { kinds: ['image'] };
+      function withImageResourceSlot(schema: z.ZodTypeAny) {
+        ${sideEffect}
+        return schema;
+      }
+      export const propsSchema = z.object({
+        image: withImageResourceSlot(z.string().describe('Image path.')),
+      });
+    `);
+
+    assert.equal(facts.status, 'partial', sideEffect);
+    assert.equal(facts.diagnostics[0]?.code, 'schema.wrapper_unresolved', sideEffect);
+  }
+});
+
+test('schema evaluator does not trust a helper import until that exact public export exists', () => {
   const facts = evaluatePromptFrameSchemaSource(`
     import { z } from 'zod';
     import { withPromptFrameResourceSlot as withSlot } from '@promptframe/component-kit/schema';
@@ -90,9 +129,9 @@ test('schema evaluator recognizes exact trusted public helper imports', () => {
     });
   `);
 
-  assert.equal(facts.status, 'resolved');
-  assert.equal(facts.properties.image.description, 'Image path.');
-  assert.deepEqual(facts.requiredPropKeys, []);
+  assert.equal(facts.status, 'partial');
+  assert.equal(facts.diagnostics[0]?.code, 'schema.wrapper_unresolved');
+  assert.equal(facts.diagnostics[0]?.wrapperName, 'withSlot');
 });
 
 test('schema evaluator reports non-static propsSchema without executing source', () => {
