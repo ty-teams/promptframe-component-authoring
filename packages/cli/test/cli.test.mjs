@@ -2128,6 +2128,179 @@ test('upload explains platform-behind standard skew without telling authors to u
   }
 });
 
+test('same-sourceHash platform floor increase blocks dev check and upload with the promoted cohort command', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-same-hash-floor-'));
+  const calls = [];
+  const server = await createServer(async (req, res) => {
+    calls.push(req.url);
+    if (req.url === '/components/standard') {
+      writeJson(res, {
+        success: true,
+        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
+        authoringStandardRelease: {
+          minPackageVersions: {
+            contracts: '0.1.24',
+            componentKit: '0.1.20',
+            cli: '0.1.56',
+            createComponent: '0.1.46',
+          },
+          recommendedAuthoringPackages: {
+            contracts: '0.1.24',
+            componentKit: '0.1.20',
+            cli: '0.1.56',
+            createComponent: '0.1.46',
+          },
+        },
+      });
+      return;
+    }
+    writeJson(res, { success: false, error: `unexpected path: ${req.url}` }, 404);
+  });
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+
+    for (const command of ['dev', 'check']) {
+      await assert.rejects(
+        execFileAsync('node', [
+          cliPath,
+          command,
+          componentDir,
+          '--endpoint',
+          server.url,
+          ...(command === 'dev' ? ['--dry-run'] : []),
+          '--json',
+        ]),
+        (error) => {
+          assert.equal(error.code, 1);
+          const payload = JSON.parse(error.stderr);
+          assert.equal(payload.command, command);
+          assert.equal(payload.diagnostic.code, 'standard.freshness.local_below_floor');
+          assert.match(payload.diagnostic.message, /below this platform deployment minimum/i);
+          assert.match(payload.diagnostic.message, /@promptframe\/cli@0\.1\.56/);
+          assert.match(payload.diagnostic.message, /promptframe sync \. --apply/);
+          return true;
+        },
+      );
+    }
+
+    await assert.rejects(
+      execFileAsync('node', [
+        cliPath,
+        'upload',
+        componentDir,
+        '--endpoint',
+        server.url,
+        '--json',
+      ]),
+      (error) => {
+        assert.equal(error.code, 1);
+        const events = parseStderrJsonLines(error.stderr);
+        const payload = events.at(-1);
+        assert.equal(payload.command, 'upload');
+        assert.equal(payload.diagnostic.code, 'standard.freshness.local_below_floor');
+        return true;
+      },
+    );
+
+    assert.deepEqual(calls, ['/components/standard', '/components/standard', '/components/standard']);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('same-sourceHash recommended-only update stays non-blocking and is actionable in human output', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-same-hash-recommended-'));
+  const server = await createServer(async (req, res) => {
+    if (req.url === '/components/standard') {
+      writeJson(res, {
+        success: true,
+        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
+        authoringStandardRelease: {
+          minPackageVersions: {
+            contracts: '0.1.23',
+            componentKit: '0.1.19',
+            cli: '0.1.55',
+            createComponent: '0.1.45',
+          },
+          recommendedAuthoringPackages: {
+            contracts: '0.1.24',
+            componentKit: '0.1.20',
+            cli: '0.1.56',
+            createComponent: '0.1.46',
+          },
+        },
+      });
+      return;
+    }
+    if (req.url === '/components/marketplace/upload') {
+      writeJson(res, { success: true, buildId: 'recommended-upload', status: 'queued' });
+      return;
+    }
+    writeJson(res, { success: false, error: `unexpected path: ${req.url}` }, 404);
+  });
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+
+    const jsonDev = JSON.parse((await execFileAsync('node', [
+      cliPath,
+      'dev',
+      componentDir,
+      '--endpoint',
+      server.url,
+      '--dry-run',
+      '--json',
+    ])).stdout);
+    assert.equal(jsonDev.freshness.status, 'warning');
+    assert.equal(jsonDev.freshness.diagnostic.code, 'standard.freshness.recommended_update');
+    assert.deepEqual(jsonDev.freshness.recommendedAuthoringPackages, {
+      contracts: '0.1.24',
+      componentKit: '0.1.20',
+      cli: '0.1.56',
+      createComponent: '0.1.46',
+    });
+
+    const humanDev = await execFileAsync('node', [
+      cliPath,
+      'dev',
+      componentDir,
+      '--endpoint',
+      server.url,
+      '--dry-run',
+    ]);
+    assert.match(humanDev.stdout, /Freshness: warning/);
+    assert.match(humanDev.stdout, /WARNING standard\.freshness\.recommended_update:/);
+    assert.match(humanDev.stdout, /@promptframe\/cli@0\.1\.56/);
+
+    const humanCheck = await execFileAsync('node', [
+      cliPath,
+      'check',
+      componentDir,
+      '--endpoint',
+      server.url,
+    ]);
+    assert.match(humanCheck.stdout, /WARNING standard\.freshness\.recommended_update:/);
+    assert.match(humanCheck.stdout, /promptframe sync \. --apply/);
+
+    const upload = await execFileAsync('node', [
+      cliPath,
+      'upload',
+      componentDir,
+      '--endpoint',
+      server.url,
+      '--json',
+    ]);
+    const uploadPayload = JSON.parse(upload.stdout);
+    assert.equal(uploadPayload.command, 'upload');
+    assert.equal(uploadPayload.jobId, 'recommended-upload');
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('check reports offline degraded freshness when no platform endpoint is configured', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-check-offline-'));
   try {
@@ -2153,6 +2326,23 @@ test('check reports offline degraded freshness when no platform endpoint is conf
     assert.equal(check.freshness.status, 'warning');
     assert.equal(check.freshness.diagnostic.code, 'standard.freshness.offline_degraded');
     assert.equal(check.freshness.retryable, true);
+
+    const humanCheck = await execFileAsync('node', [
+      cliPath,
+      'check',
+      componentDir,
+      '--target',
+      'project_private_generation',
+    ], {
+      env: {
+        ...process.env,
+        PROMPTFRAME_API_BASE: '',
+        REMOTION_MEDIA_API_BASE: '',
+        PROMPTFRAME_CONFIG: path.join(dir, 'missing-config.json'),
+      },
+    });
+    assert.match(humanCheck.stdout, /Freshness: warning/);
+    assert.match(humanCheck.stdout, /WARNING standard\.freshness\.offline_degraded:/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

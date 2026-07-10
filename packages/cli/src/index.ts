@@ -408,6 +408,7 @@ async function check(argv: string[]): Promise<void> {
   console.log(`check passed: ${input.dir}`);
   console.log(`Target: ${target}`);
   console.log(`Freshness: ${output.freshness.status}`);
+  printDiagnostics([output.freshness.diagnostic]);
   printDiagnostics(output.diagnostics);
 }
 
@@ -445,6 +446,7 @@ async function checkWorkspace(argv: string[], root: string): Promise<void> {
   console.log(`workspace check passed: ${root}`);
   console.log(`Components: ${components.length}`);
   console.log(`Freshness: ${freshness.status}`);
+  printDiagnostics([freshness.diagnostic]);
   printDiagnostics(diagnostics);
 }
 
@@ -708,6 +710,7 @@ async function dev(argv: string[]): Promise<void> {
   console.log(`Rendering system: ${output.renderingSystem}`);
   console.log(`Preview URL: ${output.devServer.url}`);
   console.log(`Freshness: ${freshness.status}`);
+  printDiagnostics([freshness.diagnostic]);
   console.log(`Public resources: ${devPublicResources.status} (${devPublicResources.entries.length})`);
   console.log(`Command: ${devCommand.join(' ')}`);
   if (hasFlag(argv, '--dry-run')) return;
@@ -1175,10 +1178,8 @@ async function assertRemoteStandardFreshness(endpoint: string, argv: string[]): 
   if (!remoteSourceHash) {
     fail('PromptFrame standard endpoint did not return a sourceHash.', 'standard.freshness.remote_invalid');
   }
-  if (remoteSourceHash !== COMPONENT_STANDARD_SOURCE_HASH) {
-    const skew = remoteStandardSkewDiagnostic(payload, remoteSourceHash);
-    fail(skew.message, skew.code);
-  }
+  const evaluation = evaluateRemoteStandardFreshness(payload, remoteSourceHash);
+  if (evaluation.uploadBlocking) fail(evaluation.message, evaluation.code);
 }
 
 async function resolveSoftRemoteStandardFreshness(
@@ -1214,23 +1215,34 @@ async function resolveSoftRemoteStandardFreshness(
       `${commandName} platform standard response did not include sourceHash; local checks passed but online freshness is degraded.`,
     );
   }
-  if (remoteSourceHash !== COMPONENT_STANDARD_SOURCE_HASH) {
-    const skew = remoteStandardSkewDiagnostic(payload, remoteSourceHash);
-    if (skew.code === 'standard.freshness.platform_behind') {
-      return buildFreshnessWarningDecision(target, skew.code, skew.message);
-    }
-    fail(skew.message, skew.code);
+  const evaluation = evaluateRemoteStandardFreshness(payload, remoteSourceHash);
+  if (evaluation.kind === 'blocking') fail(evaluation.message, evaluation.code);
+  if (evaluation.kind === 'warning') {
+    return buildFreshnessWarningDecision(
+      target,
+      evaluation.code,
+      evaluation.message,
+      evaluation.minPackageVersions,
+      evaluation.recommendedAuthoringPackages,
+    );
   }
-  return buildFreshnessDecision(
+  const decision = buildFreshnessDecision(
     target,
-    diagnostic('standard.freshness.current', 'info', 'Local authoring standard matches the platform source hash.'),
+    diagnostic(evaluation.code, 'info', evaluation.message),
   );
+  return {
+    ...decision,
+    minPackageVersions: evaluation.minPackageVersions ?? decision.minPackageVersions,
+    recommendedAuthoringPackages: evaluation.recommendedAuthoringPackages ?? decision.recommendedAuthoringPackages,
+  };
 }
 
 function buildFreshnessWarningDecision(
   target: AuthoringUploadTarget,
   code: string,
   message: string,
+  minPackageVersions = PROMPTFRAME_AUTHORING_STANDARD_RELEASE.minPackageVersions,
+  recommendedAuthoringPackages = PROMPTFRAME_AUTHORING_STANDARD_RELEASE.recommendedAuthoringPackages,
 ): AuthoringStandardFreshnessDecision {
   return {
     status: 'warning',
@@ -1239,55 +1251,147 @@ function buildFreshnessWarningDecision(
     localStandardSourceHash: COMPONENT_STANDARD_SOURCE_HASH,
     currentStandardVersion: COMPONENT_STANDARD_VERSION,
     currentStandardSourceHash: COMPONENT_STANDARD_SOURCE_HASH,
-    minPackageVersions: PROMPTFRAME_AUTHORING_STANDARD_RELEASE.minPackageVersions,
-    recommendedAuthoringPackages: PROMPTFRAME_AUTHORING_STANDARD_RELEASE.recommendedAuthoringPackages,
+    minPackageVersions,
+    recommendedAuthoringPackages,
     diagnostic: diagnostic(code, 'warning', message),
     retryable: true,
   };
 }
 
-function formatRemoteStandardStaleFailure(remoteSourceHash: string): string {
-  return [
-    `PromptFrame component standard is stale: local=${COMPONENT_STANDARD_SOURCE_HASH}, platform=${remoteSourceHash}.`,
-    `Run ${formatRecommendedAuthoringPackageCommand(PROMPTFRAME_AUTHORING_STANDARD_RELEASE.recommendedAuthoringPackages)} and then promptframe sync . --apply before upload.`,
-  ].join(' ');
-}
+type AuthoringPackageVersions = typeof PROMPTFRAME_AUTHORING_STANDARD_RELEASE.recommendedAuthoringPackages;
+type PackageVersionRelation = 'equal' | 'remote_ahead' | 'remote_behind' | 'mixed' | 'unknown';
+type RemoteStandardFreshnessEvaluation = {
+  kind: 'current' | 'warning' | 'blocking';
+  uploadBlocking: boolean;
+  code: string;
+  message: string;
+  minPackageVersions?: AuthoringPackageVersions;
+  recommendedAuthoringPackages?: AuthoringPackageVersions;
+};
 
-function remoteStandardSkewDiagnostic(
+const authoringPackageVersionKeys = ['contracts', 'componentKit', 'cli', 'createComponent'] as const;
+
+function evaluateRemoteStandardFreshness(
   payload: Record<string, unknown>,
   remoteSourceHash: string,
-): { code: string; message: string } {
-  if (classifyRemoteStandardSkew(payload) === 'platform_behind') {
+): RemoteStandardFreshnessEvaluation {
+  const remoteRelease = asRecord(payload.authoringStandardRelease);
+  const minPackageVersions = extractAuthoringPackageVersions(remoteRelease?.minPackageVersions);
+  const recommendedAuthoringPackages = extractAuthoringPackageVersions(remoteRelease?.recommendedAuthoringPackages)
+    ?? extractAuthoringPackageVersions(payload.recommendedAuthoringPackages);
+  const localCohort = PROMPTFRAME_AUTHORING_STANDARD_RELEASE.recommendedAuthoringPackages;
+  const floorRelation = compareAuthoringPackageVersions(minPackageVersions, localCohort);
+  const recommendedRelation = compareAuthoringPackageVersions(recommendedAuthoringPackages, localCohort);
+
+  if (floorRelation === 'mixed' || recommendedRelation === 'mixed') {
     return {
-      code: 'standard.freshness.platform_behind',
-      message: [
-        `PromptFrame component standard is newer than this platform deployment: local=${COMPONENT_STANDARD_SOURCE_HASH}, platform=${remoteSourceHash}.`,
-        'Local dev/check may continue with a warning, but upload is blocked until the platform rollout catches up.',
-        'Use the platform-compatible CLI version advertised by this deployment, or wait for platform rollout; promptframe upgrade . --apply cannot fix platform-behind skew.',
-      ].join(' '),
+      kind: 'blocking',
+      uploadBlocking: true,
+      code: 'standard.freshness.release_inconsistent',
+      message: 'PromptFrame platform returned a mixed authoring package cohort that cannot be ordered against the local release. Wait for platform rollout recovery; do not change local packages from this response.',
+      minPackageVersions,
+      recommendedAuthoringPackages,
     };
   }
+
+  if (floorRelation === 'remote_ahead') {
+    const targetPackages = recommendedAuthoringPackages ?? minPackageVersions!;
+    return {
+      kind: 'blocking',
+      uploadBlocking: true,
+      code: 'standard.freshness.local_below_floor',
+      message: [
+        'Local PromptFrame authoring packages are below this platform deployment minimum, even if the Component Standard source hash is unchanged.',
+        `Run ${formatRecommendedAuthoringPackageCommand(targetPackages)} and then promptframe sync . --apply before dev/check/upload.`,
+      ].join(' '),
+      minPackageVersions,
+      recommendedAuthoringPackages,
+    };
+  }
+
+  const platformBehind = recommendedRelation === 'remote_behind'
+    || (recommendedRelation === 'unknown' && floorRelation === 'remote_behind');
+  if (platformBehind) {
+    return {
+      kind: 'warning',
+      uploadBlocking: true,
+      code: 'standard.freshness.platform_behind',
+      message: [
+        `PromptFrame authoring release is newer than this platform deployment: local=${COMPONENT_STANDARD_SOURCE_HASH}, platform=${remoteSourceHash}.`,
+        'Local dev/check may continue with a warning, but upload is blocked until the platform rollout catches up.',
+        'Use the platform-compatible cohort advertised by this deployment, or wait for platform rollout; promptframe upgrade . --apply cannot fix platform-behind skew.',
+      ].join(' '),
+      minPackageVersions,
+      recommendedAuthoringPackages,
+    };
+  }
+
+  if (remoteSourceHash !== COMPONENT_STANDARD_SOURCE_HASH) {
+    return {
+      kind: 'blocking',
+      uploadBlocking: true,
+      code: 'standard.freshness.upload_blocking',
+      message: [
+        `PromptFrame component standard is stale: local=${COMPONENT_STANDARD_SOURCE_HASH}, platform=${remoteSourceHash}.`,
+        `Run ${formatRecommendedAuthoringPackageCommand(recommendedAuthoringPackages ?? localCohort)} and then promptframe sync . --apply before upload.`,
+      ].join(' '),
+      minPackageVersions,
+      recommendedAuthoringPackages,
+    };
+  }
+
+  if (recommendedRelation === 'remote_ahead') {
+    return {
+      kind: 'warning',
+      uploadBlocking: false,
+      code: 'standard.freshness.recommended_update',
+      message: [
+        'Local PromptFrame authoring packages satisfy the platform minimum but are behind the recommended cohort; dev/check/upload may continue.',
+        `When convenient, run ${formatRecommendedAuthoringPackageCommand(recommendedAuthoringPackages!)} and then promptframe sync . --apply.`,
+      ].join(' '),
+      minPackageVersions,
+      recommendedAuthoringPackages,
+    };
+  }
+
   return {
-    code: 'standard.freshness.upload_blocking',
-    message: formatRemoteStandardStaleFailure(remoteSourceHash),
+    kind: 'current',
+    uploadBlocking: false,
+    code: 'standard.freshness.current',
+    message: 'Local authoring standard and package cohort match the platform release.',
+    minPackageVersions,
+    recommendedAuthoringPackages,
   };
 }
 
-function classifyRemoteStandardSkew(payload: Record<string, unknown>): 'platform_behind' | 'local_behind_or_unknown' {
-  const remoteFloors = asRecord(asRecord(payload.authoringStandardRelease)?.minPackageVersions);
-  if (!remoteFloors) return 'local_behind_or_unknown';
-  const localFloors = PROMPTFRAME_AUTHORING_STANDARD_RELEASE.minPackageVersions;
-  const comparisons = (['contracts', 'componentKit', 'cli', 'createComponent'] as const).map((key) => {
-    const remote = compareSemverCore(stringValue(remoteFloors[key]), localFloors[key]);
-    return remote;
-  });
-  if (comparisons.some((item) => item === undefined)) return 'local_behind_or_unknown';
-  const ordered = comparisons as number[];
-  if (ordered.every((item) => item <= 0) && ordered.some((item) => item < 0)) return 'platform_behind';
-  return 'local_behind_or_unknown';
+function extractAuthoringPackageVersions(value: unknown): AuthoringPackageVersions | undefined {
+  const record = asRecord(value);
+  if (!record) return undefined;
+  const contracts = stringValue(record.contracts);
+  const componentKit = stringValue(record.componentKit);
+  const cli = stringValue(record.cli);
+  const createComponent = stringValue(record.createComponent);
+  if (!contracts || !componentKit || !cli || !createComponent) return undefined;
+  if ([contracts, componentKit, cli, createComponent].some((version) => !parseSemverCore(version))) return undefined;
+  return { contracts, componentKit, cli, createComponent };
 }
 
-function formatRecommendedAuthoringPackageCommand(packages: typeof PROMPTFRAME_AUTHORING_STANDARD_RELEASE.recommendedAuthoringPackages): string {
+function compareAuthoringPackageVersions(
+  remote: AuthoringPackageVersions | undefined,
+  local: AuthoringPackageVersions,
+): PackageVersionRelation {
+  if (!remote) return 'unknown';
+  const comparisons = authoringPackageVersionKeys.map((key) => compareSemverCore(remote[key], local[key]));
+  if (comparisons.some((comparison) => comparison === undefined)) return 'unknown';
+  const hasAhead = comparisons.some((comparison) => comparison! > 0);
+  const hasBehind = comparisons.some((comparison) => comparison! < 0);
+  if (hasAhead && hasBehind) return 'mixed';
+  if (hasAhead) return 'remote_ahead';
+  if (hasBehind) return 'remote_behind';
+  return 'equal';
+}
+
+function formatRecommendedAuthoringPackageCommand(packages: AuthoringPackageVersions): string {
   return `pnpm add @promptframe/contracts@${packages.contracts} @promptframe/component-kit@${packages.componentKit} && pnpm add -D @promptframe/cli@${packages.cli} create-promptframe-component@${packages.createComponent}`;
 }
 
