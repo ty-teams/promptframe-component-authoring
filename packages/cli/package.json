@@ -1,6 +1,6 @@
 {
   "name": "@promptframe/cli",
-  "version": "0.1.55",
+  "version": "0.1.56",
   "license": "MIT",
   "type": "module",
   "files": [
@@ -43,7 +43,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@promptframe/contracts": "^0.1.23"
+    "@promptframe/contracts": "^0.1.24"
   },
   "devDependencies": {
     "@types/node": "^24.12.4",

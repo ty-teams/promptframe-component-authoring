@@ -2138,17 +2138,19 @@ test('same-sourceHash platform floor increase blocks dev check and upload with t
         success: true,
         sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
         authoringStandardRelease: {
+          releaseId: 'authoring-release-remote-floor',
+          releaseDigest: `sha256:${'9'.repeat(64)}`,
           minPackageVersions: {
-            contracts: '0.1.24',
+            contracts: '0.1.25',
             componentKit: '0.1.20',
-            cli: '0.1.56',
-            createComponent: '0.1.46',
+            cli: '0.1.57',
+            createComponent: '0.1.47',
           },
           recommendedAuthoringPackages: {
-            contracts: '0.1.24',
+            contracts: '0.1.25',
             componentKit: '0.1.20',
-            cli: '0.1.56',
-            createComponent: '0.1.46',
+            cli: '0.1.57',
+            createComponent: '0.1.47',
           },
         },
       });
@@ -2177,7 +2179,7 @@ test('same-sourceHash platform floor increase blocks dev check and upload with t
           assert.equal(payload.command, command);
           assert.equal(payload.diagnostic.code, 'standard.freshness.local_below_floor');
           assert.match(payload.diagnostic.message, /below this platform deployment minimum/i);
-          assert.match(payload.diagnostic.message, /@promptframe\/cli@0\.1\.56/);
+          assert.match(payload.diagnostic.message, /@promptframe\/cli@0\.1\.57/);
           assert.match(payload.diagnostic.message, /promptframe sync \. --apply/);
           return true;
         },
@@ -2218,17 +2220,19 @@ test('same-sourceHash recommended-only update stays non-blocking and is actionab
         success: true,
         sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
         authoringStandardRelease: {
+          releaseId: 'authoring-release-remote-recommended',
+          releaseDigest: `sha256:${'9'.repeat(64)}`,
           minPackageVersions: {
-            contracts: '0.1.23',
-            componentKit: '0.1.19',
-            cli: '0.1.55',
-            createComponent: '0.1.45',
-          },
-          recommendedAuthoringPackages: {
             contracts: '0.1.24',
-            componentKit: '0.1.20',
+            componentKit: '0.1.19',
             cli: '0.1.56',
             createComponent: '0.1.46',
+          },
+          recommendedAuthoringPackages: {
+            contracts: '0.1.25',
+            componentKit: '0.1.20',
+            cli: '0.1.57',
+            createComponent: '0.1.47',
           },
         },
       });
@@ -2255,11 +2259,15 @@ test('same-sourceHash recommended-only update stays non-blocking and is actionab
     ])).stdout);
     assert.equal(jsonDev.freshness.status, 'warning');
     assert.equal(jsonDev.freshness.diagnostic.code, 'standard.freshness.recommended_update');
+    assert.equal(jsonDev.freshness.localReleaseId, 'authoring-release-2026-07-10.1');
+    assert.match(jsonDev.freshness.localReleaseDigest, /^sha256:[a-f0-9]{64}$/);
+    assert.equal(jsonDev.freshness.currentReleaseId, 'authoring-release-remote-recommended');
+    assert.equal(jsonDev.freshness.currentReleaseDigest, `sha256:${'9'.repeat(64)}`);
     assert.deepEqual(jsonDev.freshness.recommendedAuthoringPackages, {
-      contracts: '0.1.24',
+      contracts: '0.1.25',
       componentKit: '0.1.20',
-      cli: '0.1.56',
-      createComponent: '0.1.46',
+      cli: '0.1.57',
+      createComponent: '0.1.47',
     });
 
     const humanDev = await execFileAsync('node', [
@@ -2272,7 +2280,7 @@ test('same-sourceHash recommended-only update stays non-blocking and is actionab
     ]);
     assert.match(humanDev.stdout, /Freshness: warning/);
     assert.match(humanDev.stdout, /WARNING standard\.freshness\.recommended_update:/);
-    assert.match(humanDev.stdout, /@promptframe\/cli@0\.1\.56/);
+    assert.match(humanDev.stdout, /@promptframe\/cli@0\.1\.57/);
 
     const humanCheck = await execFileAsync('node', [
       cliPath,
@@ -3184,11 +3192,11 @@ test('check reports dependency quarantine without marking it public searchable',
       dependencies: {
         react: '^19.1.0',
         '@unknown/visual-engine': '1.2.3',
-        '@promptframe/contracts': '^0.1.23',
+        '@promptframe/contracts': '^0.1.24',
         '@promptframe/component-kit': '^0.1.19',
       },
       devDependencies: {
-        '@promptframe/cli': '^0.1.55',
+        '@promptframe/cli': '^0.1.56',
       },
     }, null, 2));
     await writeFile(path.join(componentDir, 'pnpm-lock.yaml'), 'lockfileVersion: "9.0"\n');
@@ -3504,13 +3512,15 @@ test('local standard, doctor, and validate expose stable JSON diagnostics', asyn
       'transition_effect',
     ]);
     assert.equal(standard.authoringStandardRelease.releaseVersion, 'authoring-standard-release.v0.1.0');
+    assert.equal(standard.authoringStandardRelease.releaseId, 'authoring-release-2026-07-10.1');
+    assert.match(standard.authoringStandardRelease.releaseDigest, /^sha256:[a-f0-9]{64}$/);
     assert.equal(standard.authoringStandardRelease.standardVersion, 'component-standard.v0.1.0');
     assert.match(standard.authoringStandardRelease.standardSourceHash, /^sha256:[a-f0-9]{64}$/);
     assert.deepEqual(standard.recommendedAuthoringPackages, {
-      contracts: '0.1.23',
+      contracts: '0.1.24',
       componentKit: '0.1.19',
-      cli: '0.1.55',
-      createComponent: '0.1.45',
+      cli: '0.1.56',
+      createComponent: '0.1.46',
     });
     assert.deepEqual(
       standard.recommendedAuthoringPackages,
@@ -3523,6 +3533,8 @@ test('local standard, doctor, and validate expose stable JSON diagnostics', asyn
     assert.equal(standard.freshness.status, 'current');
     assert.equal(standard.freshness.target, 'marketplace_authoring');
     assert.equal(standard.freshness.currentStandardSourceHash, standard.authoringStandardRelease.standardSourceHash);
+    assert.equal(standard.freshness.currentReleaseId, standard.authoringStandardRelease.releaseId);
+    assert.equal(standard.freshness.currentReleaseDigest, standard.authoringStandardRelease.releaseDigest);
     assert.equal(standard.securityEvaluatorMode, 'ast');
     assert.match(standard.securityPolicyDigest, /^component-security-policy-digest\.v0\.1:/);
 
@@ -3645,7 +3657,7 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
     assert.ok(upgrade.packageChanges.some((change) => (
       change.name === '@promptframe/contracts'
       && change.current === '^0.1.4'
-      && change.next === '^0.1.23'
+      && change.next === '^0.1.24'
     )));
     assert.ok(upgrade.packageChanges.some((change) => (
       change.name === '@promptframe/component-kit'
@@ -3653,7 +3665,7 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
     )));
     assert.ok(upgrade.packageChanges.some((change) => (
       change.name === '@promptframe/cli'
-      && change.next === '^0.1.55'
+      && change.next === '^0.1.56'
     )));
 
     const applied = JSON.parse((await execFileAsync('node', [
@@ -3668,19 +3680,19 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
     assert.equal(applied.apply, true);
     assert.ok(applied.packageChanges.some((change) => change.name === '@promptframe/contracts'));
     const appliedPackageJson = JSON.parse(await readFile(path.join(componentDir, 'package.json'), 'utf8'));
-    assert.equal(appliedPackageJson.dependencies['@promptframe/contracts'], '^0.1.23');
+    assert.equal(appliedPackageJson.dependencies['@promptframe/contracts'], '^0.1.24');
     assert.equal(appliedPackageJson.dependencies['@promptframe/component-kit'], '^0.1.19');
-    assert.equal(appliedPackageJson.devDependencies['@promptframe/cli'], '^0.1.55');
+    assert.equal(appliedPackageJson.devDependencies['@promptframe/cli'], '^0.1.56');
 
     await writeFile(path.join(componentDir, 'package.json'), JSON.stringify({
       name: 'fixture-component',
       version: '0.1.0',
       dependencies: {
-        '@promptframe/contracts': '^0.1.23',
+        '@promptframe/contracts': '^0.1.24',
         '@promptframe/component-kit': '^0.1.19',
       },
       devDependencies: {
-        '@promptframe/cli': '^0.1.55',
+        '@promptframe/cli': '^0.1.56',
       },
     }, null, 2));
     const current = JSON.parse((await execFileAsync('node', [
@@ -3700,7 +3712,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-scaffold-freshness-'));
   try {
     const componentDir = path.join(dir, 'component');
-    const currentReactRemotionTemplateDigest = 'sha256:63e7d030ab7c465600be52450e22033f6a7783edc62b7d8641d05db137c9fc2f';
+    const currentReactRemotionTemplateDigest = 'sha256:4e58eacf702387f7cbfe57a623e2b7eb4712a53480b3a215a86571ee4750c5af';
     await writeFixtureComponent(componentDir);
     await mkdir(path.join(componentDir, '.promptframe'), { recursive: true });
     await writeFile(path.join(componentDir, '.promptframe/scaffold.json'), `${JSON.stringify({
@@ -3722,7 +3734,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     const doctorDiagnostic = doctor.diagnostics.find((item) => item.code === 'scaffold.template.stale');
     assert.equal(doctorDiagnostic.severity, 'warning');
     assert.equal(doctorDiagnostic.current, '0.1.0');
-    assert.equal(doctorDiagnostic.minimum, '0.1.45');
+    assert.equal(doctorDiagnostic.minimum, '0.1.46');
     assert.equal(doctorDiagnostic.expectedTemplateDigest, currentReactRemotionTemplateDigest);
     assert.match(doctorDiagnostic.repairHint, /local scaffold freshness/);
 
@@ -3747,7 +3759,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     await writeFile(path.join(componentDir, '.promptframe/scaffold.json'), `${JSON.stringify({
       schemaVersion: 'promptframe.scaffold.v0.1.0',
       createdByPackage: 'create-promptframe-component',
-      createdByVersion: '0.1.45',
+      createdByVersion: '0.1.46',
       templateName: 'react-remotion',
       templateDigest: `sha256:${'b'.repeat(64)}`,
       createdAt: '2026-07-01T00:00:00.000Z',
@@ -3760,7 +3772,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     ])).stdout);
     const sameVersionDiagnostic = sameVersionWrongDigest.diagnostics.find((item) => item.code === 'scaffold.template.stale');
     assert.equal(sameVersionDiagnostic.severity, 'warning');
-    assert.equal(sameVersionDiagnostic.current, '0.1.45');
+    assert.equal(sameVersionDiagnostic.current, '0.1.46');
     assert.equal(sameVersionDiagnostic.templateDigest, `sha256:${'b'.repeat(64)}`);
     assert.equal(sameVersionDiagnostic.expectedTemplateDigest, currentReactRemotionTemplateDigest);
     assert.match(sameVersionDiagnostic.message, /templateDigest/i);
@@ -3768,7 +3780,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     await writeFile(path.join(componentDir, '.promptframe/scaffold.json'), `${JSON.stringify({
       schemaVersion: 'promptframe.scaffold.v0.1.0',
       createdByPackage: 'create-promptframe-component',
-      createdByVersion: '0.1.45',
+      createdByVersion: '0.1.46',
       templateName: 'react-remotion',
       templateDigest: currentReactRemotionTemplateDigest,
       createdAt: '2026-07-01T00:00:00.000Z',
@@ -4604,11 +4616,11 @@ async function writeFixtureComponent(componentDir) {
       name: 'fixture-component',
       version: '0.1.0',
       dependencies: {
-        '@promptframe/contracts': '^0.1.23',
+        '@promptframe/contracts': '^0.1.24',
         '@promptframe/component-kit': '^0.1.19',
       },
       devDependencies: {
-        '@promptframe/cli': '^0.1.55',
+        '@promptframe/cli': '^0.1.56',
       },
     }),
     'pnpm-lock.yaml': 'lockfileVersion: "9.0"\n',

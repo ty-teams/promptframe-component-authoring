@@ -18,6 +18,7 @@ export const COMPONENT_STANDARD_POLICY_VERSION = 'component-standard-policy.v0.1
 export const COMPONENT_SECURITY_POLICY_VERSION = 'component-security-policy.v0.1.0' as const;
 export const PROMPTFRAME_STYLE_CONTRACT_VERSION = 'promptframe-style.v0.1.0' as const;
 export const AUTHORING_STANDARD_RELEASE_VERSION = 'authoring-standard-release.v0.1.0' as const;
+export const AUTHORING_STANDARD_RELEASE_ID = 'authoring-release-2026-07-10.1' as const;
 export const COMPONENT_REUSABILITY_CONTRACT_VERSION = 'component-reusability.v0.1.0' as const;
 export const COMPONENT_DEPENDENCY_POLICY_VERSION = 'component-dependency-policy.v0.1.0' as const;
 export const COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION = 'component-public-resources.v0.1.0' as const;
@@ -1152,6 +1153,19 @@ export type AuthoringPackageFloor = z.infer<typeof authoringPackageFloorSchema>;
 export const recommendedAuthoringPackagesSchema = authoringPackageFloorSchema;
 export type RecommendedAuthoringPackages = z.infer<typeof recommendedAuthoringPackagesSchema>;
 
+const authoringCohortPackageSchema = <Name extends string>(name: Name) => z.object({
+  name: z.literal(name),
+  version: semverSchema,
+}).strict();
+
+export const authoringPackageCohortSchema = z.object({
+  contracts: authoringCohortPackageSchema('@promptframe/contracts'),
+  componentKit: authoringCohortPackageSchema('@promptframe/component-kit'),
+  cli: authoringCohortPackageSchema('@promptframe/cli'),
+  createComponent: authoringCohortPackageSchema('create-promptframe-component'),
+}).strict();
+export type AuthoringPackageCohort = z.infer<typeof authoringPackageCohortSchema>;
+
 export const componentReusabilityTargetVisibilitySchema = z.enum([
   'project_private',
   'user_private',
@@ -1202,6 +1216,8 @@ export type ComponentReusabilityScore = z.infer<typeof componentReusabilityScore
 
 export const authoringStandardReleaseSchema = z.object({
   releaseVersion: z.literal(AUTHORING_STANDARD_RELEASE_VERSION),
+  releaseId: z.literal(AUTHORING_STANDARD_RELEASE_ID),
+  releaseDigest: sha256Schema,
   contractsVersion: z.literal(PROMPTFRAME_CONTRACTS_VERSION),
   manifestSchemaVersion: z.literal(COMPONENT_MANIFEST_SCHEMA_VERSION),
   componentRefVersion: z.literal(COMPONENT_REF_VERSION),
@@ -1211,6 +1227,7 @@ export const authoringStandardReleaseSchema = z.object({
   securityPolicyVersion: z.literal(COMPONENT_SECURITY_POLICY_VERSION),
   styleContractVersion: z.literal(PROMPTFRAME_STYLE_CONTRACT_VERSION),
   supportedComponentTypes: z.array(promptFrameComponentTypeSchema).min(1),
+  activePackageCohort: authoringPackageCohortSchema,
   minPackageVersions: authoringPackageFloorSchema,
   recommendedAuthoringPackages: recommendedAuthoringPackagesSchema,
   scaffoldTemplates: z.array(z.object({
@@ -1241,8 +1258,12 @@ export const authoringStandardFreshnessDecisionSchema = z.object({
   target: authoringUploadTargetSchema,
   localStandardVersion: z.string().trim().min(1).optional(),
   localStandardSourceHash: sha256Schema.optional(),
+  localReleaseId: z.string().trim().min(1).max(160).optional(),
+  localReleaseDigest: sha256Schema.optional(),
   currentStandardVersion: z.literal(COMPONENT_STANDARD_VERSION),
   currentStandardSourceHash: sha256Schema,
+  currentReleaseId: z.string().trim().min(1).max(160).optional(),
+  currentReleaseDigest: sha256Schema.optional(),
   minPackageVersions: authoringPackageFloorSchema,
   recommendedAuthoringPackages: recommendedAuthoringPackagesSchema,
   diagnostic: authoringFreshnessDiagnosticSchema,
@@ -1250,8 +1271,24 @@ export const authoringStandardFreshnessDecisionSchema = z.object({
 }).strict();
 export type AuthoringStandardFreshnessDecision = z.infer<typeof authoringStandardFreshnessDecisionSchema>;
 
+export const PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_COHORT: AuthoringPackageCohort = authoringPackageCohortSchema.parse({
+  contracts: { name: '@promptframe/contracts', version: '0.1.24' },
+  componentKit: { name: '@promptframe/component-kit', version: '0.1.19' },
+  cli: { name: '@promptframe/cli', version: '0.1.56' },
+  createComponent: { name: 'create-promptframe-component', version: '0.1.46' },
+});
+
+export const PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS = authoringPackageFloorSchema.parse({
+  contracts: PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_COHORT.contracts.version,
+  componentKit: PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_COHORT.componentKit.version,
+  cli: PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_COHORT.cli.version,
+  createComponent: PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_COHORT.createComponent.version,
+});
+
 export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = authoringStandardReleaseSchema.parse({
   releaseVersion: AUTHORING_STANDARD_RELEASE_VERSION,
+  releaseId: AUTHORING_STANDARD_RELEASE_ID,
+  releaseDigest: 'sha256:e86e34d96358fa416f39eccc3f89e8017f45532eb43935f064f1bfadbef635e9',
   contractsVersion: PROMPTFRAME_CONTRACTS_VERSION,
   manifestSchemaVersion: COMPONENT_MANIFEST_SCHEMA_VERSION,
   componentRefVersion: COMPONENT_REF_VERSION,
@@ -1261,22 +1298,13 @@ export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = 
   securityPolicyVersion: COMPONENT_SECURITY_POLICY_VERSION,
   styleContractVersion: PROMPTFRAME_STYLE_CONTRACT_VERSION,
   supportedComponentTypes: promptFrameComponentTypeSchema.options,
-  minPackageVersions: {
-    contracts: '0.1.23',
-    componentKit: '0.1.19',
-    cli: '0.1.55',
-    createComponent: '0.1.45',
-  },
-  recommendedAuthoringPackages: {
-    contracts: '0.1.23',
-    componentKit: '0.1.19',
-    cli: '0.1.55',
-    createComponent: '0.1.45',
-  },
+  activePackageCohort: PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_COHORT,
+  minPackageVersions: PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS,
+  recommendedAuthoringPackages: PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS,
   scaffoldTemplates: [
     {
       name: 'react-remotion',
-      digest: 'sha256:63e7d030ab7c465600be52450e22033f6a7783edc62b7d8641d05db137c9fc2f',
+      digest: 'sha256:4e58eacf702387f7cbfe57a623e2b7eb4712a53480b3a215a86571ee4750c5af',
     },
   ],
   uploadTargets: [

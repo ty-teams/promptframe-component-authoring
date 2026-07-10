@@ -1224,6 +1224,8 @@ async function resolveSoftRemoteStandardFreshness(
       evaluation.message,
       evaluation.minPackageVersions,
       evaluation.recommendedAuthoringPackages,
+      evaluation.currentReleaseId,
+      evaluation.currentReleaseDigest,
     );
   }
   const decision = buildFreshnessDecision(
@@ -1232,6 +1234,8 @@ async function resolveSoftRemoteStandardFreshness(
   );
   return {
     ...decision,
+    currentReleaseId: evaluation.currentReleaseId ?? decision.currentReleaseId,
+    currentReleaseDigest: evaluation.currentReleaseDigest ?? decision.currentReleaseDigest,
     minPackageVersions: evaluation.minPackageVersions ?? decision.minPackageVersions,
     recommendedAuthoringPackages: evaluation.recommendedAuthoringPackages ?? decision.recommendedAuthoringPackages,
   };
@@ -1243,14 +1247,20 @@ function buildFreshnessWarningDecision(
   message: string,
   minPackageVersions = PROMPTFRAME_AUTHORING_STANDARD_RELEASE.minPackageVersions,
   recommendedAuthoringPackages = PROMPTFRAME_AUTHORING_STANDARD_RELEASE.recommendedAuthoringPackages,
+  currentReleaseId?: string,
+  currentReleaseDigest?: `sha256:${string}`,
 ): AuthoringStandardFreshnessDecision {
   return {
     status: 'warning',
     target,
     localStandardVersion: COMPONENT_STANDARD_VERSION,
     localStandardSourceHash: COMPONENT_STANDARD_SOURCE_HASH,
+    localReleaseId: PROMPTFRAME_AUTHORING_STANDARD_RELEASE.releaseId,
+    localReleaseDigest: PROMPTFRAME_AUTHORING_STANDARD_RELEASE.releaseDigest,
     currentStandardVersion: COMPONENT_STANDARD_VERSION,
     currentStandardSourceHash: COMPONENT_STANDARD_SOURCE_HASH,
+    ...(currentReleaseId ? { currentReleaseId } : {}),
+    ...(currentReleaseDigest ? { currentReleaseDigest } : {}),
     minPackageVersions,
     recommendedAuthoringPackages,
     diagnostic: diagnostic(code, 'warning', message),
@@ -1267,6 +1277,8 @@ type RemoteStandardFreshnessEvaluation = {
   message: string;
   minPackageVersions?: AuthoringPackageVersions;
   recommendedAuthoringPackages?: AuthoringPackageVersions;
+  currentReleaseId?: string;
+  currentReleaseDigest?: `sha256:${string}`;
 };
 
 const authoringPackageVersionKeys = ['contracts', 'componentKit', 'cli', 'createComponent'] as const;
@@ -1276,6 +1288,11 @@ function evaluateRemoteStandardFreshness(
   remoteSourceHash: string,
 ): RemoteStandardFreshnessEvaluation {
   const remoteRelease = asRecord(payload.authoringStandardRelease);
+  const currentReleaseId = stringValue(remoteRelease?.releaseId);
+  const remoteReleaseDigest = stringValue(remoteRelease?.releaseDigest);
+  const currentReleaseDigest = remoteReleaseDigest && /^sha256:[a-f0-9]{64}$/.test(remoteReleaseDigest)
+    ? remoteReleaseDigest as `sha256:${string}`
+    : undefined;
   const minPackageVersions = extractAuthoringPackageVersions(remoteRelease?.minPackageVersions);
   const recommendedAuthoringPackages = extractAuthoringPackageVersions(remoteRelease?.recommendedAuthoringPackages)
     ?? extractAuthoringPackageVersions(payload.recommendedAuthoringPackages);
@@ -1291,6 +1308,8 @@ function evaluateRemoteStandardFreshness(
       message: 'PromptFrame platform returned a mixed authoring package cohort that cannot be ordered against the local release. Wait for platform rollout recovery; do not change local packages from this response.',
       minPackageVersions,
       recommendedAuthoringPackages,
+      currentReleaseId,
+      currentReleaseDigest,
     };
   }
 
@@ -1306,6 +1325,8 @@ function evaluateRemoteStandardFreshness(
       ].join(' '),
       minPackageVersions,
       recommendedAuthoringPackages,
+      currentReleaseId,
+      currentReleaseDigest,
     };
   }
 
@@ -1323,6 +1344,8 @@ function evaluateRemoteStandardFreshness(
       ].join(' '),
       minPackageVersions,
       recommendedAuthoringPackages,
+      currentReleaseId,
+      currentReleaseDigest,
     };
   }
 
@@ -1337,6 +1360,8 @@ function evaluateRemoteStandardFreshness(
       ].join(' '),
       minPackageVersions,
       recommendedAuthoringPackages,
+      currentReleaseId,
+      currentReleaseDigest,
     };
   }
 
@@ -1351,6 +1376,8 @@ function evaluateRemoteStandardFreshness(
       ].join(' '),
       minPackageVersions,
       recommendedAuthoringPackages,
+      currentReleaseId,
+      currentReleaseDigest,
     };
   }
 
@@ -1361,6 +1388,8 @@ function evaluateRemoteStandardFreshness(
     message: 'Local authoring standard and package cohort match the platform release.',
     minPackageVersions,
     recommendedAuthoringPackages,
+    currentReleaseId,
+    currentReleaseDigest,
   };
 }
 
