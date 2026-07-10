@@ -26,7 +26,11 @@ jobs:
       - run: pnpm --filter create-promptframe-component test
       - run: pnpm --filter create-promptframe-component lint
       - run: pnpm --filter create-promptframe-component build
+      - name: Verify release tag
+        run: |
+          version="$(node -p "require('./packages/create-component/package.json').version")"
+          test "$GITHUB_REF_NAME" = "create-component-v${version}"
       - run: npm pack --dry-run --json
         working-directory: packages/create-component
-      - run: npm publish
+      - run: npm publish --tag next
         working-directory: packages/create-component

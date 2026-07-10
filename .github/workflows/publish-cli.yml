@@ -26,7 +26,11 @@ jobs:
       - run: pnpm --filter @promptframe/cli test
       - run: pnpm --filter @promptframe/cli lint
       - run: pnpm --filter @promptframe/cli build
+      - name: Verify release tag
+        run: |
+          version="$(node -p "require('./packages/cli/package.json').version")"
+          test "$GITHUB_REF_NAME" = "cli-v${version}"
       - run: npm pack --dry-run --json
         working-directory: packages/cli
-      - run: npm publish
+      - run: npm publish --tag next
         working-directory: packages/cli

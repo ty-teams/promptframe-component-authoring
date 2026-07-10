@@ -26,7 +26,11 @@ jobs:
       - run: pnpm --filter @promptframe/contracts test
       - run: pnpm --filter @promptframe/contracts lint
       - run: pnpm --filter @promptframe/contracts build
+      - name: Verify release tag
+        run: |
+          version="$(node -p "require('./packages/contracts/package.json').version")"
+          test "$GITHUB_REF_NAME" = "contracts-v${version}"
       - run: npm pack --dry-run --json
         working-directory: packages/contracts
-      - run: npm publish
+      - run: npm publish --tag next
         working-directory: packages/contracts
