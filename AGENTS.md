@@ -2,6 +2,23 @@
 
 This repository is the public source of truth for PromptFrame component authoring tools.
 
+## Before changing this repository
+
+1. Read this file, [README.md](README.md), [AUTHORING.md](AUTHORING.md), and
+   [PUBLIC_EXPORT_POLICY.md](PUBLIC_EXPORT_POLICY.md).
+2. For public Component Author AI behavior, also read
+   [skills/component-authoring/SKILL.md](skills/component-authoring/SKILL.md) and only the relevant local rules.
+3. Confirm the exact public package, scaffold, Skill, or documentation paths and tests before editing.
+
+Product REQ, BUG, intake, Campaign, roster, session, lease, and cross-repository release intent are canonical in
+`github.com/ty-teams/promptframe-product`. Resolve product-owned references such as
+`promptframe-product:docs/requirements.md` from the product checkout with `pnpm repo:resolve -- <repoId:path>`;
+do not recreate product governance here.
+
+Commit and push public authoring changes in this Git repository. A product Change Set later binds the exact service commit
+and blobs; a generated `services/` symlink, parent directory, checkout name, branch, or local package link is not version
+authority. Local links support development only and never replace official registry or prod-like verification.
+
 It may contain:
 
 - Public contracts used by external authoring tools and the PromptFrame platform.
@@ -22,6 +39,7 @@ It must not contain:
 - Director system prompts.
 - Agent inbox, internal task boards, private QA reports, or unredacted user data.
 - Server admission, artifact resolver, OSS/MinIO, render worker, sandbox, deployment, or production automation implementation details from `remotion-media`.
+- Platform-private runtime governance, internal QA machinery, or a second product control plane.
 
 Before publishing any package or public skill, run:
 
