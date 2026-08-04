@@ -19,6 +19,9 @@ Commit and push public authoring changes in this Git repository. A product Chang
 and blobs; a generated `services/` symlink, parent directory, checkout name, branch, or local package link is not version
 authority. Local links support development only and never replace official registry or prod-like verification.
 
+Do not bypass Git hooks, commit machine-local absolute paths, make unauthorized cross-repository side edits, or perform
+deployment actions. If required work exceeds the authorized repository or path ceiling, stop and report the exact evidence.
+
 It may contain:
 
 - Public contracts used by external authoring tools and the PromptFrame platform.
