@@ -26,6 +26,8 @@ npm install
 npx promptframe dev .
 npx promptframe check .
 npx promptframe validate .
+npx promptframe sync . --dry-run --json
+npx promptframe sync . --apply
 npx promptframe preview .
 npx promptframe preview . --write-local-report --json
 npx promptframe package . --out ./component.zip
@@ -76,9 +78,11 @@ Component assets should be passed through JSON props, safe fallback defaults, pl
 
 `promptframe dev .` also writes `.promptframe/dev-public-resources.json` and `src/promptframe-dev-public-resources.generated.ts` from the accepted local `public/` files. The generated preview shell reads that module and shows a local public-resource picker for text props, so authors can select `/logo.png`-style paths instead of hand-typing them.
 
+`promptframe sync .` regenerates those same generated authoring files (the thin PreviewRoot shell and the dev public-resources module) without starting the local preview server. It defaults to a dry-run that reports each file's `unchanged` / `would_update` status, including a warning when a legacy fat PreviewRoot shell needs refreshing to the current thin-shell contract; pass `--apply` to write. Useful for CI or scaffold-upgrade checks that only need file drift detection.
+
 The generated local preview shell uses `@remotion/player`, renders object / array props as structured controls with an `Advanced JSON` fallback, and passes `acknowledgeRemotionLicense` so the scaffold does not interrupt local authoring with repeated console prompts. This is only a local preview setting; component authors should still review the Remotion license for their own usage and distribution model.
 
-For automation, add `--json` to `standard`, `doctor`, `validate`, `check`, `upgrade`, `preview`, `login`, `whoami`, `logout`, `upload`, `status`, `reindex`, or `probe`. `dev --dry-run --json` reports the local preview command without starting a long-running server. `preview --write-local-report --json` reports `preview.local_report.written`. JSON output includes stable `diagnostic.code`; validation/check output includes `checkedRuleIds`, and JSON failures include `failureReason` plus `retryable`. Generated components include `.promptframe/scaffold.json`; `doctor` / `check` can report `scaffold.template.stale`, and `upgrade --dry-run --check-latest --json` shows scaffold freshness warnings without mutating `package.json`.
+For automation, add `--json` to `standard`, `doctor`, `validate`, `check`, `upgrade`, `sync`, `preview`, `login`, `whoami`, `logout`, `upload`, `status`, `reindex`, or `probe`. `dev --dry-run --json` reports the local preview command without starting a long-running server. `preview --write-local-report --json` reports `preview.local_report.written`. JSON output includes stable `diagnostic.code`; validation/check output includes `checkedRuleIds`, and JSON failures include `failureReason` plus `retryable`. Generated components include `.promptframe/scaffold.json`; `doctor` / `check` can report `scaffold.template.stale`, and `upgrade --dry-run --check-latest --json` shows scaffold freshness warnings without mutating `package.json`.
 
 GitHub Actions setup:
 
