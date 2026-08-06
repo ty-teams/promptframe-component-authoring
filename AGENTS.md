@@ -1,50 +1,49 @@
-# PromptFrame Component Authoring Repo
+# PromptFrame Component Authoring 公开仓入口
 
-This repository is the public source of truth for PromptFrame component authoring tools.
+本仓库是 PromptFrame 公开组件作者工具链的源码事实源。
 
-## Before changing this repository
+## 开工前必读
 
-1. Read this file, [README.md](README.md), [AUTHORING.md](AUTHORING.md), and
-   [PUBLIC_EXPORT_POLICY.md](PUBLIC_EXPORT_POLICY.md).
-2. For public Component Author AI behavior, also read
-   [skills/component-authoring/SKILL.md](skills/component-authoring/SKILL.md) and only the relevant local rules.
-3. Confirm the exact public package, scaffold, Skill, or documentation paths and tests before editing.
+1. 先读本文件、[README.md](README.md)、[AUTHORING.md](AUTHORING.md) 和
+   [公开导出政策](PUBLIC_EXPORT_POLICY.md)。
+2. 修改公开 Component Author AI 行为前，继续读取
+   [公开 authoring Skill](skills/component-authoring/SKILL.md) 及与任务相关的局部规则。
+3. 修改前确认获准的 package、scaffold、Skill 或文档精确路径和测试。
 
-Product REQ, BUG, intake, Campaign, roster, session, lease, and cross-repository release intent are canonical in
-`github.com/ty-teams/promptframe-product`. Resolve product-owned references such as
-`promptframe-product:docs/requirements.md` from the product checkout with `pnpm repo:resolve -- <repoId:path>`;
-do not recreate product governance here.
+新增或修正的说明性文档使用中文；代码标识、命令、schema、状态值、路径、包名和必要第三方名称保留英文。
 
-Commit and push public authoring changes in this Git repository. A product Change Set later binds the exact service commit
-and blobs; a generated `services/` symlink, parent directory, checkout name, branch, or local package link is not version
-authority. Local links support development only and never replace official registry or prod-like verification.
+产品 REQ、BUG、intake、Campaign、roster、session、lease 以及跨仓发布意图，统一由
+`github.com/ty-teams/promptframe-product` 管理。产品级引用用产品仓中的
+`pnpm repo:resolve -- <repoId:path>` 解析，不在本仓重建产品治理。
 
-Do not bypass Git hooks, commit machine-local absolute paths, make unauthorized cross-repository side edits, or perform
-deployment actions. If required work exceeds the authorized repository or path ceiling, stop and report the exact evidence.
+公开 authoring 改动在本 Git 仓独立 commit/push；随后由产品仓 Change Set 绑定精确 service commit 与 blob。
+`services/` 软链接、父目录、checkout 名、同名分支和本地 package link 都不是版本权威。本地 link 只服务开发，
+不能替代官方 registry 或 prod-like 验证。
 
-It may contain:
+## 本仓可以包含
 
-- Public contracts used by external authoring tools and the PromptFrame platform.
-- Component authoring helpers.
-- CLI and project scaffolding tools.
-- Public component authoring skills, templates, examples, and docs.
+- 外部 authoring 工具与 PromptFrame 平台共同使用的公开 contracts；
+- 组件 authoring helper；
+- CLI 与项目 scaffold；
+- 公开组件 authoring Skill、模板、示例和文档。
 
-Authoring guidance must assume an AI-first workflow:
+Authoring 默认采用 AI-first 工作流：人类用户负责视觉评审和产品判断，外部 CodingAI / Component Author AI
+把 brief、用户素材、公开 Skill、平台标准 API 与 CLI diagnostics 转为可复用组件。默认目标是可复用的
+marketplace quality：清晰 props、响应式布局、安全默认值、确定性 diagnostics 和严格 upload admission。
+一次性私有组件使用平台 `project_private_generation` lane，不冒充 marketplace-ready 成品。
 
-- The human user is the visual reviewer and product judge.
-- The external CodingAI or Component Author AI turns the brief, user assets, public authoring skill, platform standard API output, and CLI diagnostics into a reusable component.
-- Default external authoring targets reusable marketplace quality: clear props, responsive layout, safe defaults, deterministic diagnostics, and strict upload admission.
-- Temporary private components should use the platform `project_private_generation` lane; do not present one-off private work as marketplace-ready.
+## 本仓禁止包含
 
-It must not contain:
+- PromptFrame secret、token、API key 或私有 endpoint 的生产默认值；
+- Director system prompt；
+- agent inbox、内部 task board、私有 QA 原文或未脱敏用户数据；
+- 来自 `remotion-media` 的 server admission、artifact resolver、OSS/MinIO、render worker、sandbox、
+  deployment 或生产自动化实现细节；
+- 平台私有运行时治理、内部 QA 机制或第二套产品控制面。
 
-- PromptFrame platform secrets, tokens, API keys, or private endpoints as production defaults.
-- Director system prompts.
-- Agent inbox, internal task boards, private QA reports, or unredacted user data.
-- Server admission, artifact resolver, OSS/MinIO, render worker, sandbox, deployment, or production automation implementation details from `remotion-media`.
-- Platform-private runtime governance, internal QA machinery, or a second product control plane.
+## 发布与验证
 
-Before publishing any package or public skill, run:
+发布任何 package 或公开 Skill 前运行：
 
 ```bash
 pnpm lint:public
@@ -54,8 +53,15 @@ pnpm -r build
 pnpm -r pack:dry-run
 ```
 
-Local development may link this repo into `remotion-media`, but Docker/CI/prod-like verification must install the real npm packages from the registry.
+本地开发可以 link 到 `remotion-media`，但 Docker/CI/prod-like 验证必须安装 registry 中的真实 npm 包。
+正常发布使用本仓既有 GitHub Actions Trusted Publishing、`npm-production` environment 和各 package 的
+`publish-*.yml`；禁止新增长期 npm write credential 或从本地 npm 登录路径发布。发布后以官方 npm registry
+为准，镜像源同步延迟不能作为即时权威。
 
-Normal package releases must use GitHub Actions Trusted Publishing from this repo and the existing per-package `publish-*.yml` workflow filenames under environment `npm-production`. The completion path is tokenless: do not add a long-lived npm write credential or publish from a local npm authentication path. After a release, verify the official npm registry; mirror registries may lag and are not immediate post-publish authority.
+Candidate authority 是 `.github/workflows/build-authoring-candidate.yml` 生成的四包不可变 tarball manifest，
+不是 npm `next`。candidate asset 不覆盖、不移动、不删除，平台 QA 必须逐字节采用；资产产生后的失败使用新版本
+cohort，不重写旧 tag。最终 OIDC workflow 直接把同一组 tarball 发布为 `latest`；部分成功只能向前补齐，四包
+官方 version/integrity 和 canonical Docker runtime 未同时匹配 release receipt 前，平台 stable 不得前移。
 
-Candidate authority is an immutable four-package tarball manifest produced by `.github/workflows/build-authoring-candidate.yml`, not npm `next`. Candidate assets are no-clobber and must be adopted byte-for-byte by platform QA. Never move or delete a candidate tag: a pre-job workflow defect with no release assets may advance the active intent to a new `-rN` candidate tag, while any failure after assets exist requires a new versioned cohort. Final OIDC workflows publish those same tarballs directly as `latest`; partial success only forward-completes, and platform stable cannot advance until all four official versions/integrities and the canonical Docker runtime match the release receipt. Historical recovery creates a new versioned cohort instead of rewinding dist-tags.
+禁止绕过 Git hooks、提交本机绝对路径、跨仓顺手修改或执行未经授权的 deployment。需要的改动超出当前仓库
+或路径范围时，停在写入前并报告精确证据。
