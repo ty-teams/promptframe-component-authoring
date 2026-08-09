@@ -4,7 +4,8 @@
 
 ## 开工前必读
 
-1. 先读本文件、[README.md](README.md)、[AUTHORING.md](AUTHORING.md) 和
+1. 先读本文件、[README.md](README.md)、[AUTHORING.md](AUTHORING.md)、
+   [架构、演进与产品事项入口](docs/architecture-and-history.md) 和
    [公开导出政策](PUBLIC_EXPORT_POLICY.md)。
 2. 修改公开 Component Author AI 行为前，继续读取
    [公开 authoring Skill](skills/component-authoring/SKILL.md) 及与任务相关的局部规则。
@@ -14,7 +15,8 @@
 
 产品 REQ、BUG、intake、Campaign、roster、session、lease 以及跨仓发布意图，统一由
 `github.com/ty-teams/promptframe-product` 管理。产品级引用用产品仓中的
-`pnpm repo:resolve -- <repoId:path>` 解析，不在本仓重建产品治理。
+`pnpm repo:resolve -- <repoId:path>` 解析；当前事项按产品仓 `docs/work-item-routing.md` 的 repo/domain metadata
+检索，不在本仓重建产品治理或要求接手 Agent 翻本仓 Git 历史找产品决定。
 
 公开 authoring 改动在本 Git 仓独立 commit/push；随后由产品仓 Change Set 绑定精确 service commit 与 blob。
 `services/` 软链接、父目录、checkout 名、同名分支和本地 package link 都不是版本权威。本地 link 只服务开发，
@@ -35,7 +37,7 @@ marketplace quality：清晰 props、响应式布局、安全默认值、确定�
 ## 本仓禁止包含
 
 - PromptFrame secret、token、API key 或私有 endpoint 的生产默认值；
-- Director system prompt；
+- 平台内部编排提示正文；
 - agent inbox、内部 task board、私有 QA 原文或未脱敏用户数据；
 - 来自 `remotion-media` 的 server admission、artifact resolver、OSS/MinIO、render worker、sandbox、
   deployment 或生产自动化实现细节；

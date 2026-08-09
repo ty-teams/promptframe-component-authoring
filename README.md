@@ -2,6 +2,11 @@
 
 Public source repository for PromptFrame component authoring tools.
 
+Repository maintainers and CodingAI should read [AGENTS.md](AGENTS.md) and the
+[architecture, evolution, and product-work routing guide](docs/architecture-and-history.md) before changing packages,
+templates, the public Skill, or release workflows. Product REQs/BUGs live only in `promptframe-product`; this public
+repository does not carry a second task board.
+
 Current packages:
 
 - `@promptframe/component-kit`: small TypeScript helper package for building PromptFrame-compatible video components.
