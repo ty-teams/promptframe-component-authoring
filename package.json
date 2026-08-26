@@ -3,6 +3,8 @@
   "private": true,
   "packageManager": "pnpm@10.30.1",
   "scripts": {
+    "test:pr-ci-contract": "node --test scripts/pr-ci-contract.test.mjs",
+    "verify:pr-ci-contract": "pnpm test:pr-ci-contract && node scripts/pr-ci-contract.mjs",
     "build": "pnpm -r --filter './packages/*' build",
     "lint": "pnpm -r --filter './packages/*' lint",
     "lint:public": "node scripts/public-export-lint.mjs",

@@ -1,0 +1,29 @@
+name: PR public authoring contract
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  public-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: corepack enable
+      - run: corepack prepare pnpm@10.30.1 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm verify:pr-ci-contract
+      - run: pnpm lint:public
+      - run: pnpm -r lint
+      - run: pnpm -r test
+      - run: pnpm -r build
+      - run: pnpm -r pack:dry-run
+      - run: pnpm test:release
