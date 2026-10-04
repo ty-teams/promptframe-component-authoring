@@ -1,5 +1,7 @@
 # PromptFrame Component Authoring 公开仓入口
 
+> **本地开发入口（2026-10-04）**：本地源码、文档和3500沿产品仓 `docs/operations/local-development.md` 的普通 Git/任务分支、受影响测试、合并、Compose及真实功能验证推进。Campaign/lane、lease、逐路径oneShot、worktree登记、pre/Change Set证明和正式QA不再是本地前置；本页冲突的旧流程说明仅用于显式严格工具或生产发布。保持真实仓库、实际并发作者、密钥、业务权限、费用及生产/外部副作用边界；局部同结果配套路径无需逐项审批。
+
 本仓库是 PromptFrame 公开组件作者工具链的源码事实源。
 
 ## 开工前必读
@@ -18,7 +20,7 @@
 `pnpm repo:resolve -- <repoId:path>` 解析；当前事项按产品仓 `docs/work-item-routing.md` 的 repo/domain metadata
 检索，不在本仓重建产品治理或要求接手 Agent 翻本仓 Git 历史找产品决定。
 
-公开 authoring 改动在本 Git 仓独立 commit/push；随后由产品仓 Change Set 绑定精确 service commit 与 blob。
+公开 authoring 改动在本 Git 仓独立 commit/push。产品仓记录实际服务版本；真正的公开package发布仍使用本仓发布合同与必要版本证据。
 `services/` 软链接、父目录、checkout 名、同名分支和本地 package link 都不是版本权威。本地 link 只服务开发，
 不能替代官方 registry 或 prod-like 验证。
 
