@@ -27,8 +27,8 @@ const now = new Date('2026-10-18T12:00:00.000Z');
 test('active release intent binds the exact unpublished source cohort', async () => {
   const intent = await readAuthoringReleaseIntent(undefined, { root, now });
 
-  assert.equal(intent.releaseId, 'authoring-release-2026-10-18.1-r1');
-  assert.equal(intent.artifactTag, 'authoring-candidate-2026-10-18.1-r1');
+  assert.equal(intent.releaseId, 'authoring-release-2026-10-18.2-r1');
+  assert.equal(intent.artifactTag, 'authoring-candidate-2026-10-18.2-r1');
   assert.deepEqual(intent.packages.map((entry) => entry.name), AUTHORING_RELEASE_PACKAGES.map((entry) => entry.name));
   assert.equal(await validateIntentAgainstRepository(intent, { root }), true);
 });
