@@ -2,6 +2,9 @@
   "name": "@promptframe/cli",
   "version": "0.1.60",
   "license": "MIT",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
   "type": "module",
   "files": [
     "dist",
@@ -43,10 +46,11 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@promptframe/contracts": "0.1.28"
+    "@promptframe/contracts": "0.1.28",
+    "typescript": "~5.7.0",
+    "vite": "8.0.10"
   },
   "devDependencies": {
-    "@types/node": "^24.12.4",
-    "typescript": "~5.7.0"
+    "@types/node": "^24.12.4"
   }
 }

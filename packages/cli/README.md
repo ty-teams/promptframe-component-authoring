@@ -88,6 +88,24 @@ The upload-to-publish lifecycle has multiple gates. `upload` returning success m
 
 ### Repository layouts and monorepos
 
+#### 根开发服务（源码入口）
+
+工作区根目录声明 `promptframe-workspace.json` 后，源码中的根开发入口使用一个 Vite watcher 管理全部模块：
+
+```bash
+promptframe dev . --studio-origin https://studio.example
+```
+
+入口监听一个 loopback 地址，端口 `0` 由系统选择一个实际端口，也可用 `--port` 指定。成功监听后输出实际 URL、连接 ID、精确 Studio Origin 和十分钟连接凭据。凭据只用于本机显式连接，不是平台登录或上传 Token；不要提交或放进组件代码。远程浏览器、SSH/WSL 和 HTTPS 到本机的访问仍需真实桥接及浏览器许可，不能根据命令启动推断可达。
+
+`/__promptframe/registry` 和 `events` 以精确 Host/Origin/Authorization 返回模块的当前捕获版本、checking/checked/failed、固定诊断及明确的 lastChecked。精确版本的 bundle 接口一次返回 Component/schema/index ESM、共享 chunk 和已捕获 public 资源；输出不附原包锁或连接凭据。原始 Vite 文件、`/@fs`、默认 HTML/HMR、子配置和 npm 脚本入口关闭。
+
+每个模块先捕获自身文件、实际 workspace pnpm 锁和声明，再运行普通 CLI validate、固定 Vite 闭合图构建和当前内容重捕获。漏通知、快速保存或旧构建晚回不能授权旧字节覆盖新版；失败保留明确标记的 lastChecked。检查状态是构建/规则事实，Player 必须在隔离执行后另报实际加载版本。根服务本身尚未提供 Studio 消费端或 Player 加载 ACK，也不代替平台正式 upload/admission。
+
+构建采用 Vite 8.0.10 和自动 JSX，支持捕获内的 JS/TS/JSON 静态图。React/ReactDOM/Remotion、zod 及 PromptFrame 公共 runtime 作为明确列出的共享 external，由消费端按兼容合同提供；不从作者 `node_modules` 偷读依赖。其它 npm/本机 alias、父目录源码、CSS import、`import.meta` 和非字面动态 import 尚不支持，返回确定诊断。锁文件捕获证明实际输入，不冒依赖安装或解析完整性；正式各模块独立包仍走原检查和上传。
+
+默认界为 32 模块、每模块 2048 文件/16MiB 输入、512 文件/8MiB 输出；检查/构建串行并有超时，受检产物保留总量 64MiB，HTTP 传输另有有界预留，最多八个通知连接。关闭时停止 watcher/HTTP，abort 并 join 实际检查/构建子进程后回收自身临时目录。这些本机进程和内容预算不构成 OS/网络或网页执行沙箱，也不声称全进程 heap/RSS 上限。
+
 The default CLI workflow assumes a single component repository: the current directory is the component package and contains `manifest.json`, `package.json`, `src/`, and optional `public/`.
 
 Monorepos are allowed only when component mapping is explicit. `promptframe-workspace.json` is the supported workspace SSOT; it lists each component `id` and relative `path`. `workspace validate` confirms every path exists and every selected directory's `manifest.json` declares the same id before upload. `PROMPTFRAME_CI_TOKEN` authorizes the upload; it does not map a repository, commit, or tag to a component for you.

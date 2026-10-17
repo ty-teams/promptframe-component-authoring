@@ -38,6 +38,7 @@ export async function validateDevelopmentContents(
     }
   }
   const directory = await mkdtemp(join(options.temporaryParent ?? tmpdir(), 'promptframe-check-'));
+  let hadFailure = false;
   try {
     for (const file of files) {
       options.signal?.throwIfAborted();
@@ -55,10 +56,16 @@ export async function validateDevelopmentContents(
     return Object.freeze({ sourceRevision: contents.revision,
       securityPolicyVersion: output.securityPolicyVersion, securityPolicyDigest: output.securityPolicyDigest,
       securityEvaluatorMode: 'ast', checkedRuleIds: Object.freeze([...output.checkedRuleIds]) });
+  } catch (error) {
+    hadFailure = true; throw error;
   } finally {
     // runCapturedValidation waits for actual child close, also after abort or
     // timeout. Its reader cannot outlive this private input directory.
-    await rm(directory, { recursive: true, force: true });
+    try { await rm(directory, { recursive: true, force: true }); }
+    catch (error) {
+      if (!hadFailure) throw error;
+      process.stderr.write(JSON.stringify({ code: 'development.validation.cleanup_failed', directory }) + '\n');
+    }
   }
 }
 

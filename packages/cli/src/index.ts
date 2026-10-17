@@ -672,6 +672,8 @@ function preview(argv: string[]): void {
 }
 
 async function dev(argv: string[]): Promise<void> {
+  const workspaceRoot = autoWorkspaceRoot(argv);
+  if (workspaceRoot) { await devWorkspace(workspaceRoot, argv); return; }
   const input = resolveComponentInput(argv);
   const dir = input.dir;
   const target = resolveUploadTarget(argv);
@@ -721,6 +723,43 @@ async function dev(argv: string[]): Promise<void> {
   if (hasFlag(argv, '--dry-run')) return;
 
   await runDevServer(dir, devCommand);
+}
+
+async function devWorkspace(root: string, argv: string[]): Promise<void> {
+  const studioOrigin = valueAfter(argv, '--studio-origin')
+    ?? fail('Workspace dev requires --studio-origin <exact-origin> for its local connection.', 'dev.workspace.origin_required', 2);
+  const host = valueAfter(argv, '--host') ?? '127.0.0.1';
+  const port = Number(valueAfter(argv, '--port') ?? '0');
+  if ((host !== '127.0.0.1' && host !== '::1') || !Number.isSafeInteger(port) || port < 0 || port > 65535) {
+    fail('Workspace dev binds one explicit loopback address and port (0 chooses one actual free port).', 'dev.workspace.address_invalid', 2);
+  }
+  const workspace = readWorkspaceConfig(root);
+  if (hasFlag(argv, '--json') && !hasFlag(argv, '--dry-run')) {
+    fail('dev --json requires --dry-run so stdout remains machine-readable.', 'dev.json_requires_dry_run');
+  }
+  if (hasFlag(argv, '--dry-run')) {
+    printJson({ command: 'dev.workspace', workspace: workspaceSummary(root), modules: workspace.components,
+      host, port, studioOrigin, status: 'declared', checked: false, playerLoaded: false });
+    return;
+  }
+  // Lazy import keeps ordinary validate/check free of a Vite server lifecycle.
+  const { startDevelopmentWorkspace } = await import('./development-workspace.js');
+  let stop!: () => void;
+  const stopped = new Promise<void>(resolve => { stop = resolve; });
+  process.once('SIGINT', stop); process.once('SIGTERM', stop);
+  try {
+    const server = await startDevelopmentWorkspace({ root, modules: workspace.components, studioOrigin, host, port });
+    try {
+      // This short-lived credential is for explicit local tooling, never an
+      // application login token or something to embed in component code.
+      printJson({ command: 'dev.workspace', contractVersion: 'promptframe-development.v1',
+        connectionId: server.connectionId, url: server.url, studioOrigin: server.studioOrigin,
+        credential: server.credential, expiresAt: server.expiresAt, playerLoaded: false });
+      await stopped;
+    } finally { await server.close(); }
+  } finally {
+    process.removeListener('SIGINT', stop); process.removeListener('SIGTERM', stop);
+  }
 }
 
 function packageComponent(argv: string[]): void {
@@ -2049,6 +2088,7 @@ const POSITIONAL_VALUE_FLAGS = new Set([
   '--endpoint',
   '--expires-at',
   '--host',
+  '--studio-origin',
   '--id',
   '--level',
   '--name',
@@ -5010,6 +5050,7 @@ Commands:
   preview <dir>                    Validate and print local Remotion preview envelope
     --write-local-report           Write .promptframe/local-previews/preview-report.json
   dev <dir>                        Start the local Remotion Player preview server
+    --studio-origin <origin>        Required for a multi-component workspace's checked-module connection
   package <dir> --out <zip>        Validate and package a component source zip
   upload <dir|zip>                 Upload component source package to PromptFrame
     --target <target>              marketplace_authoring or project_private_generation

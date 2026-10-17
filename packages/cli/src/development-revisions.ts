@@ -75,7 +75,8 @@ export interface CheckedDevelopmentModule {
 
 export interface DevelopmentModuleState {
   readonly moduleId: string;
-  readonly sourceRevision: string;
+  /** Absent if current inputs cannot be captured; lastChecked stays explicit. */
+  readonly sourceRevision?: string;
   readonly status: 'checking' | 'checked' | 'failed';
   readonly diagnostic?: string;
   /** Passed checks, not an assertion that a Player has loaded this revision. */
@@ -88,7 +89,7 @@ export interface DevelopmentModuleState {
  * not authorize a revision. This helper never executes component code.
  */
 export class DevelopmentRevisionGate {
-  readonly #states = new Map<string, { check: DevelopmentCheck; state: DevelopmentModuleState }>();
+  readonly #states = new Map<string, { check?: DevelopmentCheck; state: DevelopmentModuleState }>();
   readonly #checkerKey: string;
   readonly #maximumModules: number;
   #sequence = 0;
@@ -103,19 +104,32 @@ export class DevelopmentRevisionGate {
   }
 
   begin(moduleId: string, source: DevelopmentContents): DevelopmentCheck {
-    if (!moduleId.trim() || moduleId.length > 256 || /[\u0000-\u001f]/.test(moduleId)) {
-      throw new Error('development.module.invalid_identity');
-    }
+    this.assertIdentity(moduleId);
     const previous = this.#states.get(moduleId);
-    if (!previous && this.#states.size >= this.#maximumModules) {
-      throw new Error('development.registry.module_limit');
-    }
     const check = Object.freeze({ moduleId, sourceRevision: source.revision, sequence: ++this.#sequence });
     this.#states.set(moduleId, { check, state: Object.freeze({
       moduleId, sourceRevision: source.revision, status: 'checking',
       ...(previous?.state.lastChecked ? { lastChecked: previous.state.lastChecked } : {}),
     }) });
     return check;
+  }
+
+  invalidate(moduleId: string, diagnostic: string): void {
+    this.assertIdentity(moduleId);
+    const previous = this.#states.get(moduleId);
+    this.#states.set(moduleId, { state: Object.freeze({ moduleId, status: 'failed',
+      diagnostic: diagnostic.slice(0, 1024) || 'development.capture.failed',
+      ...(previous?.state.lastChecked ? { lastChecked: previous.state.lastChecked } : {}),
+    }) });
+  }
+
+  private assertIdentity(moduleId: string): void {
+    if (!moduleId.trim() || moduleId.length > 256 || /[\u0000-\u001f]/.test(moduleId)) {
+      throw new Error('development.module.invalid_identity');
+    }
+    if (!this.#states.has(moduleId) && this.#states.size >= this.#maximumModules) {
+      throw new Error('development.registry.module_limit');
+    }
   }
 
   publish(check: DevelopmentCheck, current: DevelopmentContents, artifacts: DevelopmentContents): boolean {
