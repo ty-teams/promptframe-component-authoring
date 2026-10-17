@@ -22,13 +22,13 @@ import {
 } from './authoring-release-receipt.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const now = new Date('2026-07-11T00:00:00.000Z');
+const now = new Date('2026-10-18T12:00:00.000Z');
 
 test('active release intent binds the exact unpublished source cohort', async () => {
   const intent = await readAuthoringReleaseIntent(undefined, { root, now });
 
-  assert.equal(intent.releaseId, 'authoring-release-2026-07-10.5-r1');
-  assert.equal(intent.artifactTag, 'authoring-candidate-2026-07-10.5-r1');
+  assert.equal(intent.releaseId, 'authoring-release-2026-10-18.1-r1');
+  assert.equal(intent.artifactTag, 'authoring-candidate-2026-10-18.1-r1');
   assert.deepEqual(intent.packages.map((entry) => entry.name), AUTHORING_RELEASE_PACKAGES.map((entry) => entry.name));
   assert.equal(await validateIntentAgainstRepository(intent, { root }), true);
 });
@@ -43,7 +43,7 @@ test('publish authorization binds platform gate and exact candidate receipt', as
       artifactName: expectedArtifactName(entry.name, entry.version),
       bytes: Buffer.from(`${entry.name}:authorization-fixture`),
     })),
-    createdAt: '2026-07-10T12:00:00.000Z',
+    createdAt: '2026-10-18T10:00:00.000Z',
     now,
   });
   const source = {
@@ -56,8 +56,8 @@ test('publish authorization binds platform gate and exact candidate receipt', as
     candidateManifestDigest: candidate.manifestDigest,
     platformGateDigest: `sha256:${'e'.repeat(64)}`,
     releaseDigest: candidate.releaseDigest,
-    createdAt: '2026-07-10T13:00:00.000Z',
-    expiresAt: '2026-08-09T13:00:00.000Z',
+    createdAt: '2026-10-18T11:00:00.000Z',
+    expiresAt: '2026-10-25T11:00:00.000Z',
     packages: candidate.packages.map(({ name, version, integrity }) => ({ name, version, integrity })),
     authorizationDigest: '',
   };
@@ -110,7 +110,7 @@ test('candidate manifest binds exact tarball bytes and rejects drift', async () 
     intent,
     sourceCommit: 'a'.repeat(40),
     artifacts,
-    createdAt: '2026-07-10T12:00:00.000Z',
+    createdAt: '2026-10-18T10:00:00.000Z',
     now,
   });
 
@@ -143,7 +143,7 @@ test('candidate artifact reader rejects symlinks and changed bytes', async () =>
       intent,
       sourceCommit: 'b'.repeat(40),
       artifacts,
-      createdAt: '2026-07-10T12:00:00.000Z',
+      createdAt: '2026-10-18T10:00:00.000Z',
       now,
     });
     const manifestPath = path.join(tempRoot, 'candidate-manifest.json');

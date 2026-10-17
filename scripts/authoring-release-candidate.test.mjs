@@ -9,7 +9,7 @@ import { expectedArtifactName } from './authoring-release-receipt.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourceCommit = 'c'.repeat(40);
-const now = new Date('2026-07-11T00:00:00.000Z');
+const now = new Date('2026-10-18T12:00:00.000Z');
 
 test('candidate builder packs the exact cohort without lifecycle scripts or inherited credentials', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'authoring-candidate-builder-'));
@@ -22,8 +22,8 @@ test('candidate builder packs the exact cohort without lifecycle scripts or inhe
       sourceCommit,
       headCommit: sourceCommit,
       repositoryClean: true,
-      artifactTag: 'authoring-candidate-2026-07-10.5-r1',
-      createdAt: '2026-07-10T12:00:00.000Z',
+      artifactTag: 'authoring-candidate-2026-10-18.1-r1',
+      createdAt: '2026-10-18T10:00:00.000Z',
       now,
       baseEnv: {
         HOME: '/tmp/fixture-home',
@@ -64,7 +64,7 @@ test('candidate builder fails closed and removes partial output', async () => {
         sourceCommit,
         headCommit: sourceCommit,
         repositoryClean: true,
-        artifactTag: 'authoring-candidate-2026-07-10.5-r1',
+        artifactTag: 'authoring-candidate-2026-10-18.1-r1',
         now,
         execFileImpl: async () => ({
           stdout: JSON.stringify([{ name: '@promptframe/wrong', version: '9.9.9', filename: 'wrong.tgz' }]),

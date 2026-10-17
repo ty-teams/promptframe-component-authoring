@@ -16,7 +16,7 @@ import {
 } from './authoring-release-publish.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const now = new Date('2026-07-11T00:00:00.000Z');
+const now = new Date('2026-10-18T12:00:00.000Z');
 
 test('package publisher waits for dependencies and publishes the exact tarball through OIDC', async () => {
   const fixture = await createFixture();
@@ -193,7 +193,7 @@ async function createFixture() {
       artifactName: expectedArtifactName(entry.name, entry.version),
       bytes: Buffer.from(`${entry.name}:publish-fixture`),
     })),
-    createdAt: '2026-07-10T12:00:00.000Z',
+    createdAt: '2026-10-18T10:00:00.000Z',
     now,
   });
   const source = {
@@ -206,8 +206,8 @@ async function createFixture() {
     candidateManifestDigest: candidate.manifestDigest,
     platformGateDigest: `sha256:${'a'.repeat(64)}`,
     releaseDigest: candidate.releaseDigest,
-    createdAt: '2026-07-10T13:00:00.000Z',
-    expiresAt: '2026-08-09T13:00:00.000Z',
+    createdAt: '2026-10-18T11:00:00.000Z',
+    expiresAt: '2026-10-25T11:00:00.000Z',
     packages: candidate.packages.map(({ name, version, integrity }) => ({ name, version, integrity })),
     authorizationDigest: '',
   };
