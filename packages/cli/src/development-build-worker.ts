@@ -93,7 +93,7 @@ async function main() {
     bytes: file.type === 'chunk' ? Buffer.from(file.code) : Buffer.from(file.source) }));
   output.push({ path: 'manifest.json', bytes: Buffer.from(manifestBytes) });
   for (const [path, bytes] of files) {
-    if (path.startsWith('public/')) output.push({ path: 'resources/' + path.slice(7), bytes: Buffer.from(bytes) });
+    if (path.startsWith('public/')) output.push({ path: 'resources/public/' + path.slice(7), bytes: Buffer.from(bytes) });
     if (path === 'src/preview-props.json') output.push({ path: 'preview.json', bytes: Buffer.from(bytes) });
   }
   const artifacts = new DevelopmentContents(output, { maximumFiles: 512, maximumBytes: 8 * 1024 * 1024 });

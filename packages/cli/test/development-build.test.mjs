@@ -12,6 +12,19 @@ import { developmentFixture, developmentLimits } from './fixtures/development-co
 const javascript = built => built.artifacts.readFiles().filter(file => file.path.endsWith('.mjs'))
   .map(file => Buffer.from(file.bytes).toString()).join('\n');
 
+test('public capture keeps the canonical resource artifact path and exact captured bytes', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pf-build-public-resource-'));
+  try {
+    const paths = await developmentFixture(root), svg = '<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2" fill="red"/></svg>';
+    await mkdir(join(root, 'public')); await writeFile(join(root, 'public/mark.svg'), svg); paths.push('public/mark.svg');
+    const captured = captureDevelopmentFiles(root, paths, developmentLimits);
+    await validateDevelopmentContents(captured);
+    const built = await buildDevelopmentContents(captured), files = built.artifacts.readFiles();
+    assert.equal(Buffer.from(files.find(file => file.path === 'resources/public/mark.svg').bytes).toString(), svg);
+    assert.equal(files.some(file => file.path === 'resources/mark.svg'), false);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('real Vite builds exactly the common-checked capture, without live files/config/scripts, and produces stable independent ESM bytes', async () => {
   const root = await mkdtemp(join(tmpdir(), 'pf-captured-build-test-'));
   try {
