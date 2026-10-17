@@ -42,15 +42,15 @@ test('authoring standard release exposes one digest-bound package cohort', async
   assert.deepEqual(release.minPackageVersions, PROMPTFRAME_MIN_AUTHORING_PACKAGE_VERSIONS);
   assert.notDeepEqual(release.recommendedAuthoringPackages, release.minPackageVersions);
   assert.deepEqual(release.recommendedAuthoringPackages, {
-    contracts: '0.1.30',
-    componentKit: '0.1.24',
-    cli: '0.1.62',
-    createComponent: '0.1.52',
+    contracts: '0.1.31',
+    componentKit: '0.1.25',
+    cli: '0.1.63',
+    createComponent: '0.1.53',
   });
   assert.deepEqual(release.scaffoldTemplates, [
     {
       name: 'react-remotion',
-      digest: 'sha256:4928b719169723319f5b91bbd355ec3822a6ddb1e96be7fec89de5acd32a81dc',
+      digest: 'sha256:e4c7bc20250195544ceec8126c707145f61eb7f1b87d6b52459e71e3e90fd4d4',
     },
   ]);
 

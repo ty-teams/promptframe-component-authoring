@@ -15,7 +15,7 @@ importers:
   packages/cli:
     dependencies:
       '@promptframe/contracts':
-        specifier: 0.1.30
+        specifier: 0.1.31
         version: link:../contracts
       postcss:
         specifier: 8.5.30
@@ -37,7 +37,7 @@ importers:
   packages/component-kit:
     dependencies:
       '@promptframe/contracts':
-        specifier: 0.1.30
+        specifier: 0.1.31
         version: link:../contracts
       react:
         specifier: ^19.0.0

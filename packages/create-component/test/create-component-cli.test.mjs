@@ -5,10 +5,38 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import test from 'node:test';
+import { evaluatePromptFrameDependencyPolicy } from '../../contracts/dist/index.js';
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(import.meta.dirname, '..');
 const cliPath = path.join(packageRoot, 'dist/index.js');
+
+test('created component keeps the local Player out of its runtime dependency policy', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-create-runtime-'));
+  const target = path.join(dir, 'component');
+  try {
+    await execFileAsync('node', [cliPath, target, '--name', 'runtime-boundary']);
+    const packageJson = JSON.parse(await readFile(path.join(target, 'package.json'), 'utf8'));
+    // Upload admission evaluates runtime dependencies; local authoring tools
+    // remain installed for the workspace's development Player and build.
+    const { devDependencies, ...runtimePackage } = packageJson;
+    const policy = evaluatePromptFrameDependencyPolicy({ packageJson: runtimePackage, lockfilePresent: true });
+    assert.equal(policy.status, 'allow', JSON.stringify(policy.diagnostics));
+    assert.equal(policy.lane, 'platform_core');
+    assert.equal(packageJson.dependencies['@remotion/player'], undefined);
+    assert.equal(devDependencies['@remotion/player'], '^4.0.0');
+    assert.match(await readFile(path.join(target, 'src/PreviewRoot.tsx'), 'utf8'), /PromptFramePreviewApp/);
+    assert.doesNotMatch(await readFile(path.join(target, 'src/Component.tsx'), 'utf8'), /@remotion\/player/);
+    const unknown = evaluatePromptFrameDependencyPolicy({
+      packageJson: { ...runtimePackage, dependencies: { ...runtimePackage.dependencies, 'unreviewed-runtime': '1.0.0' } },
+      lockfilePresent: true,
+    });
+    assert.equal(unknown.status, 'manual_review');
+    assert.equal(unknown.quarantine, true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test('create CLI honors explicit component name independently of target directory', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-create-name-'));
@@ -101,7 +129,7 @@ test('create CLI scaffolds an advanced workspace with one component', async () =
     const rootPackage = JSON.parse(await readFile(path.join(target, 'package.json'), 'utf8'));
     assert.equal(rootPackage.private, true);
     assert.equal(rootPackage.packageManager, 'pnpm@10.0.0');
-    assert.equal(rootPackage.devDependencies?.['@promptframe/cli'], '^0.1.62');
+    assert.equal(rootPackage.devDependencies?.['@promptframe/cli'], '^0.1.63');
     assert.equal(rootPackage.scripts.check, 'promptframe workspace validate . && promptframe check . --workspace-component @marketplace/image-particle-remotion');
     assert.equal(rootPackage.scripts.upload, 'promptframe upload . --workspace-component @marketplace/image-particle-remotion');
     assert.equal(rootPackage.scripts['setup-ci'], 'promptframe setup-ci . --provider github --workspace');
@@ -176,7 +204,7 @@ test('create CLI appends workspace components without overwriting root state', a
     assert.equal(nextPackage.scripts.upload, 'promptframe upload . --workspace-component @marketplace/text-reveal-motion');
     assert.equal(nextPackage.scripts.custom, 'echo keep-me');
     assert.equal(nextPackage.devDependencies['left-alone'], '1.0.0');
-    assert.equal(nextPackage.devDependencies['@promptframe/cli'], '^0.1.62');
+    assert.equal(nextPackage.devDependencies['@promptframe/cli'], '^0.1.63');
 
     assert.equal(await fileExists(path.join(target, 'components/text-reveal-motion/.github/workflows/promptframe-component.yml')), false);
     assert.equal(await fileExists(path.join(target, 'components/media-rich-showcase/.github/workflows/promptframe-component.yml')), false);
