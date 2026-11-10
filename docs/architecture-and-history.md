@@ -73,4 +73,4 @@ pnpm -r pack:dry-run
 
 修改 release workflow 时额外运行 `pnpm test:release`；修改 preview geometry 时运行
 `pnpm test:previewroot-geometry`。本地 link 只服务开发，Docker/CI/prod-like 验证必须使用 registry 中的真实包。
-测试通过不自动授权打 tag、发布 npm 或修改平台部署。
+已授权 BUG/REQ 代码修改在受影响测试及相应验收通过后，默认包含对应 npm 包按既有合同的正常发行，无需逐版本或 tag 再申请；用户明确 hold 时保持暂停。平台环境部署和个人宿主安装仍按各自实际授权；纯规则或文档变更不制造空版本。四包不可变 tarball、manifest、OIDC 同组发布和官方 registry 回读合同保持，公开导出范围不扩大。
