@@ -3,9 +3,8 @@
 Public source repository for PromptFrame component authoring tools.
 
 Repository maintainers and CodingAI should read [AGENTS.md](AGENTS.md) and the
-[architecture, evolution, and product-work routing guide](docs/architecture-and-history.md) before changing packages,
-templates, the public Skill, or release workflows. Product REQs/BUGs live only in `promptframe-product`; this public
-repository does not carry a second task board.
+[architecture and development guide](docs/architecture-and-history.md) before changing packages,
+templates, the public Skill, or release workflows.
 
 Current packages:
 
@@ -151,7 +150,7 @@ npx promptframe upload . --endpoint "$PROMPTFRAME_API_BASE" --json
 
 Do not run `promptframe upload .` at a monorepo root unless that root is itself a valid single component package. Do not rely on repository names, commit messages, or tag names as the component mapping source. For CI tokens, use `promptframe setup-ci . --provider github --workspace`; it writes a matrix workflow that validates the workspace and uploads each configured component with explicit source metadata headers.
 
-External CodingAI should read local CLI JSON diagnostics, GitHub Check annotations, Action summary, artifact report, and platform status/admission diagnostics. It must not read PromptFrame internal REQ/TASK/QA docs, agent boards, deployment scripts, private endpoints, or token secrets.
+组件开发可使用 CLI JSON diagnostics、GitHub annotations、artifact reports 和平台 status/admission diagnostics。私有平台实现、凭据与部署配置不属于公开作者接口。
 
 ## Local Checks
 
@@ -179,13 +178,11 @@ Release configuration:
 - `@promptframe/cli`: Trusted Publisher workflow `publish-cli.yml`
 - `create-promptframe-component`: Trusted Publisher workflow `publish-create-component.yml`
 
-A candidate tag builds and tests the whole workspace, packs all four final unpublished versions once, and creates a no-clobber prerelease containing the tarballs plus `candidate-manifest.json`. The manifest binds source commit, package versions, artifact names, sizes, SHA-256, SHA-512 integrity, intent digest, release digest, and expiry. Platform QA must install those exact tarball bytes; npm `next` is not candidate authority.
+A candidate tag builds and tests the whole workspace, packs all four final unpublished versions once, and creates a no-clobber prerelease containing the tarballs plus `candidate-manifest.json`. The manifest binds source commit, package versions, artifact names, sizes, SHA-256, SHA-512 integrity, intent digest, release digest, and expiry. Compatibility checks install those exact tarball bytes; npm `next` is not used to identify a candidate.
 
 Candidate tags are never moved or deleted. If a workflow-file defect prevents every job from being created and no candidate prerelease or asset exists, preserve the failed tag and runs, revise the active intent to the next `-rN` artifact tag, and push that new tag. A candidate revision keeps the same unpublished package cohort but produces a new source-bound manifest; after any candidate asset exists, recovery requires a new versioned cohort instead.
 
-已授权 BUG/REQ 代码修改默认包含对应 npm 包在测试和相应验收通过后的正常发行，无需逐版本或 tag 另行申请；用户明确 hold 时保持暂停。平台环境部署和个人宿主安装仍按各自实际授权。纯规则或文档变更不制造空版本，公开导出政策保持。
-
-精确候选通过原有 platform/Docker/live 验证后，既有受保护发行回执记录该事项已有的授权，并绑定 manifest digest 和 platform gate digest；这项技术绑定不要求逐版本新增人工批准。 The shared final release tag starts all four existing Trusted Publisher workflows. They download and verify the same candidate assets, wait for dependencies, and publish directly as `latest` with OIDC and no long-lived npm write credential. Partial success only retries forward: an existing version is skipped only when its official integrity and `latest` tag already match the receipt. The platform stays on the previous stable cohort until all four packages and the official-registry Docker runtime converge.
+候选通过相关测试、打包检查和版本验收后，发行回执记录 manifest digest 和平台兼容性检查结果。统一的发行 tag 启动四个 Trusted Publisher workflow，校验并发布同一组候选 tarball；依赖包就绪后通过 OIDC 发布为 `latest`，无需长期 npm 写入凭据。部分发布成功时向前补齐：只有官方 integrity 和 `latest` 均与回执匹配，才跳过已存在的版本。四包及官方 registry 的 Docker 运行时全部匹配后，再更新平台 stable 状态。
 
 Candidate-aware platform endpoints expose a deployment `candidate` stage separately from the immutable package release digest. A compatible CLI reports `standard.release.promoting`, exact cohort versions, and platform release responsibility until the stable receipt is complete; it must not present that state as stable/current completion. Historical recovery creates a new versioned cohort and repeats this path instead of rewinding dist-tags.
 
