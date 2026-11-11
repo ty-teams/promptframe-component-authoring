@@ -1,36 +1,36 @@
 {
   "schemaVersion": "promptframe-authoring-release-authorization/v1",
   "state": "publish_ready",
-  "releaseId": "authoring-release-2026-10-18.3-r1",
-  "releaseTag": "authoring-release-2026-10-18.3-r1",
-  "artifactTag": "authoring-candidate-2026-10-18.3-r1",
-  "sourceCommit": "f8fe7a4b5377a56caffa0d813d09c5c236d1c8c7",
-  "candidateManifestDigest": "sha256:45bccc71b1cc965da8e5f0390b95caccadd0d230ab0f5c2a64f285f206862e0e",
-  "platformGateDigest": "sha256:468d1f7ec2177116c509fdb3390fe124c55447401a8fffe358823e9f4ca18bf2",
-  "releaseDigest": "sha256:b9a36049f908f3d2a42ad889afba0f55bc8eb30e8d207184ba3c3942964bb941",
-  "createdAt": "2026-10-18T02:21:53.112Z",
-  "expiresAt": "2026-10-24T23:44:25.893Z",
+  "releaseId": "authoring-release-2026-11-11.1",
+  "releaseTag": "authoring-release-2026-11-11.1",
+  "artifactTag": "authoring-candidate-2026-11-11.1",
+  "sourceCommit": "36eeb4056d4dffb8c5dfea2f2f3d4a871c8caaac",
+  "candidateManifestDigest": "sha256:d71706b07d30b70434fc695332fd1c2990c1c7e6b5a6b72766b0b9ceb806a5a3",
+  "platformGateDigest": "sha256:797b657e7ffdfb22dd59aff08e011de762753b14b9fa76905c31435e9fe5b301",
+  "releaseDigest": "sha256:9104da898291353664c928907b827d4e0bc9144c38fd509cefb978b3cdbf2a19",
+  "createdAt": "2026-11-11T12:45:03.531Z",
+  "expiresAt": "2026-11-18T12:26:19.836Z",
   "packages": [
     {
       "name": "@promptframe/contracts",
-      "version": "0.1.31",
-      "integrity": "sha512-IP2DjBSZc96FA2g3CEU5Dp3d/aLpWc4SI5bOw+WXsdsoir8gvjrBMfZg2oGfn7uJ14A1U2tKw7jT3t4wWE0etg=="
+      "version": "0.1.32",
+      "integrity": "sha512-OJDort6ZtLOMtH+++tJ/HgAQyeICyp4VrGnlDV6RxCJKcvgw7ts4k7oDZpeLet0SRzDS7cWeDW/n7+p8LZfnZg=="
     },
     {
       "name": "@promptframe/component-kit",
-      "version": "0.1.25",
-      "integrity": "sha512-QS1Ny+Dzufr+bE4SLEgpfL1lb/ll9KyYtXTY0WnmfmnDcp24SwHDqojzAvV4MIv6j6COmoYfdRnUmvWw1YESKQ=="
+      "version": "0.1.26",
+      "integrity": "sha512-4kZcc70jnY6uDu2lZ63QeAd6lE3WETmOHJd77copHYsQGssDcpuWFO+PjjLXD3/PoEXi18P4LAcnqDOhoDyrAw=="
     },
     {
       "name": "@promptframe/cli",
-      "version": "0.1.63",
-      "integrity": "sha512-FHQmukXObsavmHdeDbvWB9449tsp5iBcY/oyEUetWIvssSNJYxVIC2SqZHM9GRA81uc9rIkQtQVl4BSXtcpetQ=="
+      "version": "0.1.64",
+      "integrity": "sha512-LWgibOLM3tqDThq2qyZ6xZMqGW+9Bptb7zh3EU4IANlOwFudQzBP7dLAmM6YRvUmi577677zh9O7+3kS/rCBxg=="
     },
     {
       "name": "create-promptframe-component",
-      "version": "0.1.53",
-      "integrity": "sha512-nXHfrplUEU11h2+yJ4UwFjdsq7AMwEgs3eMAt8G7DPU+AAhxqc4sAyQFfeCC6YaYXnsyL7STaqVirYung0ZiHA=="
+      "version": "0.1.54",
+      "integrity": "sha512-f2GGafJmFjPH6sePHvn3zdQ5SY8046JSRZpc7kLA/fx9htefse2jhoVllSu19jh1p+2RIULqej+HwlAojicixQ=="
     }
   ],
-  "authorizationDigest": "sha256:96b50a34aee4b793ccdaa7fe218a4ef454f053f1f365e11e37d5b2b998719b14"
+  "authorizationDigest": "sha256:c34f57aa34842b0a520d54474fbf833bd239335a1ba39608d5618de55bb05092"
 }
