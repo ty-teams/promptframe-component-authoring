@@ -76,7 +76,8 @@ export function captureDevelopmentModule(root: string, module: DevelopmentWorksp
  * HTML, /@fs, HMR and plugin/config serving middleware is never attached. */
 export async function startDevelopmentWorkspace(options: {
   root: string; modules: readonly DevelopmentWorkspaceModule[]; studioOrigin: string;
-  host?: '127.0.0.1' | '::1'; port?: number;
+  host?: '127.0.0.1' | '::1'; port?: number; connectionId?:string; portFallback?:boolean;
+  idleTimeoutMs?:number; heartbeatMs?:number;
 }) {
   const root = realpathSync(options.root), origin = new URL(options.studioOrigin);
   const host = options.host ?? '127.0.0.1', port = options.port ?? 0;
@@ -97,8 +98,11 @@ export async function startDevelopmentWorkspace(options: {
   if (modules.size !== options.modules.length || new Set([...modules.values()].map(module => module.path)).size !== modules.size) {
     throw new Error('development.registry.duplicate_module');
   }
-  const credential = randomBytes(32).toString('hex'), connectionId = randomBytes(16).toString('hex');
-  const expiresAt = Date.now() + 10 * 60_000;
+  const credential=randomBytes(32).toString('hex'),connectionId=options.connectionId??randomBytes(16).toString('hex');
+  const idleTimeoutMs=options.idleTimeoutMs??30*60_000,heartbeatMs=options.heartbeatMs??25_000;
+  if(!/^[a-f0-9]{32}$/u.test(connectionId)||!Number.isSafeInteger(idleTimeoutMs)||idleTimeoutMs<0||!Number.isSafeInteger(heartbeatMs)||heartbeatMs<1)throw Error('development.connection.invalid_lifecycle');
+  const lifecycle={mode:'until_stopped' as const,idleTimeoutSeconds:idleTimeoutMs/1000,heartbeatSeconds:heartbeatMs/1000};
+  let lastActivity=performance.now(),activeRequests=0;
   const controller = new AbortController(), listeners = new Set<ServerResponse>();
   const pending = new Set<string>(), resident = new Map<string, number>();
   let pumping: Promise<void> | undefined, checkingId: string | undefined;
@@ -118,8 +122,8 @@ export async function startDevelopmentWorkspace(options: {
       return built;
     },
   });
-  const registry = () => ({ contractVersion: 'promptframe-development.v1', connectionId,
-    expiresAt: new Date(expiresAt).toISOString(), watcherDiagnostic, modules: [...modules.keys()].map(id => {
+  const registry = () => ({ contractVersion: 'promptframe-development.v2', connectionId,
+    lifecycle, watcherDiagnostic, modules: [...modules.keys()].map(id => {
       const state = coordinator.state(id), receipt = coordinator.buildReceipt(id);
       const checking = pending.has(id) || checkingId === id;
       return { moduleId: id, status: checking ? 'checking' : state?.status ?? 'checking',
@@ -136,7 +140,7 @@ export async function startDevelopmentWorkspace(options: {
     }
   };
   const enqueue = (id: string) => {
-    if (closed || Date.now() >= expiresAt || !modules.has(id)) return;
+    if (closed || !modules.has(id)) return;
     pending.add(id);
     if (pumping) return;
     // One compiler at a time; a failing module never removes another's output.
@@ -150,7 +154,7 @@ export async function startDevelopmentWorkspace(options: {
         checkingId = undefined;
         notify();
       }
-    }).finally(() => { pumping = undefined; });
+    }).catch(()=>{void close('fatal').catch(()=>undefined);}).finally(() => { pumping = undefined; });
   };
   // Explicit reads recapture too. Watch delivery/debounce is never authority.
   const observe = (onlyId?: string) => {
@@ -189,7 +193,6 @@ export async function startDevelopmentWorkspace(options: {
       return response.end();
     }
     if (request.method !== 'GET') return reject(405, 'development.connection.read_only');
-    if (Date.now() >= expiresAt) return reject(401, 'development.connection.expired');
     const bearer = request.headers.authorization;
     if (typeof bearer !== 'string' || !/^Bearer [a-f0-9]{64}$/u.test(bearer)
       || !timingSafeEqual(Buffer.from(bearer), Buffer.from('Bearer ' + credential))) {
@@ -198,12 +201,15 @@ export async function startDevelopmentWorkspace(options: {
     if (!request.url?.startsWith('/') || request.url.startsWith('//') || request.url.includes('?')) {
       return reject(400, 'development.connection.invalid_path');
     }
+    lastActivity=performance.now();activeRequests++;let releasedActivity=false;
+    const activityDone=()=>{if(!releasedActivity){releasedActivity=true;activeRequests--;lastActivity=performance.now();}};
+    response.once('finish',activityDone);response.once('close',activityDone);
     if (request.url === '/__promptframe/registry') { observe(); return json(response, 200, registry()); }
     if (request.url === '/__promptframe/events') {
       if (listeners.size >= 8) return reject(503, 'development.connection.observer_limit');
       observe();
       response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' });
-      listeners.add(response); response.on('close', () => listeners.delete(response));
+      listeners.add(response); response.on('close', () => {listeners.delete(response);lastActivity=performance.now();});
       response.on('error', () => response.destroy());
       response.write(`event: registry\ndata: ${JSON.stringify(registry())}\n\n`); return;
     }
@@ -250,29 +256,40 @@ export async function startDevelopmentWorkspace(options: {
   vite.watcher.on('error', () => { watcherDiagnostic = 'development.workspace.watch_failed'; notify(); });
   try {
     await new Promise<void>((resolve, reject) => {
-      http.once('error', reject); http.listen(port, host, () => { http.removeListener('error', reject); resolve(); });
+      const listen=(candidate:number,remaining:number)=>{
+        const failed=(error:NodeJS.ErrnoException)=>{http.removeListener('listening',ready);if(error.code==='EADDRINUSE'&&remaining>0)listen(24000+(candidate-24000+1)%1000,remaining-1);else reject(error);};
+        const ready=()=>{http.removeListener('error',failed);resolve();};
+        http.once('error',failed);http.once('listening',ready);http.listen(candidate,host);
+      };listen(port,options.portFallback?999:0);
     });
   } catch (error) { await vite.close(); throw error; }
   const address = http.address();
   if (!address || typeof address === 'string') { await vite.close(); http.close(); throw new Error('development.connection.no_address'); }
   expectedHost = `${host === '::1' ? '[::1]' : host}:${address.port}`;
   for (const id of modules.keys()) enqueue(id);
-  const expiry = setTimeout(() => {
-    controller.abort(new Error('development.connection.expired')); pending.clear();
-    for (const response of listeners) { response.write('event: expired\ndata: {"code":"development.connection.expired"}\n\n'); response.end(); }
-    listeners.clear();
-  }, expiresAt - Date.now());
-  expiry.unref();
-  let closePromise: Promise<void> | undefined;
-  return Object.freeze({ connectionId, url: `http://${expectedHost}`, studioOrigin: origin.origin,
-    credential, expiresAt: new Date(expiresAt).toISOString(),
-    close() {
-      return closePromise ??= (async () => {
-        closed = true; clearTimeout(expiry); controller.abort(new Error('development.workspace.closed'));
-        pending.clear(); for (const response of listeners) response.end(); listeners.clear();
-        const httpClosed = new Promise<void>((resolve, reject) => http.close(error => error ? reject(error) : resolve()));
-        http.closeAllConnections(); await pumping; await vite.close(); await httpClosed;
-      })();
-    },
-  });
+  let closePromise:Promise<void>|undefined;
+  let resolveClosed!:(value:{reason:string;failed:boolean})=>void;
+  const closedResult=new Promise<{reason:string;failed:boolean}>(resolve=>{resolveClosed=resolve;});
+  function close(reason='manual'){
+    return closePromise??=(async()=>{
+      closed=true;clearInterval(heartbeat);clearInterval(idle);
+      controller.abort(new Error('development.workspace.closed'));pending.clear();
+      for(const response of listeners)response.end();listeners.clear();
+      const httpClosed=new Promise<void>((resolve,reject)=>http.close(error=>error?reject(error):resolve()));
+      http.closeAllConnections();let firstError:unknown;
+      try{await pumping;}catch(error){firstError=error;}
+      try{await vite.close();}catch(error){firstError??=error;}
+      try{await httpClosed;}catch(error){firstError??=error;}
+      resolveClosed({reason,failed:!!firstError});if(firstError)throw firstError;
+    })();
+  }
+  const heartbeat=setInterval(()=>{
+    for(const response of listeners){try{if(!response.write(': heartbeat\n\n'))response.destroy();}catch{response.destroy();}}
+  },heartbeatMs);heartbeat.unref();
+  const idle=setInterval(()=>{
+    if(idleTimeoutMs&&!listeners.size&&!activeRequests&&performance.now()-lastActivity>=idleTimeoutMs)void close('idle').catch(()=>undefined);
+  },Math.max(10,Math.min(1000,idleTimeoutMs||1000)));idle.unref();
+  http.on('error',()=>{void close('fatal').catch(()=>undefined);});
+  return Object.freeze({connectionId,url:`http://${expectedHost}`,studioOrigin:origin.origin,
+    credential,lifecycle,closed:closedResult,close});
 }

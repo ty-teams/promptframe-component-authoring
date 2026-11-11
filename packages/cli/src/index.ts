@@ -672,8 +672,18 @@ function preview(argv: string[]): void {
 }
 
 async function dev(argv: string[]): Promise<void> {
+  if(hasFlag(argv,'--help')||hasFlag(argv,'-h')){help();return;}
+  if(positionalArgs(argv)[0]==='stop'){
+    const root=resolve(positionalArgs(argv)[1]??'.');
+    const {stopDevelopmentOwner}=await import('./development-owner.js');
+    printJson({command:'dev.stop',...await stopDevelopmentOwner(root)});return;
+  }
   const workspaceRoot = autoWorkspaceRoot(argv);
   if (workspaceRoot) { await devWorkspace(workspaceRoot, argv); return; }
+  if(hasFlag(argv,'--replace')&&!hasFlag(argv,'--dry-run')){
+    const root=resolve(componentPathArg(argv)??'.');
+    if(existsSync(join(root,'.promptframe/dev/owner.json'))){const {stopDevelopmentOwner}=await import('./development-owner.js');await stopDevelopmentOwner(root,'replace');}
+  }
   const input = resolveComponentInput(argv);
   const dir = input.dir;
   const target = resolveUploadTarget(argv);
@@ -726,39 +736,41 @@ async function dev(argv: string[]): Promise<void> {
 }
 
 async function devWorkspace(root: string, argv: string[]): Promise<void> {
-  const studioOrigin = valueAfter(argv, '--studio-origin')
-    ?? fail('Workspace dev requires --studio-origin <exact-origin> for its local connection.', 'dev.workspace.origin_required', 2);
-  const host = valueAfter(argv, '--host') ?? '127.0.0.1';
-  const port = Number(valueAfter(argv, '--port') ?? '0');
-  if ((host !== '127.0.0.1' && host !== '::1') || !Number.isSafeInteger(port) || port < 0 || port > 65535) {
-    fail('Workspace dev binds one explicit loopback address and port (0 chooses one actual free port).', 'dev.workspace.address_invalid', 2);
+  const studioOrigin=valueAfter(argv,'--studio-origin')
+    ??fail('Workspace dev requires --studio-origin <exact-origin>.','dev.workspace.origin_required',2);
+  const host=valueAfter(argv,'--host')??'127.0.0.1',explicitPort=valueAfter(argv,'--port');
+  const port=explicitPort===undefined?undefined:Number(explicitPort),idleMinutes=Number(valueAfter(argv,'--idle-timeout')??'30');
+  if((host!=='127.0.0.1'&&host!=='::1')||port!==undefined&&(!Number.isSafeInteger(port)||port<0||port>65535))
+    fail('Workspace dev requires a loopback host and a valid port.','dev.workspace.address_invalid',2);
+  if(!Number.isFinite(idleMinutes)||idleMinutes<0||!Number.isSafeInteger(idleMinutes*60_000))
+    fail('--idle-timeout must be non-negative minutes; 0 disables idle exit.','dev.workspace.idle_timeout_invalid',2);
+  if(hasFlag(argv,'--replace')&&!hasFlag(argv,'--dry-run')){const {stopDevelopmentOwner}=await import('./development-owner.js');await stopDevelopmentOwner(root,'replace');}
+  const workspace=readWorkspaceConfig(root);
+  if(hasFlag(argv,'--json')&&!hasFlag(argv,'--dry-run'))fail('dev --json requires --dry-run.','dev.json_requires_dry_run');
+  if(hasFlag(argv,'--dry-run')){
+    printJson({command:'dev.workspace',workspace:workspaceSummary(root),modules:workspace.components,host,port:port??'24000-24999',
+      studioOrigin,idleTimeoutMinutes:idleMinutes,status:'declared',checked:false,playerLoaded:false});return;
   }
-  const workspace = readWorkspaceConfig(root);
-  if (hasFlag(argv, '--json') && !hasFlag(argv, '--dry-run')) {
-    fail('dev --json requires --dry-run so stdout remains machine-readable.', 'dev.json_requires_dry_run');
-  }
-  if (hasFlag(argv, '--dry-run')) {
-    printJson({ command: 'dev.workspace', workspace: workspaceSummary(root), modules: workspace.components,
-      host, port, studioOrigin, status: 'declared', checked: false, playerLoaded: false });
-    return;
-  }
-  // Lazy import keeps ordinary validate/check free of a Vite server lifecycle.
-  const { startDevelopmentWorkspace } = await import('./development-workspace.js');
-  let stop!: () => void;
-  const stopped = new Promise<void>(resolve => { stop = resolve; });
-  process.once('SIGINT', stop); process.once('SIGTERM', stop);
-  try {
-    const server = await startDevelopmentWorkspace({ root, modules: workspace.components, studioOrigin, host, port });
-    try {
-      // This short-lived credential is for explicit local tooling, never an
-      // application login token or something to embed in component code.
-      printJson({ command: 'dev.workspace', contractVersion: 'promptframe-development.v1',
-        connectionId: server.connectionId, url: server.url, studioOrigin: server.studioOrigin,
-        credential: server.credential, expiresAt: server.expiresAt, playerLoaded: false });
-      await stopped;
-    } finally { await server.close(); }
-  } finally {
-    process.removeListener('SIGINT', stop); process.removeListener('SIGTERM', stop);
+  const {startDevelopmentWorkspace}=await import('./development-workspace.js');
+  const {acquireDevelopmentOwner}=await import('./development-owner.js');
+  let stop!:(reason:string)=>void;const stopped=new Promise<string>(resolve=>{stop=resolve;});
+  const signal=()=>stop('signal');process.once('SIGINT',signal);process.once('SIGTERM',signal);
+  let owner:Awaited<ReturnType<typeof acquireDevelopmentOwner>>|undefined;
+  try{
+    owner=await acquireDevelopmentOwner(root,stop);
+    const server=await startDevelopmentWorkspace({root,modules:workspace.components,studioOrigin,host,
+      connectionId:owner.connectionId,port:port??owner.preferredPort,portFallback:port===undefined,idleTimeoutMs:idleMinutes*60_000});
+    try{
+      owner.recordPort(Number(new URL(server.url).port));
+      printJson({command:'dev.workspace',contractVersion:'promptframe-development.v2',connectionId:server.connectionId,url:server.url,
+        studioOrigin:server.studioOrigin,credential:server.credential,lifecycle:server.lifecycle,playerLoaded:false});
+      const result=await Promise.race([stopped.then(reason=>({reason,failed:false})),server.closed]);
+      await server.close(result.reason);
+      if(result.failed||result.reason==='fatal')throw Error('development.workspace.close_failed');
+      if(result.reason==='idle')console.error('Workspace dev stopped after the configured idle interval.');
+    }finally{await server.close();}
+  }finally{
+    await owner?.close();process.removeListener('SIGINT',signal);process.removeListener('SIGTERM',signal);
   }
 }
 
@@ -2089,6 +2101,7 @@ const POSITIONAL_VALUE_FLAGS = new Set([
   '--expires-at',
   '--host',
   '--studio-origin',
+  '--idle-timeout',
   '--id',
   '--level',
   '--name',
@@ -5049,8 +5062,12 @@ Commands:
   sync <dir>                       Refresh PromptFrame-generated authoring shell files (--dry-run by default; use --apply)
   preview <dir>                    Validate and print local Remotion preview envelope
     --write-local-report           Write .promptframe/local-previews/preview-report.json
-  dev <dir>                        Start the local Remotion Player preview server
-    --studio-origin <origin>        Required for a multi-component workspace's checked-module connection
+  dev <dir>                        Start a local preview or workspace checked-module connection
+    --studio-origin <origin>        Required for a multi-component workspace
+    --idle-timeout <minutes>        Workspace idle exit (default 30; 0 disables)
+    --port <port>                   Workspace default range 24000–24999; single component default 5173
+    --replace                       Normally close this workspace's existing instance, then start
+  dev stop [dir]                    Normally close this workspace's instance
   package <dir> --out <zip>        Validate and package a component source zip
   upload <dir|zip>                 Upload component source package to PromptFrame
     --target <target>              marketplace_authoring or project_private_generation

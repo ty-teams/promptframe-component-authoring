@@ -249,3 +249,9 @@ When `promptframe validate --json` or platform admission returns one of these di
 ## What Director May Use
 
 Director or any Component Author AI may read this skill, user brief, user-provided assets, platform standard API output, and CLI diagnostics. It must not read platform internal agent board, REQ/TASK/QA docs, inboxes, private prompts, deployment scripts, or platform source code.
+
+### Workspace connection lifetime
+
+For a multi-component workspace, use `promptframe dev . --studio-origin <exact-studio-origin>`. One workspace has one local instance, a stable connection ID and a remembered port in 24000–24999. Credentials change on every restart; paste the new connection JSON once in Studio. The service has no fixed ten-minute expiry. With no push clients or requests it exits after 30 minutes (`--idle-timeout <minutes>`, 0 disables). Use `--replace` to normally replace the workspace instance, or `promptframe dev stop .` to close it. Ordinary single-component preview keeps its existing 5173 behavior.
+
+A successful upload does not change existing Spec nodes. Read the exact formal component reference, then remove `componentSource` while updating `componentRef` through the normal Spec edit. After confirming the work uses the formal reference, the local dev instance can be stopped.

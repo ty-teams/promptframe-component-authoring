@@ -187,3 +187,17 @@ test('the actual workspace CLI publishes one real bound connection and joins its
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('idle exit joins HTTP/compiler/watcher; an open push stream keeps the same workspace alive',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'pf-root-idle-'));let server,controller;
+ try{
+  const modules=await workspace(root,1);server=await startDevelopmentWorkspace({root,modules,studioOrigin:origin,idleTimeoutMs:150,heartbeatMs:25});
+  assert.equal(server.lifecycle.mode,'until_stopped');assert.equal('expiresAt'in server,false);
+  controller=new AbortController();const response=await fetch(server.url+'/__promptframe/events',{signal:controller.signal,headers:{Origin:origin,Authorization:'Bearer '+server.credential}});
+  const reader=response.body.getReader();await reader.read();let exited=false;void server.closed.then(()=>{exited=true;});
+  await new Promise(resolve=>setTimeout(resolve,350));assert.equal(exited,false,'a real connected client must prevent idle exit');
+  controller.abort();await reader.cancel().catch(()=>{});const result=await Promise.race([server.closed,new Promise((_,reject)=>setTimeout(()=>reject(Error('idle close did not join')),5000).unref())]);
+  assert.deepEqual(result,{reason:'idle',failed:false});await server.close();
+  await assert.rejects(fetch(server.url+'/__promptframe/registry',{signal:AbortSignal.timeout(1000)}));
+ }finally{controller?.abort();await server?.close();await rm(root,{recursive:true,force:true});}
+});

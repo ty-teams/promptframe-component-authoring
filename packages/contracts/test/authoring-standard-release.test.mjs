@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile,readdir } from 'node:fs/promises';
 import test from 'node:test';
 import {
   AUTHORING_STANDARD_RELEASE_ID,
@@ -42,17 +42,17 @@ test('authoring standard release exposes one digest-bound package cohort', async
   assert.deepEqual(release.minPackageVersions, PROMPTFRAME_MIN_AUTHORING_PACKAGE_VERSIONS);
   assert.notDeepEqual(release.recommendedAuthoringPackages, release.minPackageVersions);
   assert.deepEqual(release.recommendedAuthoringPackages, {
-    contracts: '0.1.31',
-    componentKit: '0.1.25',
-    cli: '0.1.63',
-    createComponent: '0.1.53',
+    contracts: '0.1.32', componentKit: '0.1.26', cli: '0.1.64', createComponent: '0.1.54',
   });
-  assert.deepEqual(release.scaffoldTemplates, [
-    {
-      name: 'react-remotion',
-      digest: 'sha256:e4c7bc20250195544ceec8126c707145f61eb7f1b87d6b52459e71e3e90fd4d4',
-    },
-  ]);
+  const template=new URL('../../create-component/templates/react-remotion/',import.meta.url),entries=[];
+  async function files(prefix=''){
+    for(const item of await readdir(new URL(prefix,template),{withFileTypes:true})){
+      const path=prefix+item.name;if(item.isDirectory())await files(path+'/');
+      else if(item.isFile())entries.push({path,sha256:createHash('sha256').update(await readFile(new URL(path,template))).digest('hex')});
+    }
+  }
+  await files();entries.sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);
+  assert.deepEqual(release.scaffoldTemplates,[{name:'react-remotion',digest:'sha256:'+createHash('sha256').update(canonicalizePromptFramePolicy(entries)).digest('hex')}]);
 
   const packageFiles = {
     contracts: new URL('../package.json', import.meta.url),
