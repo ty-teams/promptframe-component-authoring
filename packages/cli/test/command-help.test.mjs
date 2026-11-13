@@ -34,6 +34,7 @@ process.on('exit',()=>process.stderr.write('HELP_EFFECT_CALLS='+calls+'\\n'));
       ['configure', '--endpoint', 'https://example.invalid/api', '-h'],
       ['workspace', 'init', '.', '--help'], ['workspace', 'add', '.', '-h'],
       ['setup-ci', '.', '--provider', 'github', '--help'], ['dev', '.', '-h'],
+      ['dev', '.', '--studio-origin', 'https://studio.example', '--help'],
       ['status', 'build-example', '--json', '--help'],
     ]) {
       await t.test(args.join(' '), async () => {

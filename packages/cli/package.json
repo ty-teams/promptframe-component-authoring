@@ -50,7 +50,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@promptframe/contracts": "0.1.39",
+    "@promptframe/contracts": "0.1.40",
     "ignore": "7.0.14",
     "postcss": "8.5.30",
     "postcss-selector-parser": "7.1.0",

@@ -242,7 +242,7 @@ async function run(name: string, argv: string[]): Promise<void> {
     '--idle-timeout', '--level', '--limit', '--name', '--out', '--page-size',
     '--poll-interval-seconds', '--port', '--project-context', '--project-id',
     '--project-namespace', '--prop', '--provider', '--provider-kind', '--provider-name',
-    '--reason', '--release-notes', '--scope', '--session-id', '--status', '--target',
+    '--reason', '--release-notes', '--scope', '--session-id', '--status', '--studio-origin', '--target',
     '--tenant-id', '--timeout-seconds', '--token', '--token-id', '--upload-target',
     '--user-id', '--version-notes', '--workspace-component', '--workspace-config',
   ]);

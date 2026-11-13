@@ -1,18 +1,18 @@
 {
   "schemaVersion": "promptframe-authoring-release-intent/v1",
   "releaseId": "authoring-release-2026-11-14.1",
-  "artifactTag": "authoring-candidate-2026-11-14.1",
+  "artifactTag": "authoring-candidate-2026-11-14.1-r2",
   "createdAt": "2026-11-13T18:40:41.106Z",
   "expiresAt": "2026-11-20T18:40:41.106Z",
   "registry": "https://registry.npmjs.org/",
   "packages": [
     {
       "name": "@promptframe/contracts",
-      "version": "0.1.39"
+      "version": "0.1.40"
     },
     {
       "name": "@promptframe/component-kit",
-      "version": "0.1.33"
+      "version": "0.1.34"
     },
     {
       "name": "@promptframe/cli",
@@ -20,8 +20,8 @@
     },
     {
       "name": "create-promptframe-component",
-      "version": "0.1.61"
+      "version": "0.1.62"
     }
   ],
-  "intentDigest": "sha256:f0a1b22264a83d9834962aa25910ead7dd0c05ecff03a529d812f3256d612aff"
+  "intentDigest": "sha256:ba3726dc2b0a0fa02e04713b4b182b08a8a3e0046f3643829b78923930327275"
 }
