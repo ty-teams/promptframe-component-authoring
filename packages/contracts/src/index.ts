@@ -13,7 +13,7 @@ export {
 export const PROMPTFRAME_CONTRACTS_VERSION = 'promptframe-contracts.v0.1.0' as const;
 export const COMPONENT_MANIFEST_SCHEMA_VERSION = 'component-manifest.v0.1.0' as const;
 export const COMPONENT_STANDARD_VERSION = 'component-standard.v0.1.0' as const;
-export const COMPONENT_STANDARD_SOURCE_HASH = 'sha256:e9932ea81bca8f858b4adea83ae14ccca5495f6a68a1caf81fc2f6ee509cbe0f' as const;
+export const COMPONENT_STANDARD_SOURCE_HASH = 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47' as const;
 export const COMPONENT_REF_VERSION = 'component-ref.v0.1.0' as const;
 export const LAYOUT_CAPABILITY_VERSION = 'layout-capability.v0.1.0' as const;
 export const CAPABILITY_CARD_VERSION = 'component-capability-card.v0.1.0' as const;
@@ -21,7 +21,7 @@ export const COMPONENT_STANDARD_POLICY_VERSION = 'component-standard-policy.v0.1
 export const COMPONENT_SECURITY_POLICY_VERSION = 'component-security-policy.v0.1.0' as const;
 export const PROMPTFRAME_STYLE_CONTRACT_VERSION = 'promptframe-style.v0.1.0' as const;
 export const AUTHORING_STANDARD_RELEASE_VERSION = 'authoring-standard-release.v0.1.0' as const;
-export const AUTHORING_STANDARD_RELEASE_ID = 'authoring-release-2026-11-13.6' as const;
+export const AUTHORING_STANDARD_RELEASE_ID = 'authoring-release-2026-11-13.6-r02' as const;
 export const COMPONENT_REUSABILITY_CONTRACT_VERSION = 'component-reusability.v0.1.0' as const;
 export const COMPONENT_DEPENDENCY_POLICY_VERSION = 'component-dependency-policy.v0.1.0' as const;
 export const COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION = 'component-public-resources.v0.1.0' as const;
@@ -1293,7 +1293,7 @@ export const PROMPTFRAME_MIN_AUTHORING_PACKAGE_VERSIONS = authoringPackageFloorS
 export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = authoringStandardReleaseSchema.parse({
   releaseVersion: AUTHORING_STANDARD_RELEASE_VERSION,
   releaseId: AUTHORING_STANDARD_RELEASE_ID,
-  releaseDigest: 'sha256:5f0e5ae5f748372fc1883aa24664c3852b2d89838034881c8f4b127f2230b8c5',
+  releaseDigest: 'sha256:a366df012e2f1fd097287f599e0999312f93791f9381aed6b65d9556f8951262',
   contractsVersion: PROMPTFRAME_CONTRACTS_VERSION,
   manifestSchemaVersion: COMPONENT_MANIFEST_SCHEMA_VERSION,
   componentRefVersion: COMPONENT_REF_VERSION,
@@ -1309,7 +1309,7 @@ export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = 
   scaffoldTemplates: [
     {
       name: 'react-remotion',
-      digest: 'sha256:8ae98e4abd7e2877b761707ae1aeaf989648ec8e5b6f9c13da835d865ac3fad9',
+      digest: 'sha256:8ce1173c4b18a15a1645a3064e8dd258d208c12d4a5b712e3327186225e3d70e',
     },
   ],
   uploadTargets: [
