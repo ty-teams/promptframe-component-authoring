@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createPromptFramePublicSecurityPolicyDigest } from './security-policy-fingerprint.js';
 import { componentPublicResourceKindSchema } from './resource-slots.js';
 export * from './resource-slots.js';
+export * from './component-preview.js';
 
 export {
   COMPONENT_SECURITY_POLICY_DIGEST_VERSION,
@@ -12,7 +13,7 @@ export {
 export const PROMPTFRAME_CONTRACTS_VERSION = 'promptframe-contracts.v0.1.0' as const;
 export const COMPONENT_MANIFEST_SCHEMA_VERSION = 'component-manifest.v0.1.0' as const;
 export const COMPONENT_STANDARD_VERSION = 'component-standard.v0.1.0' as const;
-export const COMPONENT_STANDARD_SOURCE_HASH = 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47' as const;
+export const COMPONENT_STANDARD_SOURCE_HASH = 'sha256:e9932ea81bca8f858b4adea83ae14ccca5495f6a68a1caf81fc2f6ee509cbe0f' as const;
 export const COMPONENT_REF_VERSION = 'component-ref.v0.1.0' as const;
 export const LAYOUT_CAPABILITY_VERSION = 'layout-capability.v0.1.0' as const;
 export const CAPABILITY_CARD_VERSION = 'component-capability-card.v0.1.0' as const;
@@ -20,7 +21,7 @@ export const COMPONENT_STANDARD_POLICY_VERSION = 'component-standard-policy.v0.1
 export const COMPONENT_SECURITY_POLICY_VERSION = 'component-security-policy.v0.1.0' as const;
 export const PROMPTFRAME_STYLE_CONTRACT_VERSION = 'promptframe-style.v0.1.0' as const;
 export const AUTHORING_STANDARD_RELEASE_VERSION = 'authoring-standard-release.v0.1.0' as const;
-export const AUTHORING_STANDARD_RELEASE_ID = 'authoring-release-2026-11-13.5-r02' as const;
+export const AUTHORING_STANDARD_RELEASE_ID = 'authoring-release-2026-11-13.6' as const;
 export const COMPONENT_REUSABILITY_CONTRACT_VERSION = 'component-reusability.v0.1.0' as const;
 export const COMPONENT_DEPENDENCY_POLICY_VERSION = 'component-dependency-policy.v0.1.0' as const;
 export const COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION = 'component-public-resources.v0.1.0' as const;
@@ -78,7 +79,7 @@ export const PROMPTFRAME_PUBLIC_STANDARD_POLICY = {
     '.promptframe',
   ],
   previewLimits: {
-    maxDurationFrames: 180,
+    maxDurationFrames: 900,
     maxWidth: 1280,
     maxHeight: 720,
     allowedFps: [30],
@@ -1269,10 +1270,10 @@ export const authoringStandardFreshnessDecisionSchema = z.object({
 export type AuthoringStandardFreshnessDecision = z.infer<typeof authoringStandardFreshnessDecisionSchema>;
 
 export const PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_COHORT: AuthoringPackageCohort = authoringPackageCohortSchema.parse({
-  contracts: { name: '@promptframe/contracts', version: '0.1.37' },
-  componentKit: { name: '@promptframe/component-kit', version: '0.1.31' },
-  cli: { name: '@promptframe/cli', version: '0.1.69' },
-  createComponent: { name: 'create-promptframe-component', version: '0.1.59' },
+  contracts: { name: '@promptframe/contracts', version: '0.1.38' },
+  componentKit: { name: '@promptframe/component-kit', version: '0.1.32' },
+  cli: { name: '@promptframe/cli', version: '0.1.70' },
+  createComponent: { name: 'create-promptframe-component', version: '0.1.60' },
 });
 
 export const PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS = authoringPackageFloorSchema.parse({
@@ -1292,7 +1293,7 @@ export const PROMPTFRAME_MIN_AUTHORING_PACKAGE_VERSIONS = authoringPackageFloorS
 export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = authoringStandardReleaseSchema.parse({
   releaseVersion: AUTHORING_STANDARD_RELEASE_VERSION,
   releaseId: AUTHORING_STANDARD_RELEASE_ID,
-  releaseDigest: 'sha256:bf4579d81fcd98dda8f798c4dc10515504dce3d1274baf44e2ad40835ba2891c',
+  releaseDigest: 'sha256:5f0e5ae5f748372fc1883aa24664c3852b2d89838034881c8f4b127f2230b8c5',
   contractsVersion: PROMPTFRAME_CONTRACTS_VERSION,
   manifestSchemaVersion: COMPONENT_MANIFEST_SCHEMA_VERSION,
   componentRefVersion: COMPONENT_REF_VERSION,
@@ -1308,7 +1309,7 @@ export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = 
   scaffoldTemplates: [
     {
       name: 'react-remotion',
-      digest: 'sha256:5472c0cf43d6f0fe5b0e2e5e838d31b28737f13958ca2af1694043817d6f0e01',
+      digest: 'sha256:8ae98e4abd7e2877b761707ae1aeaf989648ec8e5b6f9c13da835d865ac3fad9',
     },
   ],
   uploadTargets: [
@@ -1373,6 +1374,7 @@ export const publicPolicyRuleIdSchema = z.enum([
   'component.layout.root_viewport_unit',
   'component.layout.naked_px_high_risk',
   'component.layout.naked_px_medium_risk',
+  'component.layout.source_parse_unresolved',
   'component.style.global_css_forbidden',
   'component.animation.css_timeline_forbidden',
   'schema.props.explicit',
@@ -1397,6 +1399,7 @@ export const PROMPTFRAME_LAYOUT_POLICY_RULE_IDS = [
   'component.layout.root_viewport_unit',
   'component.layout.naked_px_high_risk',
   'component.layout.naked_px_medium_risk',
+  'component.layout.source_parse_unresolved',
   'component.style.global_css_forbidden',
   'component.animation.css_timeline_forbidden',
 ] as const satisfies readonly PublicPolicyRuleId[];
@@ -1408,6 +1411,7 @@ export interface PromptFrameLayoutPolicyFile {
 
 export interface PromptFrameLayoutPolicyInput {
   manifest?: unknown;
+  componentSourcePath?: string;
   componentSourceText?: string;
   styleSourceText?: string;
   files?: PromptFrameLayoutPolicyFile[];
@@ -1560,7 +1564,7 @@ export function evaluatePromptFrameLayoutPolicy(input: PromptFrameLayoutPolicyIn
 function normalizeLayoutPolicyFiles(input: PromptFrameLayoutPolicyInput): PromptFrameLayoutPolicyFile[] {
   const files: PromptFrameLayoutPolicyFile[] = [];
   if (input.componentSourceText) {
-    files.push({ path: 'src/Component.tsx', sourceText: input.componentSourceText });
+    files.push({ path: input.componentSourcePath ?? 'src/Component.tsx', sourceText: input.componentSourceText });
   }
   if (input.styleSourceText) {
     files.push({ path: 'src/Component.module.css', sourceText: input.styleSourceText });

@@ -15,6 +15,7 @@ async function fixture(root) {
     'pnpm-lock.yaml': 'lockfileVersion: "9.0"\n',
     'package.json': JSON.stringify({ name: 'captured-component', version: '0.1.0', dependencies: {
       '@promptframe/contracts': '^0.1.28', '@promptframe/component-kit': '^0.1.22',
+      remotion: '^4.0.0',
     } }),
     'manifest.json': JSON.stringify({ schemaVersion: 'component-manifest.v0.1.0', standardVersion: 'component-standard.v0.1.0',
       standardSourceHash: COMPONENT_STANDARD_SOURCE_HASH, id: '@demo/captured-component', name: 'captured-component',

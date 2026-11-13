@@ -7,6 +7,7 @@ import path from 'node:path';
 import test,{after} from 'node:test';
 import { promisify } from 'node:util';
 import {
+  COMPONENT_STANDARD_SOURCE_HASH,
   PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS,
   PROMPTFRAME_AUTHORING_STANDARD_RELEASE,
   PROMPTFRAME_PUBLIC_SECURITY_POLICY,
@@ -179,7 +180,7 @@ test('upload, probe, and reindex call platform transport paths with stable JSON'
       writeJson(res, {
         success: true,
         sourceVersion: 'component-standard.v0.1.0',
-        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
+        sourceHash: COMPONENT_STANDARD_SOURCE_HASH,
       });
       return;
     }
@@ -277,7 +278,7 @@ test('upload forwards sanitized version notes from environment fallback', async 
       writeJson(res, {
         success: true,
         sourceVersion: 'component-standard.v0.1.0',
-        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
+        sourceHash: COMPONENT_STANDARD_SOURCE_HASH,
       });
       return;
     }
@@ -333,7 +334,7 @@ test('remote commands forward optional dev auth headers without defaulting produ
       writeJson(res, {
         success: true,
         sourceVersion: 'component-standard.v0.1.0',
-        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
+        sourceHash: COMPONENT_STANDARD_SOURCE_HASH,
       });
       return;
     }
@@ -1745,7 +1746,7 @@ test('upload --workspace-component sends explicit source metadata headers', asyn
       writeJson(res, {
         success: true,
         sourceVersion: 'component-standard.v0.1.0',
-        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
+        sourceHash: COMPONENT_STANDARD_SOURCE_HASH,
       });
       return;
     }
@@ -1847,7 +1848,7 @@ test('upload auto-detects a workspace root and uploads configured components', a
       writeJson(res, {
         success: true,
         sourceVersion: 'component-standard.v0.1.0',
-        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
+        sourceHash: COMPONENT_STANDARD_SOURCE_HASH,
       });
       return;
     }
@@ -1948,6 +1949,9 @@ test('upload blocks stale marketplace authoring packages before network transpor
       dependencies: {
         '@promptframe/contracts': '^0.1.4',
         '@promptframe/component-kit': '^0.1.5',
+        remotion: '^4.0.0',
+        react: '^19.0.0',
+        zod: '^3.24.0',
       },
       devDependencies: {
         '@promptframe/cli': '^0.1.5',
@@ -1999,6 +2003,9 @@ test('upload blocks stale marketplace authoring packages inside zip before netwo
       dependencies: {
         '@promptframe/contracts': '^0.1.4',
         '@promptframe/component-kit': '^0.1.5',
+        remotion: '^4.0.0',
+        react: '^19.0.0',
+        zod: '^3.24.0',
       },
       devDependencies: {
         '@promptframe/cli': '^0.1.5',
@@ -2162,7 +2169,7 @@ test('same-sourceHash platform floor increase blocks dev check and upload with t
     if (req.url === '/components/standard') {
       writeJson(res, {
         success: true,
-        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
+        sourceHash: COMPONENT_STANDARD_SOURCE_HASH,
         authoringStandardRelease: {
           releaseId: 'authoring-release-remote-floor',
           releaseDigest: `sha256:${'9'.repeat(64)}`,
@@ -2234,7 +2241,7 @@ test('same-sourceHash recommended-only update stays non-blocking and is actionab
     if (req.url === '/components/standard') {
       writeJson(res, {
         success: true,
-        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
+        sourceHash: COMPONENT_STANDARD_SOURCE_HASH,
         authoringStandardRelease: {
           releaseId: 'authoring-release-remote-recommended',
           releaseDigest: `sha256:${'9'.repeat(64)}`,
@@ -2318,21 +2325,21 @@ test('candidate promotion stage is non-blocking but never reports stable current
     if (req.url === '/components/standard') {
       writeJson(res, {
         success: true,
-        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
+        sourceHash: COMPONENT_STANDARD_SOURCE_HASH,
         authoringStandardRelease: {
-          releaseId: 'authoring-release-2026-11-13.5-r02',
+          releaseId: 'authoring-release-2026-11-13.6',
           releaseDigest: `sha256:${'7'.repeat(64)}`,
           minPackageVersions: {
-            contracts: '0.1.37',
-            componentKit: '0.1.31',
-            cli: '0.1.69',
-            createComponent: '0.1.59',
+            contracts: '0.1.38',
+            componentKit: '0.1.32',
+            cli: '0.1.70',
+            createComponent: '0.1.60',
           },
           recommendedAuthoringPackages: {
-            contracts: '0.1.37',
-            componentKit: '0.1.31',
-            cli: '0.1.69',
-            createComponent: '0.1.59',
+            contracts: '0.1.38',
+            componentKit: '0.1.32',
+            cli: '0.1.70',
+            createComponent: '0.1.60',
           },
         },
         releasePromotion: {
@@ -2676,6 +2683,27 @@ test('validate ignores fixed local PreviewRoot shell while enforcing component l
   }
 });
 
+test('validate uses AST layout contexts for SVG coordinates, zero and unitless line height', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-layout-ast-'));
+  try {
+    await writeFixtureComponent(dir);
+    const sourcePath = path.join(dir, 'src/Component.tsx');
+    await writeFile(sourcePath, [
+      'const geometry = {width:640,height:360,left:24};',
+      'export default ()=> <div style={{padding:0,lineHeight:1.2}}><svg viewBox="0 0 640 360"><rect {...geometry}/></svg></div>;',
+    ].join('\n'));
+    const result = await execFileAsync('node', [cliPath, 'validate', dir, '--json']);
+    assert.equal(JSON.parse(result.stdout).diagnostic.code, 'validate.completed');
+    await writeFile(sourcePath, 'export default ()=> <div style={{padding:0,gap:64}}/>;');
+    await assert.rejects(execFileAsync('node', [cliPath, 'validate', dir, '--json']), error => {
+      const payload = JSON.parse(error.stderr);
+      assert.equal(payload.diagnostic.code, 'component.layout.naked_px_high_risk');
+      assert.match(payload.failureReason, /src\/Component\.tsx:1:\d+/);
+      return true;
+    });
+  } finally { await rm(dir, {recursive:true,force:true}); }
+});
+
 test('check blocks stale remote standard source hash when endpoint is configured', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-check-sourcehash-'));
   const calls = [];
@@ -2731,7 +2759,7 @@ test('upload accepts marketplace strict target alias before platform transport',
       writeJson(res, {
         success: true,
         sourceVersion: 'component-standard.v0.1.0',
-        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
+        sourceHash: COMPONENT_STANDARD_SOURCE_HASH,
       });
       return;
     }
@@ -2773,7 +2801,7 @@ test('directory upload returns local reusability diagnostics with the accepted p
       writeJson(res, {
         success: true,
         sourceVersion: 'component-standard.v0.1.0',
-        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
+        sourceHash: COMPONENT_STANDARD_SOURCE_HASH,
       });
       return;
     }
@@ -2814,7 +2842,7 @@ test('upload --json redacts public-unsafe platform response fields', async () =>
       writeJson(res, {
         success: true,
         sourceVersion: 'component-standard.v0.1.0',
-        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
+        sourceHash: COMPONENT_STANDARD_SOURCE_HASH,
       });
       return;
     }
@@ -2906,7 +2934,7 @@ test('upload default output prints status link and next status command', async (
       writeJson(res, {
         success: true,
         sourceVersion: 'component-standard.v0.1.0',
-        sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
+        sourceHash: COMPONENT_STANDARD_SOURCE_HASH,
       });
       return;
     }
@@ -3048,7 +3076,7 @@ test('directory upload uses the same gitignore selection as package', async () =
   let uploaded;
   const server = await createServer(async (req, res) => {
     if (req.url === '/components/standard') {
-      writeJson(res, { success: true, sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47', authoringStandardRelease: PROMPTFRAME_AUTHORING_STANDARD_RELEASE });
+      writeJson(res, { success: true, sourceHash: COMPONENT_STANDARD_SOURCE_HASH, authoringStandardRelease: PROMPTFRAME_AUTHORING_STANDARD_RELEASE });
     } else if (req.url === '/components/marketplace/upload') {
       uploaded = await readRequestBody(req);
       writeJson(res, { success: true, buildId: 'fixture-build', status: 'queued' });
@@ -3365,8 +3393,9 @@ test('check reports dependency quarantine without marking it public searchable',
       version: '0.1.0',
       dependencies: {
         react: '^19.1.0',
+        remotion: '^4.0.0',
         '@unknown/visual-engine': '1.2.3',
-        '@promptframe/contracts': '^0.1.31',
+        '@promptframe/contracts': '^0.1.32',
         '@promptframe/component-kit': '^0.1.25',
       },
       devDependencies: {
@@ -3398,6 +3427,35 @@ test('check reports dependency quarantine without marking it public searchable',
   }
 });
 
+test('validate ignores pure dev catalog entries but rejects runtime imports from dev-only packages', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-runtime-deps-'));
+  try {
+    await writeFixtureComponent(dir);
+    const packagePath = path.join(dir,'package.json'), pkg = JSON.parse(await readFile(packagePath,'utf8'));
+    pkg.devDependencies.vite = '^7.0.0'; pkg.devDependencies['unknown-test-tool'] = '1.0.0';
+    await writeFile(packagePath,JSON.stringify(pkg));
+    const result = await execFileAsync('node',[cliPath,'validate',dir,'--json']);
+    assert.equal(JSON.parse(result.stdout).diagnostic.code,'validate.completed');
+    await writeFile(path.join(dir,'src/Component.tsx'),'import tool from "unknown-test-tool";export default ()=> <div>{tool}</div>;');
+    await assert.rejects(execFileAsync('node',[cliPath,'validate',dir,'--json']), error => {
+      assert.equal(JSON.parse(error.stderr).diagnostic.code,'dependency.runtime.dev_only_import');return true;
+    });
+  } finally {await rm(dir,{recursive:true,force:true});}
+});
+
+test('preview selects declared maximum and caps long designs without modifying source props', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(),'promptframe-cli-duration-'));
+  try {
+    await writeFixtureComponent(dir);
+    const manifestPath=path.join(dir,'manifest.json'), manifest=JSON.parse(await readFile(manifestPath,'utf8'));
+    manifest.designedDurationRange={min:30,max:1200};await writeFile(manifestPath,JSON.stringify(manifest));
+    const before=await readFile(path.join(dir,'src/preview-props.json'),'utf8');
+    const result=await execFileAsync('node',[cliPath,'preview',dir,'--json']);
+    assert.equal(JSON.parse(result.stdout).preview.durationFrames,900);
+    assert.equal(await readFile(path.join(dir,'src/preview-props.json'),'utf8'),before);
+  } finally {await rm(dir,{recursive:true,force:true});}
+});
+
 test('preview exposes a local Remotion preview envelope without a platform endpoint', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-preview-'));
   try {
@@ -3422,7 +3480,7 @@ test('preview exposes a local Remotion preview envelope without a platform endpo
     assert.equal(payload.dir, componentDir);
     assert.equal(payload.diagnostic.code, 'preview.ready');
     assert.equal(payload.renderingSystem, 'remotion');
-    assert.equal(payload.preview.durationFrames, 60);
+    assert.equal(payload.preview.durationFrames, 120);
     assert.equal(payload.preview.fps, 30);
     assert.equal(payload.preview.width, 1280);
     assert.equal(payload.preview.height, 720);
@@ -3614,6 +3672,7 @@ test('dev and check block missing marketplace authoring package floors', async (
     await writeFile(path.join(componentDir, 'package.json'), JSON.stringify({
       name: 'fixture-component',
       version: '0.1.0',
+      dependencies: { remotion: '^4.0.0' },
     }, null, 2));
 
     await assert.rejects(
@@ -3686,15 +3745,15 @@ test('local standard, doctor, and validate expose stable JSON diagnostics', asyn
       'transition_effect',
     ]);
     assert.equal(standard.authoringStandardRelease.releaseVersion, 'authoring-standard-release.v0.1.0');
-    assert.equal(standard.authoringStandardRelease.releaseId, 'authoring-release-2026-11-13.5-r02');
+    assert.equal(standard.authoringStandardRelease.releaseId, 'authoring-release-2026-11-13.6');
     assert.match(standard.authoringStandardRelease.releaseDigest, /^sha256:[a-f0-9]{64}$/);
     assert.equal(standard.authoringStandardRelease.standardVersion, 'component-standard.v0.1.0');
     assert.match(standard.authoringStandardRelease.standardSourceHash, /^sha256:[a-f0-9]{64}$/);
     assert.deepEqual(standard.recommendedAuthoringPackages, {
-      contracts: '0.1.37',
-      componentKit: '0.1.31',
-      cli: '0.1.69',
-      createComponent: '0.1.59',
+      contracts: '0.1.38',
+      componentKit: '0.1.32',
+      cli: '0.1.70',
+      createComponent: '0.1.60',
     });
     assert.deepEqual(
       standard.recommendedAuthoringPackages,
@@ -3751,6 +3810,7 @@ test('local standard, doctor, and validate expose stable JSON diagnostics', asyn
       'component.layout.root_viewport_unit',
       'component.layout.naked_px_high_risk',
       'component.layout.naked_px_medium_risk',
+      'component.layout.source_parse_unresolved',
       'component.style.global_css_forbidden',
       'component.animation.css_timeline_forbidden',
       'evidence.schema_source_hash_present',
@@ -3796,6 +3856,7 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
       'component.layout.root_viewport_unit',
       'component.layout.naked_px_high_risk',
       'component.layout.naked_px_medium_risk',
+      'component.layout.source_parse_unresolved',
       'component.style.global_css_forbidden',
       'component.animation.css_timeline_forbidden',
       'evidence.schema_source_hash_present',
@@ -3813,6 +3874,9 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
       dependencies: {
         '@promptframe/contracts': '^0.1.4',
         '@promptframe/component-kit': '^0.1.5',
+        remotion: '^4.0.0',
+        react: '^19.0.0',
+        zod: '^3.24.0',
       },
       devDependencies: {
         '@promptframe/cli': '0.1.5',
@@ -3831,15 +3895,15 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
     assert.ok(upgrade.packageChanges.some((change) => (
       change.name === '@promptframe/contracts'
       && change.current === '^0.1.4'
-      && change.next === '^0.1.37'
+      && change.next === '^0.1.38'
     )));
     assert.ok(upgrade.packageChanges.some((change) => (
       change.name === '@promptframe/component-kit'
-      && change.next === '^0.1.31'
+      && change.next === '^0.1.32'
     )));
     assert.ok(upgrade.packageChanges.some((change) => (
       change.name === '@promptframe/cli'
-      && change.next === '^0.1.69'
+      && change.next === '^0.1.70'
     )));
 
     const applied = JSON.parse((await execFileAsync('node', [
@@ -3854,19 +3918,19 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
     assert.equal(applied.apply, true);
     assert.ok(applied.packageChanges.some((change) => change.name === '@promptframe/contracts'));
     const appliedPackageJson = JSON.parse(await readFile(path.join(componentDir, 'package.json'), 'utf8'));
-    assert.equal(appliedPackageJson.dependencies['@promptframe/contracts'], '^0.1.37');
-    assert.equal(appliedPackageJson.dependencies['@promptframe/component-kit'], '^0.1.31');
-    assert.equal(appliedPackageJson.devDependencies['@promptframe/cli'], '^0.1.69');
+    assert.equal(appliedPackageJson.dependencies['@promptframe/contracts'], '^0.1.38');
+    assert.equal(appliedPackageJson.dependencies['@promptframe/component-kit'], '^0.1.32');
+    assert.equal(appliedPackageJson.devDependencies['@promptframe/cli'], '^0.1.70');
 
     await writeFile(path.join(componentDir, 'package.json'), JSON.stringify({
       name: 'fixture-component',
       version: '0.1.0',
       dependencies: {
-        '@promptframe/contracts': '^0.1.37',
-        '@promptframe/component-kit': '^0.1.31',
+        '@promptframe/contracts': '^0.1.38',
+        '@promptframe/component-kit': '^0.1.32',
       },
       devDependencies: {
-        '@promptframe/cli': '^0.1.69',
+        '@promptframe/cli': '^0.1.70',
       },
     }, null, 2));
     const current = JSON.parse((await execFileAsync('node', [
@@ -3886,7 +3950,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-scaffold-freshness-'));
   try {
     const componentDir = path.join(dir, 'component');
-    const currentReactRemotionTemplateDigest = 'sha256:5472c0cf43d6f0fe5b0e2e5e838d31b28737f13958ca2af1694043817d6f0e01';
+    const currentReactRemotionTemplateDigest = PROMPTFRAME_AUTHORING_STANDARD_RELEASE.scaffoldTemplates.find(row => row.name === 'react-remotion').digest;
     await writeFixtureComponent(componentDir);
     await mkdir(path.join(componentDir, '.promptframe'), { recursive: true });
     await writeFile(path.join(componentDir, '.promptframe/scaffold.json'), `${JSON.stringify({
@@ -3908,7 +3972,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     const doctorDiagnostic = doctor.diagnostics.find((item) => item.code === 'scaffold.template.stale');
     assert.equal(doctorDiagnostic.severity, 'warning');
     assert.equal(doctorDiagnostic.current, '0.1.0');
-    assert.equal(doctorDiagnostic.minimum, '0.1.59');
+    assert.equal(doctorDiagnostic.minimum, '0.1.60');
     assert.equal(doctorDiagnostic.expectedTemplateDigest, currentReactRemotionTemplateDigest);
     assert.match(doctorDiagnostic.repairHint, /local scaffold freshness/);
 
@@ -3933,7 +3997,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     await writeFile(path.join(componentDir, '.promptframe/scaffold.json'), `${JSON.stringify({
       schemaVersion: 'promptframe.scaffold.v0.1.0',
       createdByPackage: 'create-promptframe-component',
-      createdByVersion: '0.1.59',
+      createdByVersion: '0.1.60',
       templateName: 'react-remotion',
       templateDigest: `sha256:${'b'.repeat(64)}`,
       createdAt: '2026-07-01T00:00:00.000Z',
@@ -3946,7 +4010,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     ])).stdout);
     const sameVersionDiagnostic = sameVersionWrongDigest.diagnostics.find((item) => item.code === 'scaffold.template.stale');
     assert.equal(sameVersionDiagnostic.severity, 'warning');
-    assert.equal(sameVersionDiagnostic.current, '0.1.59');
+    assert.equal(sameVersionDiagnostic.current, '0.1.60');
     assert.equal(sameVersionDiagnostic.templateDigest, `sha256:${'b'.repeat(64)}`);
     assert.equal(sameVersionDiagnostic.expectedTemplateDigest, currentReactRemotionTemplateDigest);
     assert.match(sameVersionDiagnostic.message, /templateDigest/i);
@@ -3954,7 +4018,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     await writeFile(path.join(componentDir, '.promptframe/scaffold.json'), `${JSON.stringify({
       schemaVersion: 'promptframe.scaffold.v0.1.0',
       createdByPackage: 'create-promptframe-component',
-      createdByVersion: '0.1.59',
+      createdByVersion: '0.1.60',
       templateName: 'react-remotion',
       templateDigest: currentReactRemotionTemplateDigest,
       createdAt: '2026-07-01T00:00:00.000Z',
@@ -4129,7 +4193,7 @@ test('validate rejects preview props that exceed the public standard limits', as
     const componentDir = path.join(dir, 'component');
     await writeFixtureComponent(componentDir);
     await writeFile(path.join(componentDir, 'src/preview-props.json'), JSON.stringify({
-      durationFrames: 181,
+      durationFrames: 901,
       fps: 30,
       width: 1280,
       height: 720,
@@ -4905,8 +4969,11 @@ async function writeFixtureComponent(componentDir) {
       name: 'fixture-component',
       version: '0.1.0',
       dependencies: {
-        '@promptframe/contracts': '^0.1.31',
+        '@promptframe/contracts': '^0.1.32',
         '@promptframe/component-kit': '^0.1.25',
+        remotion: '^4.0.0',
+        react: '^19.0.0',
+        zod: '^3.24.0',
       },
       devDependencies: {
         '@promptframe/cli': '^0.1.63',

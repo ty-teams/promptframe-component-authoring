@@ -34,11 +34,10 @@ import {
   PROMPTFRAME_CONTRACTS_VERSION,
   PROMPTFRAME_PUBLIC_DEPENDENCY_POLICY,
   detectPromptFrameUnknownCustomStyleProps,
-  evaluatePromptFrameLayoutPolicy,
-  evaluatePromptFrameDependencyPolicy,
   collectPromptFrameResourceReferences,
   authoringUploadTargetSchema,
   parseComponentManifest,
+  selectComponentPreviewDurationFrames,
   type ComponentManifest,
   type ComponentDiagnostic,
   type ComponentPublicResourceEntry,
@@ -49,6 +48,8 @@ import {
   type PublicPolicyRuleId,
   type PromptFrameDependencyPolicyReceipt,
 } from '@promptframe/contracts';
+import { evaluatePromptFrameLayoutPolicy } from '@promptframe/contracts/layout-evaluator';
+import { evaluatePromptFrameDependencyPolicy } from '@promptframe/contracts/dependency-evaluator';
 import {
   evaluatePromptFrameSecurityPolicySource,
   type PromptFrameSecurityPolicyFinding,
@@ -646,7 +647,7 @@ function preview(argv: string[]): void {
   const input = resolveComponentInput(argv);
   const dir = input.dir;
   const manifest = validateComponentDirectory(dir);
-  const previewEnvelope = readPreviewProps(dir);
+  const previewEnvelope = playbackPreviewProps(dir, manifest);
   const previewScript = resolveLocalPreviewScript(readPackageManifest(join(dir, 'package.json')));
   const localPreviewReport = hasFlag(argv, '--write-local-report')
     ? writeLocalPreviewReport({
@@ -698,7 +699,7 @@ async function dev(argv: string[]): Promise<void> {
   const manifest = validateComponentDirectory(dir);
   assertAuthoringPackageFreshness(dir, target);
   const freshness = await resolveSoftRemoteStandardFreshness(argv, target, 'dev');
-  const previewEnvelope = readPreviewProps(dir);
+  const previewEnvelope = playbackPreviewProps(dir, manifest);
   const publicResources = evaluateDirectoryPublicResources(dir);
   assertPublicResourcesAccepted(publicResources);
   const devPublicResources = writeDevPublicResourceArtifacts(dir, publicResources);
@@ -844,7 +845,9 @@ function packageComponent(argv: string[]): void {
 
 function validateComponentDirectory(dir: string, options: ComponentDirectoryValidationOptions = {}): ComponentManifest {
   assertRequiredFiles(dir, options);
-  assertDependencyPolicyAccepted(evaluateDirectoryDependencyPolicy(dir));
+  const dependencyPolicy = evaluateDirectoryDependencyPolicy(dir);
+  const installErrors = dependencyPolicy.diagnostics.filter(row => row.severity === 'error' && row.code.startsWith('dependency.install.'));
+  if (installErrors.length) assertDependencyPolicyAccepted({ ...dependencyPolicy, diagnostics: installErrors });
   const manifestPath = join(dir, 'manifest.json');
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
   const parsed = parseComponentManifest(normalizeLegacyManifest(manifest));
@@ -853,6 +856,7 @@ function validateComponentDirectory(dir: string, options: ComponentDirectoryVali
   validateSourceSafety(dir, options);
   validateSecurityPolicy(dir, options);
   checkImportBoundary(dir);
+  assertDependencyPolicyAccepted(dependencyPolicy);
   return parsed;
 }
 
@@ -895,9 +899,13 @@ function readScaffoldMetadata(dir: string): ScaffoldMetadata | undefined {
 }
 
 function evaluateDirectoryDependencyPolicy(dir: string): PromptFrameDependencyPolicyReceipt {
+  const manifest = parseComponentManifest(normalizeLegacyManifest(JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'))));
   return evaluatePromptFrameDependencyPolicy({
     packageJson: readPackageManifest(join(dir, 'package.json')),
     lockfilePresent: hasPackageManagerLockfile(dir),
+    runtimeEntryPaths: [manifest.entry.sourcePath, manifest.entry.propsSchemaPath, 'src/index.ts'],
+    files: collectPackageFiles(dir).map(file => ({ path: file.name,
+      sourceText: /\.[cm]?[jt]sx?$/i.test(file.name) ? file.data.toString('utf8') : '' })),
   });
 }
 
@@ -907,7 +915,7 @@ function hasPackageManagerLockfile(dir: string): boolean {
 
 function assertDependencyPolicyAccepted(receipt: PromptFrameDependencyPolicyReceipt): void {
   if (receipt.status !== 'reject') return;
-  const first = receipt.diagnostics[0];
+  const first = receipt.diagnostics.find(row => row.severity === 'error') ?? receipt.diagnostics[0];
   fail(
     first?.message ?? 'PromptFrame dependency policy rejected this component package.',
     first?.code ?? 'dependency.policy.rejected',
@@ -3925,7 +3933,8 @@ function validatePreviewProps(dir: string, manifest: ComponentManifest): void {
 function assertPreviewDurationMatchesManifest(preview: Record<string, unknown>, manifest: ComponentManifest): void {
   const durationFrames = Number(preview.durationFrames);
   const { min, max } = manifest.designedDurationRange;
-  if (durationFrames >= min && durationFrames <= max) return;
+  const cap = Number(preview.fps) * 30;
+  if (durationFrames >= Math.min(min, cap) && durationFrames <= Math.min(max, cap)) return;
   fail(
     `src/preview-props.json durationFrames (${durationFrames}) must be within manifest.designedDurationRange (${min}-${max}).`,
     'component_standard.preview.duration_frames.designed_range',
@@ -3939,6 +3948,13 @@ function readPreviewProps(dir: string): Record<string, unknown> {
     fail('src/preview-props.json must be a JSON object.', 'component_standard.preview.object');
   }
   return preview;
+}
+
+function playbackPreviewProps(dir: string, manifest: ComponentManifest): Record<string, unknown> {
+  const preview = readPreviewProps(dir);
+  return { ...preview, durationFrames: selectComponentPreviewDurationFrames({
+    fps: Number(preview.fps), durationFrames: Number(preview.durationFrames), designedDurationRange: manifest.designedDurationRange,
+  }) };
 }
 
 function assertPreviewPropsMatchStaticSchema(
@@ -4478,6 +4494,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import Component from './Component';
 import previewEnvelope from './preview-props.json';
+import manifest from '../manifest.json';
 import { promptFrameDevPublicResources } from './promptframe-dev-public-resources.generated';
 import { propsSchema, type ComponentProps } from './schema';
 
@@ -4508,6 +4525,7 @@ createRoot(root).render(
   <StrictMode>
     <PromptFramePreviewApp<ComponentProps>
       previewEnvelope={{ ...preview, props: propsSchema.parse(preview.props ?? {}) }}
+      designedDurationRange={manifest.designedDurationRange}
       initialProps={initialProps}
       propsSchema={propsSchema}
       publicResources={promptFrameDevPublicResources}

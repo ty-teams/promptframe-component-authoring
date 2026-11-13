@@ -7,6 +7,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import Component from './Component';
 import previewEnvelope from './preview-props.json';
+import manifest from '../manifest.json';
 import { promptFrameDevPublicResources } from './promptframe-dev-public-resources.generated';
 import { propsSchema, type ComponentProps } from './schema';
 import { promptFrameLocalPreview } from 'virtual:promptframe-local-preview';
@@ -43,6 +44,7 @@ createRoot(root).render(
     </p>}
     <PromptFramePreviewApp<ComponentProps>
       previewEnvelope={{ ...preview, props: propsSchema.parse(preview.props ?? {}) }}
+      designedDurationRange={manifest.designedDurationRange}
       initialProps={initialProps}
       propsSchema={propsSchema}
       publicResources={promptFrameDevPublicResources}

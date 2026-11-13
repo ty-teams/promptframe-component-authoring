@@ -1,6 +1,6 @@
 {
   "name": "@promptframe/contracts",
-  "version": "0.1.37",
+  "version": "0.1.38",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -22,6 +22,14 @@
     "./schema-evaluator": {
       "import": "./dist/schema-evaluator.js",
       "types": "./dist/schema-evaluator.d.ts"
+    },
+    "./layout-evaluator": {
+      "import": "./dist/layout-policy-evaluator.js",
+      "types": "./dist/layout-policy-evaluator.d.ts"
+    },
+    "./dependency-evaluator": {
+      "import": "./dist/dependency-policy-evaluator.js",
+      "types": "./dist/dependency-policy-evaluator.d.ts"
     },
     "./package.json": {
       "default": "./package.json"

@@ -11,6 +11,13 @@ import {
   type PromptFramePreviewCase,
 } from '../src/preview.js';
 
+test('diagnostic duration presets remain bounded by elapsed time at each fps', () => {
+  const cases = createPreviewCaseMatrix({basePreview:{durationFrames:900,fps:30,width:320,height:180},
+    baseProps:{},fpsPresets:[60],durationScalePresets:[2,4]});
+  assert(cases.every(row => row.durationFrames / row.fps <= 30));
+  assert.equal(cases.find(row => row.id === 'fps-60')?.durationFrames,1800);
+});
+
 test('createPreviewCaseMatrix builds bounded aspect and props stress cases', () => {
   const cases = createPreviewCaseMatrix({
     basePreview: {
@@ -137,7 +144,7 @@ test('createPreviewCaseMatrix can add designed-duration diagnostic cases', () =>
   assert.equal(half.durationFrames, 60);
   assert.ok(double);
   assert.equal(double.caseKind, 'duration_diagnostic');
-  assert.equal(double.durationFrames, 180);
+  assert.equal(double.durationFrames, 240);
 });
 
 test('preview prop control helpers classify and coerce values without stringifying objects', () => {

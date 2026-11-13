@@ -1,4 +1,5 @@
 import React from 'react';
+import { selectComponentPreviewDurationFrames } from '@promptframe/contracts';
 import {
   promptFramePublicResource,
   promptFramePublicResourceSlotFromSchema,
@@ -146,6 +147,7 @@ export interface PromptFramePreviewStageRenderInput<TProps extends Record<string
 
 export interface PromptFramePreviewAppProps<TProps extends Record<string, unknown> = Record<string, unknown>> {
   previewEnvelope: PromptFramePreviewEnvelope<TProps>;
+  designedDurationRange?: { min: number; max: number };
   initialProps: TProps;
   propsSchema?: unknown;
   publicResources?: readonly PromptFramePublicResourceCandidate[];
@@ -430,6 +432,7 @@ export function PromptFramePreviewInspector({
 
 export function PromptFramePreviewApp<TProps extends Record<string, unknown>>({
   previewEnvelope,
+  designedDurationRange,
   initialProps,
   propsSchema,
   publicResources = [],
@@ -439,18 +442,19 @@ export function PromptFramePreviewApp<TProps extends Record<string, unknown>>({
   className,
   style,
 }: PromptFramePreviewAppProps<TProps>): React.ReactElement {
+  const durationFrames = selectComponentPreviewDurationFrames({ ...previewEnvelope, designedDurationRange });
   const initialState = React.useMemo(
     () => createPromptFramePreviewInitialState<TProps>({
       props: initialProps,
       width: previewEnvelope.width,
       height: previewEnvelope.height,
       fps: previewEnvelope.fps,
-      durationFrames: previewEnvelope.durationFrames,
+      durationFrames,
       caseName: 'local-preview-case',
       locale,
       sizeLabel: previewSizeLabel(previewEnvelope.width, previewEnvelope.height),
     }),
-    [initialProps, locale, previewEnvelope.durationFrames, previewEnvelope.fps, previewEnvelope.height, previewEnvelope.width],
+    [initialProps, locale, durationFrames, previewEnvelope.fps, previewEnvelope.height, previewEnvelope.width],
   );
   const [previewState, setPreviewState] = React.useState<PromptFramePreviewState<TProps>>(initialState);
   const [status, setStatus] = React.useState('');
@@ -471,7 +475,7 @@ export function PromptFramePreviewApp<TProps extends Record<string, unknown>>({
   const generatedPreviewCases = React.useMemo(
     () => createPreviewCaseMatrix<TProps>({
       basePreview: {
-        durationFrames: previewEnvelope.durationFrames,
+        durationFrames,
         fps: previewEnvelope.fps,
         width: previewEnvelope.width,
         height: previewEnvelope.height,
@@ -483,7 +487,7 @@ export function PromptFramePreviewApp<TProps extends Record<string, unknown>>({
       aspectPresets: [],
       durationScalePresets: [0.5, 2],
     }),
-    [initialProps, previewEnvelope.durationFrames, previewEnvelope.fps, previewEnvelope.height, previewEnvelope.width, validateProps],
+    [initialProps, durationFrames, previewEnvelope.fps, previewEnvelope.height, previewEnvelope.width, validateProps],
   );
   const baselinePreviewCase = generatedPreviewCases.find((previewCase) => previewCase.caseKind === 'baseline_reset');
   const diagnosticPreviewCases = generatedPreviewCases.filter((previewCase) => (

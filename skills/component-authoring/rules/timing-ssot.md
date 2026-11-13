@@ -104,7 +104,7 @@ const visible = frame > 45;
 首期至少检查：
 
 - `manifest.json` 有合法 `designedDurationRange.min/max`。
-- `src/preview-props.json` 的 `durationFrames` 不超过平台预览上限，并且落在 `manifest.designedDurationRange` 内。
+- `src/preview-props.json` 的 `durationFrames` 不超过30秒的帧数；声明范围超出此上限时按上限收窄。预览默认选择 `manifest.designedDurationRange.max`（单位为帧），并按 fps 最多播放30秒；不改变正式作品时长。
 - 组件源码使用 `useCurrentFrame()` / `useVideoConfig()`。
 - 没有 CSS `transition`、`@keyframes`、`Date.now()`、`Math.random()` 等非确定性路径。
 

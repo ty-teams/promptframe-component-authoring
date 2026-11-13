@@ -15,6 +15,16 @@ import {
   type PromptFramePreviewControl,
 } from '../src/preview-react.js';
 
+test('preview stage receives manifest maximum duration with a thirty second cap', () => {
+  const durations: number[] = [];
+  for (const max of [240, 1200]) renderToStaticMarkup(React.createElement(PromptFramePreviewApp, {
+    previewEnvelope: {durationFrames:60,fps:30,width:320,height:180}, initialProps:{},
+    designedDurationRange: {min:30,max},
+    renderStage: ({durationFrames}) => {durations.push(durationFrames);return React.createElement('div');},
+  }));
+  assert.deepEqual(durations,[240,900]);
+});
+
 test('PromptFramePreviewInspector renders shared selectors for nested props and read-only state', () => {
   const controls: PromptFramePreviewControl[] = [
     {

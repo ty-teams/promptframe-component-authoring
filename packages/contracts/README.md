@@ -16,6 +16,22 @@ Key public exports:
 - `PROMPTFRAME_PUBLIC_SECURITY_POLICY_DIGEST`: deterministic release-cohort fingerprint for the public security policy.
 - `@promptframe/contracts/security-evaluator`: AST-aware evaluator for JS / TS / TSX source diagnostics.
 
+## 布局源码检查
+
+Node 作者工具使用 `@promptframe/contracts/layout-evaluator` 的 `evaluatePromptFrameLayoutPolicy`。
+它按 JSX/React 样式、CSS 属性、局部变量和静态导入分析布局值；0、无单位 `lineHeight` 和 SVG 坐标不会被当作固定像素布局。
+真实像素长度、固定外框和逃逸父容器的视口单位保留错误诊断，消息包含文件、行、列。
+静态分支和对象展开分别检查；语法错误不会返回通过。此检查不执行组件代码，也不代替预览中的响应式验证。
+
+该子路径包含 TypeScript 编译器，仅供 Node 作者检查使用。主入口保留轻量兼容检查和运行时合同，浏览器无需加载编译器；服务端源码准入与 CLI 应使用 AST 子路径。
+
+## 运行依赖检查
+
+`@promptframe/contracts/dependency-evaluator` 从提供的组件、schema 和 index 入口追踪静态运行导入。
+只用于开发配置、测试且未被运行入口引用的 `devDependencies` 不进入运行依赖目录审核；仅在 dev 中声明但被运行代码导入的包仍会拒绝。
+类型专用导入被擦除，运行可达文件不会因为 `.test` 文件名获得豁免。无法解析的本地引用和动态模块名会明确拒绝。
+检查不安装依赖；冻结锁文件、隔离安装、安全扫描和传递依赖审核继续由原打包与平台流程完成。
+
 ## Public Security Policy
 
 `PROMPTFRAME_PUBLIC_SECURITY_POLICY` is the public author-facing rule catalog used by CLI diagnostics. It intentionally describes the behavior an external component author must avoid, not PromptFrame platform internals.

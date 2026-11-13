@@ -1,3 +1,5 @@
+import { selectComponentPreviewDurationFrames } from '@promptframe/contracts';
+
 export interface ComponentPreviewConstraints {
   maxDurationFrames: number;
   maxWidth: number;
@@ -6,7 +8,7 @@ export interface ComponentPreviewConstraints {
 }
 
 export const COMPONENT_PREVIEW_CONSTRAINTS: ComponentPreviewConstraints = {
-  maxDurationFrames: 180,
+  maxDurationFrames: 900,
   maxWidth: 1280,
   maxHeight: 720,
   maxFps: 30,
@@ -102,6 +104,7 @@ export function createPreviewCaseMatrix<TProps extends Record<string, unknown>>(
     if (!parsedProps) return;
     const normalizedCase = {
       ...previewCase,
+      durationFrames: selectComponentPreviewDurationFrames(previewCase),
       props: parsedProps,
     };
     const signature = [
@@ -334,7 +337,8 @@ function scaleDurationFramesForFps(durationFrames: number, sourceFps: number, ta
 }
 
 function scaleDurationFrames(durationFrames: number, scale: number): number {
-  return Math.max(1, Math.min(COMPONENT_PREVIEW_CONSTRAINTS.maxDurationFrames, Math.round(durationFrames * scale)));
+  // The final case is capped with its own fps in addCase, after fps scaling.
+  return Math.max(1, Math.round(durationFrames * scale));
 }
 
 function formatDurationScaleId(scale: number): string {
