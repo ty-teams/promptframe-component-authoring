@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { createPromptFramePublicSecurityPolicyDigest } from './security-policy-fingerprint.js';
+import { componentPublicResourceKindSchema } from './resource-slots.js';
+export * from './resource-slots.js';
 
 export {
   COMPONENT_SECURITY_POLICY_DIGEST_VERSION,
@@ -791,16 +793,6 @@ export const semverSchema = z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?
 export const componentIdSchema = z.string().regex(/^@[a-z0-9][a-z0-9-]{1,62}\/[a-z0-9][a-z0-9-]{1,62}$/);
 export const componentNameSchema = z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/);
 export const relativePathSchema = z.string().regex(/^[^/\\][\w./-]*$/);
-
-export const componentPublicResourceKindSchema = z.enum([
-  'image',
-  'audio',
-  'video',
-  'font',
-  'json',
-  'text',
-]);
-export type ComponentPublicResourceKind = z.infer<typeof componentPublicResourceKindSchema>;
 
 export const componentPublicResourcePublicPathSchema = z.string()
   .regex(/^\/(?!.*\\)(?!.*\/\/)[A-Za-z0-9._~!$&'()+,;=:@/-]+$/)

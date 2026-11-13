@@ -8,9 +8,32 @@ import {
   filterPromptFramePublicResourcesForSlot,
   normalizePromptFramePublicResourcePath,
   promptFramePublicResource,
+  promptFrameResource,
+  PromptFrameResourceError,
   promptFramePublicResourceSlotFromSchema,
   promptFrameRuntimeResourceMatchesSlot,
 } from '../src/resources.js';
+
+test('one resource helper presents package resources and host-resolved preview and render representations', () => {
+  const props = { illustration: '/example.png' };
+  assert.equal(promptFrameResource(props, props.illustration), '/example.png');
+  assert.equal(promptFrameResource({ promptFrameResources: resources }, '/logo.png'), resources.entries[0]!.url);
+  assert.equal(promptFrameResource(undefined, '/public/render-assets/image.png'), '/public/render-assets/image.png');
+  assert.equal(promptFrameResource(undefined, 'blob:https://studio.example/123'), 'blob:https://studio.example/123');
+  assert.equal(promptFrameResource(undefined, 'https://objects.example/image?grant=opaque'), 'https://objects.example/image?grant=opaque');
+  assert.equal(promptFrameResource({ promptFrameResources: resources }, undefined, '/logo.png'), resources.entries[0]!.url);
+});
+
+test('unresolved references never silently substitute an example or perform resolution in the component', () => {
+  for (const ref of ['asset-proxy://asset_example', '/api/assets/proxy/asset_example?variant=original']) {
+    assert.throws(() => promptFrameResource(undefined, ref, '/example.png'),
+      (error: unknown) => error instanceof PromptFrameResourceError && error.code === 'resource.reference_unresolved');
+  }
+  for (const ref of ['file:///private/file.png', 'javascript:alert(1)', '//objects.example/a', '../secret', 'blob:opaque', ' /image.png']) {
+    assert.throws(() => promptFrameResource(undefined, ref), PromptFrameResourceError);
+  }
+  assert.throws(() => promptFrameResource(undefined, '/image.png', 'https://arbitrary.example/a'), PromptFrameResourceError);
+});
 
 const resources: ComponentRuntimeResourceManifest = {
   contractVersion: COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION,

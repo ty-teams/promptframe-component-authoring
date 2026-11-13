@@ -4,6 +4,46 @@ import {
   PROMPTFRAME_SCHEMA_EVALUATOR_VERSION,
   evaluatePromptFrameSchemaSource,
 } from '../dist/schema-evaluator.js';
+import { promptFrameResourceSchema } from '../dist/index.js';
+
+test('resource slot schema and static facts carry the same bounded selection metadata', () => {
+  const runtime = promptFrameResourceSchema({ kinds: ['image'], accept: ['image/*'] });
+  const facts = evaluatePromptFrameSchemaSource(`
+    import { z } from 'zod';
+    import { promptFrameResourceSchema as resource } from '@promptframe/contracts';
+    export const propsSchema = z.object({
+      illustration: resource({ kinds: ['image'], accept: ['image/*'] }).default('/example.png'),
+      gallery: z.array(resource({ kinds: ['image'], sources: ['asset'], maxFileBytes: 1024 })).max(4),
+    });
+  `);
+  assert.equal(facts.status, 'resolved');
+  assert.deepEqual(facts.properties.illustration.promptFrameResource, runtime._def.promptFrameResource);
+  assert.equal(facts.properties.illustration.default, '/example.png');
+  assert.deepEqual(facts.properties.gallery.items.promptFrameResource.sources, ['asset']);
+  assert.equal(runtime.safeParse('asset-proxy://asset_example').success, true);
+  assert.equal(runtime.safeParse('x'.repeat(2001)).success, false);
+});
+
+test('resource metadata rejects dynamic, duplicate, unknown and over-budget declarations without executing them', () => {
+  for (const options of [
+    "{ kinds: ['image'], sources: ['asset', 'asset'] }", "{ kinds: ['unknown'] }",
+    "{ kinds: ['image'], maxFileBytes: 67108865 }", "{ kinds: ['image'], extra: true }",
+    'getOptions()',
+  ]) {
+    const facts = evaluatePromptFrameSchemaSource(`
+      import { z } from 'zod';
+      import { promptFrameResourceSchema } from '@promptframe/contracts';
+      export const propsSchema = z.object({ illustration: promptFrameResourceSchema(${options}) });
+    `);
+    assert.ok(facts.diagnostics.some(item => item.code === 'schema.resource_slot_invalid'), options);
+  }
+  const forged = evaluatePromptFrameSchemaSource(`
+    import { z } from 'zod';
+    import { promptFrameResourceSchema } from 'untrusted-package';
+    export const propsSchema = z.object({ image: promptFrameResourceSchema({ kinds: ['image'] }) });
+  `);
+  assert.ok(forged.diagnostics.some(item => item.code === 'schema.wrapper_unresolved'));
+});
 
 test('schema evaluator resolves named schemas through a proven transparent resource wrapper', () => {
   const facts = evaluatePromptFrameSchemaSource(`

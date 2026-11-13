@@ -1,5 +1,6 @@
 import {
   COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION,
+  componentResourceSlotSchema,
   type ComponentPublicResourceEntry,
   type ComponentPublicResourceKind,
   type ComponentRuntimeResourceManifest,
@@ -10,6 +11,7 @@ export type PromptFrameRuntimeResourceEntry = ComponentRuntimeResourceManifest['
 export type PromptFramePublicResourceCandidate = ComponentPublicResourceEntry | PromptFrameRuntimeResourceEntry;
 
 export interface PromptFramePublicResourceSlot {
+  sources?: readonly ('public' | 'asset')[];
   accept?: readonly string[];
   kinds?: readonly ComponentPublicResourceKind[];
   maxFileBytes?: number;
@@ -17,6 +19,50 @@ export interface PromptFramePublicResourceSlot {
 
 export interface PromptFrameRuntimeResourceProps {
   promptFrameResources?: PromptFrameRuntimeResources;
+}
+
+export class PromptFrameResourceError extends Error {
+  constructor(readonly code: 'resource.reference_unresolved' | 'resource.representation_invalid') {
+    super(code);
+    this.name = 'PromptFrameResourceError';
+  }
+}
+
+/** Asset authorization and URL renewal belong to the host. This helper never
+ * fetches, reads credentials, or falls back from an unresolved asset reference. */
+export function promptFrameResource<Props extends object>(
+  resourcesOrProps: Props | undefined,
+  reference: string | null | undefined,
+  fallback?: string,
+): string {
+  const runtime = resourcesOrProps as PromptFrameRuntimeResources | PromptFrameRuntimeResourceProps | undefined;
+  const fallbackPath = fallback === undefined ? undefined : normalizePromptFramePublicResourcePath(fallback);
+  if (fallback !== undefined && !fallbackPath) throw new PromptFrameResourceError('resource.representation_invalid');
+  if (reference == null || reference === '') {
+    return fallbackPath ? promptFramePublicResource(runtime, fallbackPath) : '';
+  }
+  if (reference.trim() !== reference) throw new PromptFrameResourceError('resource.representation_invalid');
+  if (/^asset-proxy:/i.test(reference)
+    || reference.startsWith('/api/assets/proxy/') || reference.startsWith('/api-proxy/assets/proxy/')) {
+    throw new PromptFrameResourceError('resource.reference_unresolved');
+  }
+  // These representations are supplied by preview preparation or the render
+  // input resolver. This is presentation, never an authorization decision.
+  if (/^(?:https?:|blob:)/i.test(reference)) {
+    try {
+      const URLConstructor = (globalThis as { URL?: new (value: string) => {
+        username: string; password: string; protocol: string; origin: string;
+      } }).URL;
+      if (!URLConstructor) throw new Error();
+      const url = new URLConstructor(reference);
+      if (url.username || url.password || !['http:', 'https:', 'blob:'].includes(url.protocol)) throw new Error();
+      if (url.protocol === 'blob:' && url.origin === 'null') throw new Error();
+      return reference;
+    } catch { throw new PromptFrameResourceError('resource.representation_invalid'); }
+  }
+  const path = normalizePromptFramePublicResourcePath(reference);
+  if (!path) throw new PromptFrameResourceError('resource.representation_invalid');
+  return promptFramePublicResource(runtime, path, fallbackPath);
 }
 
 export function promptFramePublicResource(
@@ -47,6 +93,10 @@ export function promptFramePublicResourceSlotFromSchema(schema: unknown): Prompt
   if (!isRecord(schema)) return undefined;
   const candidate = schema.promptFrameResource ?? schema.xPromptFrameResource;
   if (!isRecord(candidate)) return undefined;
+  if (Object.hasOwn(candidate, 'sources')) {
+    const parsed = componentResourceSlotSchema.safeParse(candidate);
+    return parsed.success ? parsed.data : undefined;
+  }
 
   const accept = stringArray(candidate.accept);
   const kind = typeof candidate.kind === 'string' ? candidate.kind : undefined;
@@ -79,6 +129,7 @@ export function filterPromptFramePublicResourcesForSlot(
   slot: PromptFramePublicResourceSlot | undefined,
 ): PromptFrameRuntimeResourceEntry[] {
   if (!slot) return [];
+  if (slot.sources && !slot.sources.includes('public')) return [];
   const resources = extractPromptFrameRuntimeResources(resourcesOrProps);
   if (!resources) return [];
   return resources.entries.filter((entry) => promptFrameRuntimeResourceMatchesSlot(entry, slot));

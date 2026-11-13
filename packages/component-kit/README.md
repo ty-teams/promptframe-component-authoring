@@ -157,3 +157,26 @@ import { resolvePromptFrameStyle } from '@promptframe/component-kit/style';
 ## Component Workflow
 
 Use this package while authoring components. Use the PromptFrame CLI to validate, package, and upload finished components.
+
+## 素材引用槽
+
+使用公开 schema helper 声明素材字段，组件使用同一资源函数。参数保存包内路径或 `asset-proxy://` 引用，不保存临时签名 URL。
+
+```tsx
+import { z } from 'zod';
+import { promptFrameResourceSchema } from '@promptframe/contracts';
+import { promptFrameResource } from '@promptframe/component-kit';
+import { Img } from 'remotion';
+
+export const propsSchema = z.object({
+  illustration: promptFrameResourceSchema({ kinds: ['image'] }).default('/example.png'),
+});
+
+export function Component(props: z.infer<typeof propsSchema>) {
+  return <Img src={promptFrameResource(props, props.illustration)} />;
+}
+```
+
+`sources` 可限制为 `['public']` 或 `['asset']`，默认允许两种；可声明 MIME `accept` 和 `maxFileBytes`。这些字段只描述选择条件，不能授予素材权限。宿主在每次预览或渲染时校验权限、素材种类与表示状态，解析合法引用后才把可渲染地址交给组件。组件内不读取 Token，也不调用素材接口。
+
+尚未解析的素材引用会抛出 `resource.reference_unresolved`，不会静默使用示例图。真实素材引用只写入被忽略的本地预览草稿；公开 `preview-props.json` 使用 `public/` 示例。已有 `promptFramePublicResource` 和 public 资源声明保持兼容。

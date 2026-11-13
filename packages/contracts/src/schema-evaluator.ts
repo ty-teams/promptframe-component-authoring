@@ -1,4 +1,5 @@
 import ts from 'typescript';
+import { componentResourceSlotSchema, type ComponentResourceSlot } from './resource-slots.js';
 
 export const PROMPTFRAME_SCHEMA_EVALUATOR_VERSION = 'promptframe-schema-evaluator/v1' as const;
 
@@ -12,6 +13,7 @@ export type PromptFrameStaticSchemaType =
   | 'string';
 
 export interface PromptFrameStaticSchemaNode {
+  promptFrameResource?: ComponentResourceSlot;
   type?: PromptFrameStaticSchemaType;
   description?: string;
   default?: unknown;
@@ -34,7 +36,8 @@ export type PromptFrameSchemaDiagnosticCode =
   | 'schema.props_schema_not_static'
   | 'schema.reference_cycle'
   | 'schema.reference_unresolved'
-  | 'schema.wrapper_unresolved';
+  | 'schema.wrapper_unresolved'
+  | 'schema.resource_slot_invalid';
 
 export interface PromptFrameSchemaDiagnostic {
   code: PromptFrameSchemaDiagnosticCode;
@@ -208,6 +211,16 @@ function resolveWrapperCall(
   callee: ts.Identifier,
   context: ParseContext,
 ): ResolvedSchema {
+  const imported = context.imports.get(callee.text);
+  if (imported?.source === '@promptframe/contracts' && imported.imported === 'promptFrameResourceSchema') {
+    const options = call.arguments.length === 1 ? readJsonLiteralValue(call.arguments[0]!) : undefined;
+    const result = componentResourceSlotSchema.safeParse(options);
+    if (result.success) {
+      return resolved({ type: 'string', minLength: 1, maxLength: 2_000, promptFrameResource: result.data });
+    }
+    return { schema: {}, required: true, diagnostics: [diagnosticAt(context, call,
+      'schema.resource_slot_invalid', 'Resource slot options must be a bounded static object with valid kinds and sources.')] };
+  }
   const firstArg = call.arguments[0];
   if (!firstArg) return unresolvedWrapper(call, callee.text, context);
   const localFunction = context.functions.get(callee.text);
