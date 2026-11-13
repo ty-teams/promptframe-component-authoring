@@ -2320,7 +2320,7 @@ test('candidate promotion stage is non-blocking but never reports stable current
         success: true,
         sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
         authoringStandardRelease: {
-          releaseId: 'authoring-release-2026-11-13.5',
+          releaseId: 'authoring-release-2026-11-13.5-r02',
           releaseDigest: `sha256:${'7'.repeat(64)}`,
           minPackageVersions: {
             contracts: '0.1.37',
@@ -3686,7 +3686,7 @@ test('local standard, doctor, and validate expose stable JSON diagnostics', asyn
       'transition_effect',
     ]);
     assert.equal(standard.authoringStandardRelease.releaseVersion, 'authoring-standard-release.v0.1.0');
-    assert.equal(standard.authoringStandardRelease.releaseId, 'authoring-release-2026-11-13.5');
+    assert.equal(standard.authoringStandardRelease.releaseId, 'authoring-release-2026-11-13.5-r02');
     assert.match(standard.authoringStandardRelease.releaseDigest, /^sha256:[a-f0-9]{64}$/);
     assert.equal(standard.authoringStandardRelease.standardVersion, 'component-standard.v0.1.0');
     assert.match(standard.authoringStandardRelease.standardSourceHash, /^sha256:[a-f0-9]{64}$/);

@@ -20,7 +20,7 @@ export const COMPONENT_STANDARD_POLICY_VERSION = 'component-standard-policy.v0.1
 export const COMPONENT_SECURITY_POLICY_VERSION = 'component-security-policy.v0.1.0' as const;
 export const PROMPTFRAME_STYLE_CONTRACT_VERSION = 'promptframe-style.v0.1.0' as const;
 export const AUTHORING_STANDARD_RELEASE_VERSION = 'authoring-standard-release.v0.1.0' as const;
-export const AUTHORING_STANDARD_RELEASE_ID = 'authoring-release-2026-11-13.5' as const;
+export const AUTHORING_STANDARD_RELEASE_ID = 'authoring-release-2026-11-13.5-r02' as const;
 export const COMPONENT_REUSABILITY_CONTRACT_VERSION = 'component-reusability.v0.1.0' as const;
 export const COMPONENT_DEPENDENCY_POLICY_VERSION = 'component-dependency-policy.v0.1.0' as const;
 export const COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION = 'component-public-resources.v0.1.0' as const;
@@ -1292,7 +1292,7 @@ export const PROMPTFRAME_MIN_AUTHORING_PACKAGE_VERSIONS = authoringPackageFloorS
 export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = authoringStandardReleaseSchema.parse({
   releaseVersion: AUTHORING_STANDARD_RELEASE_VERSION,
   releaseId: AUTHORING_STANDARD_RELEASE_ID,
-  releaseDigest: 'sha256:0c8a104f15013ddc5a1a47f370f25610daae3787c32790e23d960b2ff9caafb0',
+  releaseDigest: 'sha256:bf4579d81fcd98dda8f798c4dc10515504dce3d1274baf44e2ad40835ba2891c',
   contractsVersion: PROMPTFRAME_CONTRACTS_VERSION,
   manifestSchemaVersion: COMPONENT_MANIFEST_SCHEMA_VERSION,
   componentRefVersion: COMPONENT_REF_VERSION,

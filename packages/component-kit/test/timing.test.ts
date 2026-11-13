@@ -24,9 +24,12 @@ test('component-kit standard stamp is sourced from public contracts', async () =
   const packageJson = JSON.parse(
     await readFile(new URL('../package.json', import.meta.url), 'utf-8'),
   ) as { dependencies?: Record<string, string> };
+  const contractsPackage = JSON.parse(
+    await readFile(new URL('../../contracts/package.json', import.meta.url), 'utf-8'),
+  ) as { version: string };
 
   assert.match(source, /from '@promptframe\/contracts'/);
-  assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '0.1.36');
+  assert.equal(packageJson.dependencies?.['@promptframe/contracts'], contractsPackage.version);
   assert.doesNotMatch(source, /component-standard\.v0\.1\.0/);
   assert.doesNotMatch(source, /component-manifest\.v0\.1\.0/);
   assert.doesNotMatch(source, /sha256:8c1e01c36155b4b646981064d24df9bd8cda501fd9cd9da93e5b62f40db22d52/);
