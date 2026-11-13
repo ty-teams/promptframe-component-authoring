@@ -22,7 +22,7 @@ test('candidate builder packs the exact cohort without lifecycle scripts or inhe
       sourceCommit,
       headCommit: sourceCommit,
       repositoryClean: true,
-      artifactTag: 'authoring-candidate-2026-11-13.4',
+      artifactTag: 'authoring-candidate-2026-11-13.5',
       createdAt: '2026-10-18T10:00:00.000Z',
       now,
       baseEnv: {
@@ -64,7 +64,7 @@ test('candidate builder fails closed and removes partial output', async () => {
         sourceCommit,
         headCommit: sourceCommit,
         repositoryClean: true,
-        artifactTag: 'authoring-candidate-2026-11-13.4',
+        artifactTag: 'authoring-candidate-2026-11-13.5',
         now,
         execFileImpl: async () => ({
           stdout: JSON.stringify([{ name: '@promptframe/wrong', version: '9.9.9', filename: 'wrong.tgz' }]),

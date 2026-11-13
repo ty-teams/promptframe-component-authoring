@@ -31,6 +31,8 @@ test('FB-226 generated PreviewRoot keeps document locked, controls independently
     ], { cwd: repoRoot });
 
     await run('pnpm', ['install', '--ignore-workspace', '--prefer-offline'], { cwd: projectDir, timeoutMs: 180_000 });
+    // Compile the generated shell as a consumer before checking its browser flow.
+    await run('pnpm', ['run', 'build'], { cwd: projectDir, timeoutMs: 60_000 });
 
     const port = await reservePort();
     vite = spawn('pnpm', ['exec', 'vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {

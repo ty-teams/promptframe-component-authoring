@@ -42,7 +42,7 @@ createRoot(root).render(
       本地预览素材不可用，当前显示包内示例。请核对所选文件、作品与 CLI 素材读取授权后刷新。
     </p>}
     <PromptFramePreviewApp<ComponentProps>
-      previewEnvelope={preview}
+      previewEnvelope={{ ...preview, props: propsSchema.parse(preview.props ?? {}) }}
       initialProps={initialProps}
       propsSchema={propsSchema}
       publicResources={promptFrameDevPublicResources}

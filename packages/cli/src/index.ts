@@ -4507,7 +4507,7 @@ if (!root) {
 createRoot(root).render(
   <StrictMode>
     <PromptFramePreviewApp<ComponentProps>
-      previewEnvelope={preview}
+      previewEnvelope={{ ...preview, props: propsSchema.parse(preview.props ?? {}) }}
       initialProps={initialProps}
       propsSchema={propsSchema}
       publicResources={promptFrameDevPublicResources}
