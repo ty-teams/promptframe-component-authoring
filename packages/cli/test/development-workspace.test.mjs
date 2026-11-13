@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -8,8 +9,78 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { captureDevelopmentModule, startDevelopmentWorkspace } from '../dist/development-workspace.js';
 import { developmentFixture } from './fixtures/development-component.mjs';
+import { isComponentSourcePathIgnored } from '../dist/component-file-selection.js';
 
 const origin = 'https://studio.example';
+
+test('dev selection keeps ignored large output untouched and captures nested negations, new source and raw locks', async () => {
+  const root=await mkdtemp(join(tmpdir(),'pf-root-ignore-'));
+  try {
+    const [module]=await workspace(root,1),directory=join(root,module.path);
+    await mkdir(join(directory,'out'));await mkdir(join(directory,'public'));
+    const original=Buffer.alloc(17*1024*1024,37),hash=bytes=>createHash('sha256').update(bytes).digest('hex');
+    await writeFile(join(directory,'out/still.png'),original);
+    await writeFile(join(directory,'.gitignore'),'out/\n*.draft.ts\n.gitignore\n');
+    await writeFile(join(directory,'src/.gitignore'),'!keep.draft.ts\n');
+    await writeFile(join(directory,'src/skip.draft.ts'),'excluded');
+    await writeFile(join(directory,'src/keep.draft.ts'),'export const fresh=1;');
+    await writeFile(join(directory,'src/new-untracked.ts'),'export const newlyWritten=1;');
+    await writeFile(join(directory,'public/example.png'),Buffer.from('required image bytes'));
+    const capture=captureDevelopmentModule(root,module),files=new Map(capture.readFiles().map(file=>[file.path,file.bytes]));
+    assert(capture.byteLength<16*1024*1024);assert(!files.has('out/still.png'));assert(!files.has('src/skip.draft.ts'));
+    for(const name of ['.gitignore','src/.gitignore','src/keep.draft.ts','src/new-untracked.ts','public/example.png','pnpm-lock.yaml','pnpm-workspace.yaml','promptframe-workspace.captured.json'])assert(files.has(name),name);
+    assert.equal(files.get('pnpm-lock.yaml').toString(),'lockfileVersion: "9.0"\n');
+    assert.equal(hash(await readFile(join(directory,'out/still.png'))),hash(original));
+    assert.equal(isComponentSourcePathIgnored(directory,'out/still.png'),true);
+    assert.equal(isComponentSourcePathIgnored(directory,'src/keep.draft.ts'),false);
+    assert.equal(isComponentSourcePathIgnored(directory,'.gitignore'),false);
+  } finally {await rm(root,{recursive:true,force:true});}
+});
+
+test('unignored real excess remains bounded and required inputs or public resources cannot be silently ignored', async () => {
+  const root=await mkdtemp(join(tmpdir(),'pf-root-ignore-guards-'));
+  try {
+    const [module]=await workspace(root,1),directory=join(root,module.path);
+    await writeFile(join(directory,'large.bin'),Buffer.alloc(17*1024*1024));
+    assert.throws(()=>captureDevelopmentModule(root,module),/development.contents.byte_limit/);
+    await unlink(join(directory,'large.bin'));await mkdir(join(directory,'public'));
+    await writeFile(join(directory,'public/image.png'),'image');await writeFile(join(directory,'pnpm-lock.yaml'),'lockfileVersion: "9.0"\n');
+    for(const pattern of ['manifest.json','src/Component.tsx','public/*.png','pnpm-lock.yaml']) {
+      await writeFile(join(directory,'.gitignore'),pattern+'\n');
+      assert.throws(()=>captureDevelopmentModule(root,module),/package.required_file.ignored/,pattern);
+    }
+    await unlink(join(directory,'.gitignore'));
+    await symlink(join(directory,'pnpm-lock.yaml'),join(directory,'.gitignore'));
+    assert.throws(()=>captureDevelopmentModule(root,module),/package.gitignore.invalid/);
+  } finally {await rm(root,{recursive:true,force:true});}
+});
+
+test('real watcher ignores output writes but publishes source changes and restores their exact revisions', async () => {
+  const root=await mkdtemp(join(tmpdir(),'pf-root-ignore-watch-'));let server,observer;const abort=new AbortController();
+  try {
+    const [module]=await workspace(root,1),directory=join(root,module.path);
+    await mkdir(join(directory,'out'));await writeFile(join(directory,'.gitignore'),'out/\n');
+    server=await startDevelopmentWorkspace({root,modules:[module],studioOrigin:origin});
+    const response=await fetch(server.url+'/__promptframe/events',{signal:abort.signal,headers:{Origin:origin,Authorization:'Bearer '+server.credential}});
+    assert.equal(response.status,200);const snapshots=[];
+    observer=(async()=>{let text='';try{for await(const bytes of response.body){text+=new TextDecoder().decode(bytes);let boundary;
+      while((boundary=text.indexOf('\n\n'))>=0){const event=text.slice(0,boundary);text=text.slice(boundary+2);const data=event.split('\n').find(line=>line.startsWith('data: '));if(data)snapshots.push(JSON.parse(data.slice(6)));}
+    }}catch(error){if(!abort.signal.aborted)throw error;}})();
+    const wait=async predicate=>{const deadline=performance.now()+20000;while(!predicate()){if(performance.now()>deadline)assert.fail('watcher condition timed out');await new Promise(resolve=>setTimeout(resolve,20));}};
+    await wait(()=>snapshots.at(-1)?.modules[0].status==='checked');
+    const before=snapshots.at(-1).modules[0],count=snapshots.length;
+    await writeFile(join(directory,'out/still.png'),Buffer.alloc(17*1024*1024,37));
+    await new Promise(resolve=>setTimeout(resolve,400));
+    assert.equal(snapshots.length,count,'ignored output must not enqueue or emit checking');
+    const sourcePath=join(directory,'src/Component.tsx'),original=await readFile(sourcePath);
+    await writeFile(sourcePath,Buffer.concat([original,Buffer.from('\n// temporary source revision\n')]));
+    await wait(()=>snapshots.at(-1)?.modules[0].status==='checked'&&snapshots.at(-1).modules[0].sourceRevision!==before.sourceRevision);
+    await writeFile(sourcePath,original);
+    await wait(()=>snapshots.at(-1)?.modules[0].status==='checked'&&snapshots.at(-1).modules[0].sourceRevision===before.sourceRevision);
+    assert.equal(snapshots.at(-1).modules[0].lastChecked.artifactRevision,before.lastChecked.artifactRevision);
+  } finally {abort.abort();await observer;if(server)await server.close();await rm(root,{recursive:true,force:true});}
+  await assert.rejects(fetch(server.url+'/__promptframe/registry',{signal:AbortSignal.timeout(2000)}));
+});
 async function workspace(root, count = 3) {
   const modules = [];
   for (let index = 0; index < count; index++) {

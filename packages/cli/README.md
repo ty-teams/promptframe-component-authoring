@@ -100,11 +100,11 @@ The upload-to-publish lifecycle has multiple gates. `upload` returning success m
 promptframe dev . --studio-origin https://studio.example
 ```
 
-入口监听一个 loopback 地址，端口 `0` 由系统选择一个实际端口，也可用 `--port` 指定。成功监听后输出实际 URL、连接 ID、精确 Studio Origin 和十分钟连接凭据。凭据只用于本机显式连接，不是平台登录或上传 Token；不要提交或放进组件代码。远程浏览器、SSH/WSL 和 HTTPS 到本机的访问仍需真实桥接及浏览器许可，不能根据命令启动推断可达。
+入口监听一个 loopback 地址，默认从24000—24999选择工作区稳定端口；`--port 0` 由系统分配端口，也可用 `--port` 显式指定。成功监听后输出实际 URL、稳定连接 ID、精确 Studio Origin 和本次进程新生成的连接凭据。凭据只用于本机显式连接，不是平台登录或上传 Token；不要提交或放进组件代码。远程浏览器、SSH/WSL 和 HTTPS 到本机的访问仍需真实桥接及浏览器许可，不能根据命令启动推断可达。
 
 `/__promptframe/registry` 和 `events` 以精确 Host/Origin/Authorization 返回模块的当前捕获版本、checking/checked/failed、固定诊断及明确的 lastChecked。精确版本的 bundle 接口一次返回 Component/schema/index ESM、共享 chunk 和已捕获 public 资源；输出不附原包锁或连接凭据。原始 Vite 文件、`/@fs`、默认 HTML/HMR、子配置和 npm 脚本入口关闭。
 
-每个模块先捕获自身文件、实际 workspace pnpm 锁和声明，再运行普通 CLI validate、固定 Vite 闭合图构建和当前内容重捕获。漏通知、快速保存或旧构建晚回不能授权旧字节覆盖新版；失败保留明确标记的 lastChecked。检查状态是构建/规则事实，Player 必须在隔离执行后另报实际加载版本。根服务本身尚未提供 Studio 消费端或 Player 加载 ACK，也不代替平台正式 upload/admission。
+每个模块先捕获自身文件、实际 workspace pnpm 锁和声明，再运行普通 CLI validate、固定 Vite 闭合图构建和当前内容重捕获。漏通知、快速保存或旧构建晚回不能授权旧字节覆盖新版；失败保留明确标记的 lastChecked。检查状态是构建/规则事实，Player 必须在隔离执行后另报实际加载版本。Studio 开发连接面板消费该连接；只有 Player 回报的实际加载版本能证明画面已更新，根服务 checked 状态不代替此回报或平台正式 upload/admission。
 
 构建采用 Vite 8.0.10 和自动 JSX，支持捕获内的 JS/TS/JSON 静态图与 `.module.css`。CSS Modules 的类名按捕获版本和文件路径隔离，样式随实际组件挂载和卸载；默认脚手架的 `propsSchema`、命名 index 与 manifest 指定的组件导出会对齐 Player 原有入口。样式只支持本模块类选择器和纯布局、颜色表达式，不解析 CSS import、URL、composition、全局选择器或独立动画时钟；资源仍使用原公共资源 helper。React/ReactDOM/Remotion、zod 及 PromptFrame 公共 runtime 作为明确列出的共享 external，由消费端按兼容合同提供；不从作者 `node_modules` 偷读依赖。其它 npm/本机 alias、父目录源码、普通全局 CSS、`import.meta` 和非字面动态 import 尚不支持，返回确定诊断。锁文件捕获证明实际输入，不冒依赖安装或解析完整性；正式各模块独立包仍走原检查和上传。
 
@@ -237,3 +237,5 @@ promptframe resource clear .
 平台素材使用同一选择命令的 `--asset-ref` 和原作品 `--session-id`，不得与 `--file` 同用。项目来自正常 `promptframe init` 写入的无凭据上下文。需要先沿正常 `promptframe login --endpoint <平台API> --with-assets` 授予 `asset.read`；旧组件上传凭据不会自动扩大权限。开发服务复用现有 CLI 凭据，逐次请求当前用户、项目与作品范围内的短时只读表示，核字节 SHA 后向浏览器提供本机地址。凭据、签名 URL 和私有文件路径不会发送给组件。断网、撤权、文件变化或选择过期时，预览明确提示不可用并标明正在展示包内示例；恢复条件后刷新。
 
 市场预览的素材选择读取访问者当前作品中的就绪素材，不改变组件包或上传新素材。正式使用时将合法素材引用冻结在 Spec，渲染入口沿原授权、素材存储和预下载合同准备本地表示；签名 URL 不保存到 Spec。
+
+工作区 dev 与 package 共用模块目录及子目录的 `.gitignore` 选择语义，不隐式读取工作区祖先的 ignore 规则；新增且未提交的合法源码仍会捕获。忽略的出图不读入快照或使已检查模块失效，必要入口、原始锁文件和 public 资源被误排时明确报错。dev 保留原始锁和工作区声明，正式源码包继续生成原锁证据；两者不是同一种字节格式。

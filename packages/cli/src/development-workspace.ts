@@ -1,5 +1,5 @@
-import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { existsSync, lstatSync, opendirSync, realpathSync } from 'node:fs';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { createServer as createHttpServer, type ServerResponse } from 'node:http';
 import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 import { createServer as createViteServer } from 'vite';
@@ -7,8 +7,9 @@ import { buildDevelopmentContents } from './development-build.js';
 import { DevelopmentModuleCoordinator } from './development-coordinator.js';
 import { captureDevelopmentFiles } from './development-files.js';
 import { DevelopmentContents } from './development-revisions.js';
+import { PROMPTFRAME_PUBLIC_STANDARD_POLICY } from '@promptframe/contracts';
+import { isComponentSourcePathIgnored, selectComponentSourceFiles } from './component-file-selection.js';
 
-const excluded = new Set(['node_modules', 'dist', '.git', '.component-packages', '.promptframe']);
 const limits = { maximumFiles: 2048, maximumBytes: 16 * 1024 * 1024 };
 const lockfiles = ['package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'bun.lockb'];
 export interface DevelopmentWorkspaceModule { id: string; path: string }
@@ -25,26 +26,16 @@ export function captureDevelopmentModule(root: string, module: DevelopmentWorksp
   for (let path = directory; path !== base; path = dirname(path)) {
     if (lstatSync(path).isSymbolicLink()) throw new Error('development.capture.symlink');
   }
-  const names: string[] = [];
-  let entries = 0;
-  const walk = (directory: string, prefix: string, depth: number): void => {
-    if (depth > 32) throw new Error('development.capture.directory_limit');
-    const handle = opendirSync(directory);
-    try {
-      for (let entry = handle.readSync(); entry; entry = handle.readSync()) {
-        if (++entries > 8192) throw new Error('development.capture.directory_limit');
-        if (excluded.has(entry.name)) continue;
-        const path = join(directory, entry.name), name = prefix + entry.name;
-        if (entry.isSymbolicLink()) throw new Error('development.capture.symlink');
-        if (entry.isDirectory()) walk(path, name + '/', depth + 1);
-        else if (entry.isFile()) {
-          names.push(name);
-          if (names.length > limits.maximumFiles) throw new Error('development.contents.file_count');
-        } else throw new Error('development.capture.not_file');
-      }
-    } finally { handle.closeSync(); }
-  };
-  walk(directory, '', 0);
+  const manifestBytes = Buffer.from(captureDevelopmentFiles(directory, ['manifest.json'], limits).readFiles()[0]!.bytes);
+  const manifestInput = JSON.parse(manifestBytes.toString('utf8')) as { entry?: { sourcePath?: unknown; propsSchemaPath?: unknown } };
+  const required = new Set<string>(PROMPTFRAME_PUBLIC_STANDARD_POLICY.requiredFiles);
+  for (const value of [manifestInput.entry?.sourcePath, manifestInput.entry?.propsSchemaPath]) if (typeof value === 'string') required.add(value);
+  for (const name of lockfiles) if (existsSync(join(directory, name))) required.add(name);
+  const selection = selectComponentSourceFiles(directory, required, { maximumFiles: limits.maximumFiles,
+    maximumEntries: 8192, maximumDepth: 32, rejectSpecialFiles: true });
+  // Ignore controls are raw source inputs even if an ignore rule excludes its
+  // own file. Their observed bytes must still match the captured selection.
+  const names = [...new Set([...selection.paths, ...selection.ignoreInputs.map(file => file.path)])];
   const sharedLock = !lockfiles.some(name => names.includes(name))
     && existsSync(join(base, 'pnpm-workspace.yaml')) && existsSync(join(base, 'pnpm-lock.yaml'));
   const prefix = module.path + '/';
@@ -52,6 +43,11 @@ export function captureDevelopmentModule(root: string, module: DevelopmentWorksp
   if (sharedLock) paths.push('pnpm-workspace.yaml', 'pnpm-lock.yaml');
   paths.push('promptframe-workspace.json');
   const captured = captureDevelopmentFiles(base, paths, limits);
+  const capturedFiles = new Map(captured.readFiles().map(file => [file.path, file.bytes]));
+  if (!manifestBytes.equals(Buffer.from(capturedFiles.get(prefix + 'manifest.json')!)) || selection.ignoreInputs.some(file =>
+    'sha256:' + createHash('sha256').update(capturedFiles.get(prefix + file.path)!).digest('hex') !== file.sha256)) {
+    throw new Error('development.capture.changed_during_read');
+  }
   const normalized = new DevelopmentContents(captured.readFiles().map(file => ({
     path: file.path.startsWith(prefix) ? file.path.slice(prefix.length)
       : file.path === 'promptframe-workspace.json' ? 'promptframe-workspace.captured.json' : file.path,
@@ -248,8 +244,18 @@ export async function startDevelopmentWorkspace(options: {
   const changed = (_event: string, path: string) => {
     const local = relative(root, resolve(path)).split(sep).join('/');
     for (const [id, module] of modules) {
-      if (local === module.path || local.startsWith(module.path + '/') || local === 'pnpm-lock.yaml'
-        || local === 'package.json' || local === 'pnpm-workspace.yaml' || local === 'promptframe-workspace.json') enqueue(id);
+      if (local === module.path || local === 'pnpm-lock.yaml' || local === 'package.json'
+        || local === 'pnpm-workspace.yaml' || local === 'promptframe-workspace.json') { enqueue(id); continue; }
+      if (!local.startsWith(module.path + '/')) continue;
+      const name = local.slice(module.path.length + 1);
+      // Public resources and required/lock controls must produce an explicit
+      // failure when newly ignored. Ordinary ignored outputs do not invalidate
+      // an already checked module or enter the build queue.
+      if (!name.startsWith('public/') && name !== 'public' && !lockfiles.includes(name)) {
+        try { if (isComponentSourcePathIgnored(resolve(root, module.path), name)) continue; }
+        catch { /* A changed/invalid rule is recaptured and reported by the checker. */ }
+      }
+      enqueue(id);
     }
   };
   vite.watcher.on('all', changed);
