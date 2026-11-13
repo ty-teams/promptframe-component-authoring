@@ -232,6 +232,40 @@ class PromptFrameCliError extends Error {
 }
 
 async function run(name: string, argv: string[]): Promise<void> {
+  // Resolve CLI help before a handler can package, contact a platform, or write
+  // configuration. Arguments after `--` belong to an explicitly launched tool.
+  const ownArgs = argv.slice(0, argv.includes('--') ? argv.indexOf('--') : argv.length);
+  const valueOptions = new Set([
+    '--allowed-upload-target', '--asset-ref', '--auth-permissions', '--auth-roles',
+    '--component-id', '--component-path', '--config', '--cursor', '--description',
+    '--display-name', '--endpoint', '--expires-at', '--file', '--host', '--id',
+    '--idle-timeout', '--level', '--limit', '--name', '--out', '--page-size',
+    '--poll-interval-seconds', '--port', '--project-context', '--project-id',
+    '--project-namespace', '--prop', '--provider', '--provider-kind', '--provider-name',
+    '--reason', '--release-notes', '--scope', '--session-id', '--status', '--target',
+    '--tenant-id', '--timeout-seconds', '--token', '--token-id', '--upload-target',
+    '--user-id', '--version-notes', '--workspace-component', '--workspace-config',
+  ]);
+  const flagOptions = new Set([
+    '--apply', '--check-latest', '--dry-run', '--fail-on-build-failed', '--force',
+    '--help', '-h', '--json', '--replace', '--show', '--strict', '--upgrade',
+    '--with-assets', '--workspace', '--write-local-report',
+  ]);
+  for (let index = 0; index < ownArgs.length; index++) {
+    const argument = ownArgs[index];
+    if (!argument.startsWith('-')) continue;
+    const option = argument.split('=', 1)[0];
+    if (!valueOptions.has(option) && !flagOptions.has(option)) {
+      fail(`Unknown option: ${option}`, 'cli.option.unknown', 2);
+    }
+    if (valueOptions.has(option) && !argument.includes('=')
+      && ownArgs[index + 1] && !ownArgs[index + 1].startsWith('--')
+      && ownArgs[index + 1] !== '-h') index++;
+  }
+  if (ownArgs.includes('--help') || ownArgs.includes('-h')) {
+    help(name);
+    return;
+  }
   switch (name) {
     case 'standard':
       standard();
@@ -5128,8 +5162,11 @@ function fail(message: string, code: string, exitCode = 1, repairHint?: string):
   throw new PromptFrameCliError(message, code, exitCode, repairHint);
 }
 
-function help(): void {
-  console.log(`PromptFrame CLI
+function help(subject?: string): void {
+  console.log(`PromptFrame CLI${subject ? ` — ${subject}` : ''}
+
+Usage: promptframe ${subject ?? '<command>'} [arguments] [options]
+Use --help or -h before -- for CLI help without executing the command.
 
 Commands:
   standard                         Print current public component standard versions
