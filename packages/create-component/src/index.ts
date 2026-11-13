@@ -141,7 +141,7 @@ function writeMergedRootPackage(root: string, options: {
       ...existingScripts,
     },
     devDependencies: {
-      '@promptframe/cli': '^0.1.70',
+      '@promptframe/cli': '^0.1.71',
       ...existingDevDependencies,
     },
   };

@@ -20,7 +20,7 @@ async function fixture(){
   const manifest=JSON.parse(await readFile(new URL('../../create-component/templates/react-remotion/manifest.json',import.meta.url)));
   Object.assign(manifest,{id:'@demo/resource-fixture',name:'resource-fixture',displayName:'Resource Fixture'});
   await writeFile(join(root,'manifest.json'),JSON.stringify(manifest));
-  await writeFile(join(root,'package.json'),JSON.stringify({name:'resource-fixture',version:'0.1.0',dependencies:{zod:'^3.24.0','@promptframe/contracts':'^0.1.38'}}));
+  await writeFile(join(root,'package.json'),JSON.stringify({name:'resource-fixture',version:'0.1.0',dependencies:{zod:'^3.24.0','@promptframe/contracts':'^0.1.39'}}));
   await writeFile(join(root,'pnpm-lock.yaml'),'lockfileVersion: \"9.0\"\n');
   await writeFile(join(root,'src/index.ts'),'export {default} from \"./Component\";');
   await writeFile(join(root,'src/Component.tsx'),'export default function Component(){return null;}');

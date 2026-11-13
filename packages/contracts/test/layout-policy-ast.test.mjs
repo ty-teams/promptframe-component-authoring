@@ -97,3 +97,33 @@ test('runtime-reachable component JSX cannot use a support filename to bypass la
   assert(codes(result).includes('component.layout.naked_px_high_risk'));
   assert.match(result.diagnostics[0].message,/child\.test\.tsx:1:/);
 });
+
+test('JSX props spreads inspect the effective style through static props and imports', () => {
+  for (const source of [
+    'export default ()=> <div {...{style:{padding:72,width:1280,height:720}}}/>;',
+    'const props={style:{padding:72}};export default ()=> <div {...props}/>;',
+    'const props=enabled?{style:{padding:72}}:{style:{padding:0}};export default ()=> <div {...props}/>;',
+    'const first={style:{padding:0}};const last={style:{padding:72}};export default ()=> <div {...first} {...last}/>;',
+    'export default ()=> <div style={{padding:0}} {...{style:{padding:72}}}/>;',
+  ]) assert(codes(evaluate(source)).includes('component.layout.naked_px_high_risk'), source);
+  const imported = evaluate('import {props} from "./props";export default ()=> <div {...props}/>;', [
+    {path:'src/props.ts',sourceText:'export const props={style:{padding:72}};'},
+  ]);
+  assert.match(imported.diagnostics[0].message,/src\/props\.ts:1:/);
+  assert(codes(evaluate('export default ()=> <div {...{style:{width:1280,height:720}}}/>;')).includes('component.layout.root_fixed_size'));
+});
+
+test('JSX props overrides and non-style geometry preserve the effective safe result', () => {
+  for (const source of [
+    'const bad={style:{padding:72}};export default ()=> <div {...bad} style={{padding:0,lineHeight:1.2}}/>;',
+    'export default ()=> <div style={{padding:72}} {...{style:{padding:0}}}/>;',
+    'const bad={style:{padding:72}};export default ()=> <div {...bad} {...{style:{padding:0}}}/>;',
+    'const props={width:640,height:360,style:{padding:0,lineHeight:1.2}};export default ()=> <svg><rect {...props}/></svg>;',
+    'const props={style:{padding:layout.px(40),width:"100%",height:"100%"}};export default ()=> <div {...props}/>;',
+  ]) assert.equal(evaluate(source).accepted,true,source);
+});
+
+test('a bounded JSX props analysis cannot report success after exceeding its branch budget', () => {
+  const spreads=Array.from({length:7},(_,i)=>`{...(choice${i}?{style:{padding:0}}:{style:{padding:0}})}`).join(' ');
+  assert(codes(evaluate(`export default ()=> <div ${spreads}/>;`)).includes('component.layout.source_parse_unresolved'));
+});

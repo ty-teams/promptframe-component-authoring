@@ -226,6 +226,12 @@ export function evaluatePromptFrameLayoutPolicy(input: PromptFrameLayoutPolicyIn
       }
     }
   };
+  const checkProps = (variants: StyleProperty[][]) => {
+    for (const variant of variants) {
+      const style = new Map(variant.map(row => [row.name, row])).get('style');
+      if (style) checkStyle(style.value);
+    }
+  };
   for (const [name, sf] of sourceFiles) {
     if (supportFile(name) && !runtimeFiles.has(name)) continue;
     for (const diagnostic of program.getSyntacticDiagnostics(sf)) {
@@ -233,8 +239,25 @@ export function evaluatePromptFrameLayoutPolicy(input: PromptFrameLayoutPolicyIn
       add('component.layout.source_parse_unresolved', file.path, file.sourceText, diagnostic.start ?? 0, 'source syntax is unresolved');
     }
     const visit = (node: ts.Node) => {
-      if (ts.isJsxAttribute(node) && node.name.getText(sf) === 'style'
-        && node.initializer && ts.isJsxExpression(node.initializer) && node.initializer.expression) checkStyle(node.initializer.expression);
+      if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+        let variants: StyleProperty[][] = [[]];
+        for (const attribute of node.attributes.properties) {
+          if (ts.isJsxSpreadAttribute(attribute)) {
+            const spread = properties(attribute.expression);
+            if (variants.length * spread.length > 64) {
+              const file = sources.get(name)!;
+              add('component.layout.source_parse_unresolved', file.path, file.sourceText,
+                attribute.getStart(sf), 'too many static JSX props branches');
+              continue;
+            }
+            variants = variants.flatMap(rows => spread.map(extra => [...rows, ...extra]));
+          } else if (attribute.name.getText(sf) === 'style' && attribute.initializer
+            && ts.isJsxExpression(attribute.initializer) && attribute.initializer.expression) {
+            for (const rows of variants) rows.push({ name: 'style', value: attribute.initializer.expression, node: attribute });
+          }
+        }
+        checkProps(variants);
+      }
       if (ts.isVariableDeclaration(node) && node.type && /\bCSSProperties\b/.test(node.type.getText(sf)) && node.initializer) checkStyle(node.initializer);
       if (ts.isCallExpression(node)) {
         const callee = node.expression;
@@ -244,10 +267,7 @@ export function evaluatePromptFrameLayoutPolicy(input: PromptFrameLayoutPolicyIn
           if (declaration && ts.isImportSpecifier(declaration)) callName = declaration.propertyName?.text ?? declaration.name.text;
         }
         if (['createElement', 'jsx', 'jsxs'].includes(callName) && node.arguments[1]) {
-          for (const variant of properties(node.arguments[1])) {
-            const style = new Map(variant.map(row => [row.name, row])).get('style');
-            if (style) checkStyle(style.value);
-          }
+          checkProps(properties(node.arguments[1]));
         }
       }
       ts.forEachChild(node, visit);
