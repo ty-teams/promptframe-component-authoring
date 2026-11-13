@@ -16,6 +16,7 @@ import {
 import os from 'node:os';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { inflateRawSync } from 'node:zlib';
+import { cliBearerToken, readCliConfiguration } from './configuration.js';
 import ignore, { type Ignore } from 'ignore';
 import {
   COMPONENT_MANIFEST_SCHEMA_VERSION,
@@ -35,6 +36,7 @@ import {
   detectPromptFrameUnknownCustomStyleProps,
   evaluatePromptFrameLayoutPolicy,
   evaluatePromptFrameDependencyPolicy,
+  collectPromptFrameResourceReferences,
   authoringUploadTargetSchema,
   parseComponentManifest,
   type ComponentManifest,
@@ -76,6 +78,8 @@ import {
   assertPreviewEnvelope,
   writeLocalPreviewReport,
 } from './preview-report.js';
+import { capturePreviewResourceFile, clearPreviewResourceDraft, previewResourcePropPath,
+  readPreviewResourceDraft, writePreviewResourceSelection } from './preview-resource-draft.js';
 
 const command = process.argv[2] ?? 'help';
 const args = process.argv.slice(3);
@@ -247,6 +251,9 @@ async function run(name: string, argv: string[]): Promise<void> {
       break;
     case 'preview':
       preview(argv);
+      break;
+    case 'resource':
+      resourceCommand(argv);
       break;
     case 'dev':
       await dev(argv);
@@ -577,7 +584,7 @@ function sync(argv: string[]): void {
   const nextFiles = [
     {
       path: GENERATED_PREVIEW_ROOT_PATH,
-      contents: renderPromptFrameThinPreviewRoot(),
+      contents: renderPromptFrameThinPreviewRoot(hasResourcePreviewAdapter(dir)),
     },
     {
       path: DEV_PUBLIC_RESOURCES_MODULE_PATH,
@@ -734,6 +741,52 @@ async function dev(argv: string[]): Promise<void> {
   if (hasFlag(argv, '--dry-run')) return;
 
   await runDevServer(dir, devCommand);
+}
+
+function resourceCommand(argv: string[]): void {
+  const [action, directory] = positionalArgs(argv), root = resolve(directory ?? '.');
+  if (action === 'clear') {
+    clearPreviewResourceDraft(root);
+    printJson({ command: 'resource.clear', status: 'cleared', originalFilesDeleted: 0 }); return;
+  }
+  if (action === 'status') {
+    const draft = readPreviewResourceDraft(root);
+    printJson({ command: 'resource.status', selectedCount: draft?.selections.length ?? 0,
+      updatedAt: draft?.updatedAt, credentialsIncluded: false }); return;
+  }
+  if (action !== 'set') fail('Use resource set|status|clear <component-directory>.', 'preview.resource.command_invalid', 2);
+  const prop = valueAfter(argv, '--prop'), file = valueAfter(argv, '--file'), reference = valueAfter(argv, '--asset-ref');
+  if (!prop || !!file === !!reference) fail('Select --prop /field with exactly one --file or --asset-ref.', 'preview.resource.selection_invalid', 2);
+  const manifest = validateComponentDirectory(root), envelope = readPreviewProps(root);
+  const facts = evaluatePromptFrameSchemaSource(readFileSync(join(root, manifest.entry.propsSchemaPath), 'utf8'));
+  const props = structuredClone(envelope.props ?? {}) as Record<string, unknown>, keys = previewResourcePropPath(prop);
+  let object: unknown = props;
+  for (const key of keys.slice(0, -1)) {
+    if (!object || typeof object !== 'object' || !Object.hasOwn(object, key)) fail('Resource field is missing.', 'preview.resource.prop_missing');
+    object = (object as Record<string | number, unknown>)[key];
+  }
+  if (!object || typeof object !== 'object') fail('Resource field is missing.', 'preview.resource.prop_missing');
+  (object as Record<string | number, unknown>)[keys.at(-1)!] = reference ?? '/local-preview.png';
+  const slot = collectPromptFrameResourceReferences({ type: 'object', properties: facts.properties }, props)
+    .find(row => JSON.stringify(row.path) === JSON.stringify(keys));
+  if (facts.status !== 'resolved' || !slot) fail('Use promptFrameResourceSchema for this field.', 'preview.resource.slot_missing');
+  const selectedFile = file ? capturePreviewResourceFile(file) : undefined;
+  if (selectedFile && (!slot.slot.sources.includes('public') || !slot.slot.kinds.includes('image')
+    || slot.slot.maxFileBytes !== undefined && selectedFile.size > slot.slot.maxFileBytes
+    || slot.slot.accept?.length && !slot.slot.accept.some(type => type === '*/*' || type === selectedFile.contentType
+      || type.endsWith('/*') && selectedFile.contentType.startsWith(type.slice(0, -1)))))
+    fail('Selected file does not match the declared slot.', 'preview.resource.file_rejected');
+  const sessionId = valueAfter(argv, '--session-id');
+  if (reference && !sessionId) fail('A platform asset needs its original --session-id.', 'preview.resource.scope_required', 2);
+  const ignored = join(root, '.gitignore'), oldIgnore = existsSync(ignored) ? readFileSync(ignored, 'utf8') : '';
+  if (!ignore().add(oldIgnore).ignores('.promptframe/local-previews/resources.json'))
+    writeFileSync(ignored, oldIgnore.replace(/\n?$/, '\n') + '.promptframe/\n');
+  writePreviewResourceSelection(root, { prop, ...(selectedFile ? { file: selectedFile } : { reference, sessionId }) });
+  const config = existsSync(join(root, 'vite.config.ts')) ? readFileSync(join(root, 'vite.config.ts'), 'utf8') : '';
+  printJson({ command: 'resource.set', status: 'selected', prop, source: selectedFile ? 'local_file' : 'platform_asset',
+    draftOnly: true, sourcePreviewPropsChanged: false, platformWrites: 0,
+    previewAdapter: config.includes('@promptframe/cli/preview') ? 'configured' : 'setup_required',
+    nextAction: 'Refresh the local preview. Existing custom Vite shells need promptFramePreviewResources().' });
 }
 
 async function devWorkspace(root: string, argv: string[]): Promise<void> {
@@ -2090,6 +2143,7 @@ function buildVersionNotesHeaders(versionNotes: string | undefined): Record<stri
 }
 
 const POSITIONAL_VALUE_FLAGS = new Set([
+  '--prop', '--file', '--asset-ref',
   '--allowed-upload-target',
   '--auth-permissions',
   '--auth-roles',
@@ -2284,7 +2338,8 @@ async function loginWithDeviceCode(endpoint: string, argv: string[]): Promise<vo
       contractVersion: CLI_AUTH_CONTRACT_VERSION,
       endpoint,
       clientName: `PromptFrame CLI on ${os.hostname()}`,
-      requestedScopes: DEFAULT_CLI_LOGIN_SCOPES,
+      requestedScopes: [...new Set([...(valuesAfter(argv, '--scope').length ? valuesAfter(argv, '--scope') : DEFAULT_CLI_LOGIN_SCOPES),
+        ...(hasFlag(argv, '--with-assets') ? ['asset.read'] : [])])],
     }),
   }, 'login.device_start.failed');
   const deviceCode = requiredPayloadString(startPayload, 'deviceCode', 'login.device_start.invalid');
@@ -3529,15 +3584,8 @@ function resolveBearerToken(endpoint: string, argv: string[]): string | undefine
     ?? process.env.PROMPTFRAME_CI_TOKEN
     ?? process.env.PROMPTFRAME_CLI_TOKEN
     ?? process.env.PROMPTFRAME_AUTH_TOKEN;
-  if (explicit) return explicit;
-  const credential = asRecord(readConfig(argv).credential);
-  if (!credential) return undefined;
-  if (normalizeEndpoint(stringValue(credential.endpoint) ?? '') !== normalizeEndpoint(endpoint)) return undefined;
-  const expiresAt = stringValue(credential.expiresAt);
-  if (expiresAt && Date.parse(expiresAt) <= Date.now()) {
-    fail('Stored PromptFrame CLI credential is expired. Run promptframe login again.', 'cli.auth.token_expired', 2);
-  }
-  return stringValue(credential.tokenSecret);
+  try { return cliBearerToken({ endpoint, explicit, configuration: readConfig(argv) }); }
+  catch { return fail('Stored PromptFrame CLI credential is expired. Run promptframe login again.', 'cli.auth.token_expired', 2); }
 }
 
 function describeAuthForEndpoint(endpoint: string, argv: string[]): Record<string, string> | undefined {
@@ -3698,13 +3746,7 @@ function fileCredentialWarning(): Record<string, unknown> {
 }
 
 function readConfig(argv: string[]): Record<string, unknown> {
-  const path = resolveConfigPath(argv);
-  if (!existsSync(path)) return {};
-  try {
-    return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
+  return readCliConfiguration(resolveConfigPath(argv));
 }
 
 function writeConfig(argv: string[], config: Record<string, unknown>): void {
@@ -3871,6 +3913,13 @@ function validatePreviewProps(dir: string, manifest: ComponentManifest): void {
   assertStaticSchemaResolved(schemaFacts, manifest.entry.propsSchemaPath);
   assertPreviewPropsMatchStaticSchema(manifest, preview, schemaFacts);
   assertStaticPropsHaveDescriptions(schemaFacts, manifest.entry.propsSchemaPath);
+  let references;
+  try { references = collectPromptFrameResourceReferences({ type: 'object', properties: schemaFacts.properties }, preview.props ?? {}); }
+  catch { fail('Public preview resource fields must use valid example paths.', 'component_standard.preview.resource_invalid'); }
+  if (references.some(row => row.source !== 'public')) fail(
+    'Private resource selections belong in resource set drafts; public preview props must use package examples.',
+    'component_standard.preview.private_resource_reference');
+
 }
 
 function assertPreviewDurationMatchesManifest(preview: Record<string, unknown>, manifest: ComponentManifest): void {
@@ -4419,8 +4468,8 @@ function classifyPreviewShell(source: string | undefined): PreviewShellStatus {
   return 'custom_or_unknown';
 }
 
-function renderPromptFrameThinPreviewRoot(): string {
-  return `import { Player } from '@remotion/player';
+function renderPromptFrameThinPreviewRoot(localResources = false): string {
+  const source = `import { Player } from '@remotion/player';
 import {
   PromptFramePreviewApp,
   resolvePromptFramePreviewLocale,
@@ -4489,6 +4538,17 @@ createRoot(root).render(
   </StrictMode>,
 );
 `;
+  if (!localResources) return source;
+  return source
+    .replace("import { propsSchema, type ComponentProps } from './schema';", "import { propsSchema, type ComponentProps } from './schema';\nimport { promptFrameLocalPreview } from 'virtual:promptframe-local-preview';")
+    .replace('const initialPropsParse = propsSchema.safeParse(preview.props ?? {});', 'async function mountPreview() {\nconst localPreview = await promptFrameLocalPreview;\nconst initialPropsParse = propsSchema.safeParse(localPreview.props ?? preview.props ?? {});')
+    .replace('  <StrictMode>\n    <PromptFramePreviewApp', '  <StrictMode>\n    {localPreview.issues.length > 0 && <p role="alert" style={{ padding: 12 }}>\n      本地预览素材不可用，当前显示包内示例。请核对所选文件、作品与 CLI 素材读取授权后刷新。\n    </p>}\n    <PromptFramePreviewApp')
+    + '\n}\nvoid mountPreview();\n';
+}
+
+function hasResourcePreviewAdapter(dir: string): boolean {
+  const path = join(dir, 'vite.config.ts');
+  return existsSync(path) && readFileSync(path, 'utf8').includes('@promptframe/cli/preview');
 }
 
 function assertPublicResourcesAccepted(report: PublicResourceReport): void {
@@ -5093,6 +5153,8 @@ Commands:
   sync <dir>                       Refresh PromptFrame-generated authoring shell files (--dry-run by default; use --apply)
   preview <dir>                    Validate and print local Remotion preview envelope
     --write-local-report           Write .promptframe/local-previews/preview-report.json
+  resource set <dir>               Select a private local preview resource (--prop /field, --file path OR --asset-ref ref --session-id id)
+  resource status|clear <dir>      Inspect or clear private preview selections; original files are retained
   dev <dir>                        Start a local preview or workspace checked-module connection
     --studio-origin <origin>        Required for a multi-component workspace
     --idle-timeout <minutes>        Workspace idle exit (default 30; 0 disables)
@@ -5109,6 +5171,7 @@ Commands:
   probe <buildId> --level <level>  Rerun component layout/security probe
   login --endpoint <url>             Start browser login code flow and store a CLI token
     --token <token>                  Verify and store an already issued CLI/CI token
+    --with-assets                   Explicitly request asset.read in the normal browser authorization
   whoami                            Show the current PromptFrame CLI identity
   logout                            Revoke the current CLI token and clear local config
   discovery                         Fetch platform endpoint and self-service capabilities

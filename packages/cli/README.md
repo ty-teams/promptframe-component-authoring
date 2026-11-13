@@ -8,7 +8,7 @@ PromptFrame component authoring CLI.
 
 Use it to inspect the public component standard, check component folders, validate manifests, inspect the local preview envelope, package source archives, upload components, check build status, rebuild evidence indexes, and rerun layout/security probes.
 
-Current source baseline is `@promptframe/cli@0.1.66`, `@promptframe/contracts@0.1.34`, `@promptframe/component-kit@0.1.28`, and `create-promptframe-component@0.1.56`. The published CLI consumes the contracts AST-aware public security policy evaluator, reports `securityPolicyDigest` / `securityEvaluatorMode` in JSON output, rejects red-team browser capability vectors such as Image/Audio beacons, Worker/SharedWorker, `window.open`, `postMessage`, dynamic script/iframe creation, browser fingerprinting, storage/cookie access, and dangerous HTML, reports `publicResources` for component-level public assets, keeps native `<img>` / `<video>` source checks case-sensitive so Remotion `<Img>` / `<Video>` remain valid, validates preview props against statically declared `propsSchema` fields and requires readable public prop descriptions, enforces strict Slot-first layout/source diagnostics, supports endpoint discovery, project list/current diagnostics, self-service CI token create/list/revoke, single-component and workspace GitHub workflow setup with `promptframe-workflow-version: 2`, `setup-ci --upgrade` stale-template repair, dynamic workspace matrix discovery, `RUNNER_LABELS` and pnpm 10 workflow support, pnpm workspace root lockfile evidence without component symlinks, `promptframe-workspace.json` validation, workspace root `check .` / `upload .` auto-detection, explicit `workspace:*` shared-package diagnostics, workspace upload source metadata headers, packages sanitized lockfile evidence for platform admission, release notes forwarding to upload, stderr NDJSON upload progress for `--json`, human-readable token kind/expiry summaries for `login`, `whoami`, and authenticated `upload`, server version auto-bump notes, and supports `status --fail-on-build-failed` for CI build-status gating.
+Current source baseline is `@promptframe/cli@0.1.67`, `@promptframe/contracts@0.1.35`, `@promptframe/component-kit@0.1.29`, and `create-promptframe-component@0.1.57`. The published CLI consumes the contracts AST-aware public security policy evaluator, reports `securityPolicyDigest` / `securityEvaluatorMode` in JSON output, rejects red-team browser capability vectors such as Image/Audio beacons, Worker/SharedWorker, `window.open`, `postMessage`, dynamic script/iframe creation, browser fingerprinting, storage/cookie access, and dangerous HTML, reports `publicResources` for component-level public assets, keeps native `<img>` / `<video>` source checks case-sensitive so Remotion `<Img>` / `<Video>` remain valid, validates preview props against statically declared `propsSchema` fields and requires readable public prop descriptions, enforces strict Slot-first layout/source diagnostics, supports endpoint discovery, project list/current diagnostics, self-service CI token create/list/revoke, single-component and workspace GitHub workflow setup with `promptframe-workflow-version: 2`, `setup-ci --upgrade` stale-template repair, dynamic workspace matrix discovery, `RUNNER_LABELS` and pnpm 10 workflow support, pnpm workspace root lockfile evidence without component symlinks, `promptframe-workspace.json` validation, workspace root `check .` / `upload .` auto-detection, explicit `workspace:*` shared-package diagnostics, workspace upload source metadata headers, packages sanitized lockfile evidence for platform admission, release notes forwarding to upload, stderr NDJSON upload progress for `--json`, human-readable token kind/expiry summaries for `login`, `whoami`, and authenticated `upload`, server version auto-bump notes, and supports `status --fail-on-build-failed` for CI build-status gating.
 
 ```bash
 npm install -D @promptframe/cli
@@ -206,3 +206,34 @@ promptframe dev stop .
 关闭开发面板不停止连接；切换账号或作品、关闭页面会断开。刷新页面后重新粘贴连接JSON。停止或替换仅操作本工作区的实际实例；无法确认实例退出时命令报错，不自动强制终止进程。
 
 上传组件后，用准确的正式 `componentRef` 替换作品节点引用并移除该节点的 `componentSource`。仅上传成功不会自动改变作品的选源。确认作品已使用正式引用且不再需要本地预览后，可执行 `promptframe dev stop .`。
+
+## 素材引用槽与本地私有预览
+
+在 schema 中用 `promptFrameResourceSchema` 声明素材参数，在组件中用 `promptFrameResource` 消费。参数保存 public 路径或 `asset-proxy://` 引用；组件不读取凭据，也不调用平台解析接口。
+
+```ts
+import { z } from 'zod';
+import { promptFrameResourceSchema } from '@promptframe/contracts';
+export const propsSchema = z.object({
+  illustration: promptFrameResourceSchema({
+    kinds: ['image'], sources: ['public', 'asset'],
+    accept: ['image/png', 'image/jpeg'], maxFileBytes: 16 * 1024 * 1024,
+  }).describe('展示图片').default('/example.png'),
+});
+```
+
+组件使用 `<Img src={promptFrameResource(props, props.illustration)} />`。本地、Studio 预览和正式渲染使用同一写法；解析由宿主完成。正式渲染缺失、错误类型或越权引用会报错，不自动替换作品内容。
+
+新模板已启用 Vite 适配器。自定义旧项目在 `vite.config.ts` 的 plugins 中加入 `promptFramePreviewResources()`（从 `@promptframe/cli/preview` 导入），再运行 `promptframe sync . --apply` 更新预览壳；已有 React 插件等设置继续保留。适配器仅在本机 loopback 开发服务中运行，不导入组件业务代码。
+
+```bash
+promptframe resource set . --prop /illustration --file ./my-selected.png
+promptframe resource status .
+promptframe resource clear .
+```
+
+本人明确选择的 PNG、JPEG、WebP 文件最大 16MiB，并受槽声明的 MIME/大小限制。CLI 记录原文件身份和 SHA，不复制原件；每次读取重新核对。选择存入 ignored 的 `.promptframe/local-previews/resources.json`，不会改公开 `preview-props.json`，打包固定排除此目录。选择最多 16 项，24 小时后不再提供读取；`resource clear` 只移除受管选择记录，不删除原始文件。没有后台清理进程。
+
+平台素材使用同一选择命令的 `--asset-ref` 和原作品 `--session-id`，不得与 `--file` 同用。项目来自正常 `promptframe init` 写入的无凭据上下文。需要先沿正常 `promptframe login --endpoint <平台API> --with-assets` 授予 `asset.read`；旧组件上传凭据不会自动扩大权限。开发服务复用现有 CLI 凭据，逐次请求当前用户、项目与作品范围内的短时只读表示，核字节 SHA 后向浏览器提供本机地址。凭据、签名 URL 和私有文件路径不会发送给组件。断网、撤权、文件变化或选择过期时，预览明确提示不可用并标明正在展示包内示例；恢复条件后刷新。
+
+市场预览的素材选择读取访问者当前作品中的就绪素材，不改变组件包或上传新素材。正式使用时将合法素材引用冻结在 Spec，渲染入口沿原授权、素材存储和预下载合同准备本地表示；签名 URL 不保存到 Spec。

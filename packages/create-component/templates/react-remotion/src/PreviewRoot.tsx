@@ -9,6 +9,7 @@ import Component from './Component';
 import previewEnvelope from './preview-props.json';
 import { promptFrameDevPublicResources } from './promptframe-dev-public-resources.generated';
 import { propsSchema, type ComponentProps } from './schema';
+import { promptFrameLocalPreview } from 'virtual:promptframe-local-preview';
 
 const preview = previewEnvelope as {
   durationFrames: number;
@@ -18,7 +19,9 @@ const preview = previewEnvelope as {
   props?: unknown;
 };
 
-const initialPropsParse = propsSchema.safeParse(preview.props ?? {});
+async function mountPreview() {
+const localPreview = await promptFrameLocalPreview;
+const initialPropsParse = propsSchema.safeParse(localPreview.props ?? preview.props ?? {});
 const initialProps: ComponentProps = initialPropsParse.success
   ? initialPropsParse.data
   : propsSchema.parse({});
@@ -35,6 +38,9 @@ if (!root) {
 
 createRoot(root).render(
   <StrictMode>
+    {localPreview.issues.length > 0 && <p role="alert" style={{ padding: 12 }}>
+      本地预览素材不可用，当前显示包内示例。请核对所选文件、作品与 CLI 素材读取授权后刷新。
+    </p>}
     <PromptFramePreviewApp<ComponentProps>
       previewEnvelope={preview}
       initialProps={initialProps}
@@ -66,3 +72,6 @@ createRoot(root).render(
     />
   </StrictMode>,
 );
+
+}
+void mountPreview();
