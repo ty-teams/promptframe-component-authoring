@@ -24,6 +24,13 @@ test('one resource helper presents package resources and host-resolved preview a
   assert.equal(promptFrameResource({ promptFrameResources: resources }, undefined, '/logo.png'), resources.entries[0]!.url);
 });
 
+test('the original opaque-frame Blob representation remains presentation only', () => {
+  const original='blob:null/40e8a2c0-cd51-4bda-8f0c-67d411cb1cef';
+  assert.equal(promptFrameResource({},original),original);
+  for(const invalid of ['blob:null/guess','blob:null/../private','blob:null/40e8a2c0-cd51-4bda-8f0c-67d411cb1cef?other=1'])
+    assert.throws(()=>promptFrameResource({},invalid),PromptFrameResourceError);
+});
+
 test('unresolved references never silently substitute an example or perform resolution in the component', () => {
   for (const ref of ['asset-proxy://asset_example', '/api/assets/proxy/asset_example?variant=original']) {
     assert.throws(() => promptFrameResource(undefined, ref, '/example.png'),

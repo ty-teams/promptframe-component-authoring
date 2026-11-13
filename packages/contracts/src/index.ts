@@ -20,7 +20,7 @@ export const COMPONENT_STANDARD_POLICY_VERSION = 'component-standard-policy.v0.1
 export const COMPONENT_SECURITY_POLICY_VERSION = 'component-security-policy.v0.1.0' as const;
 export const PROMPTFRAME_STYLE_CONTRACT_VERSION = 'promptframe-style.v0.1.0' as const;
 export const AUTHORING_STANDARD_RELEASE_VERSION = 'authoring-standard-release.v0.1.0' as const;
-export const AUTHORING_STANDARD_RELEASE_ID = 'authoring-release-2026-11-13.3' as const;
+export const AUTHORING_STANDARD_RELEASE_ID = 'authoring-release-2026-11-13.4' as const;
 export const COMPONENT_REUSABILITY_CONTRACT_VERSION = 'component-reusability.v0.1.0' as const;
 export const COMPONENT_DEPENDENCY_POLICY_VERSION = 'component-dependency-policy.v0.1.0' as const;
 export const COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION = 'component-public-resources.v0.1.0' as const;
@@ -1269,10 +1269,10 @@ export const authoringStandardFreshnessDecisionSchema = z.object({
 export type AuthoringStandardFreshnessDecision = z.infer<typeof authoringStandardFreshnessDecisionSchema>;
 
 export const PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_COHORT: AuthoringPackageCohort = authoringPackageCohortSchema.parse({
-  contracts: { name: '@promptframe/contracts', version: '0.1.35' },
-  componentKit: { name: '@promptframe/component-kit', version: '0.1.29' },
-  cli: { name: '@promptframe/cli', version: '0.1.67' },
-  createComponent: { name: 'create-promptframe-component', version: '0.1.57' },
+  contracts: { name: '@promptframe/contracts', version: '0.1.36' },
+  componentKit: { name: '@promptframe/component-kit', version: '0.1.30' },
+  cli: { name: '@promptframe/cli', version: '0.1.68' },
+  createComponent: { name: 'create-promptframe-component', version: '0.1.58' },
 });
 
 export const PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS = authoringPackageFloorSchema.parse({
@@ -1292,7 +1292,7 @@ export const PROMPTFRAME_MIN_AUTHORING_PACKAGE_VERSIONS = authoringPackageFloorS
 export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = authoringStandardReleaseSchema.parse({
   releaseVersion: AUTHORING_STANDARD_RELEASE_VERSION,
   releaseId: AUTHORING_STANDARD_RELEASE_ID,
-  releaseDigest: 'sha256:5eb250c133aea0663e345f605edf09c82c1bf888382878042d47c85ea7b9009d',
+  releaseDigest: 'sha256:36cf07a941e16e04825d7f20a882e21337c7a64a33632ea49adbd1ac595aaa41',
   contractsVersion: PROMPTFRAME_CONTRACTS_VERSION,
   manifestSchemaVersion: COMPONENT_MANIFEST_SCHEMA_VERSION,
   componentRefVersion: COMPONENT_REF_VERSION,
@@ -1308,7 +1308,7 @@ export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = 
   scaffoldTemplates: [
     {
       name: 'react-remotion',
-      digest: 'sha256:f490c6e38854f3c0c73473a721d3b63294825ad25df604ecadfb1c58306f7da6',
+      digest: 'sha256:cfc255cdec5dd1231253ee6a6df447a9d59f43283630e12db0d3c578014eff95',
     },
   ],
   uploadTargets: [

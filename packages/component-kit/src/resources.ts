@@ -56,7 +56,8 @@ export function promptFrameResource<Props extends object>(
       if (!URLConstructor) throw new Error();
       const url = new URLConstructor(reference);
       if (url.username || url.password || !['http:', 'https:', 'blob:'].includes(url.protocol)) throw new Error();
-      if (url.protocol === 'blob:' && url.origin === 'null') throw new Error();
+      if (url.protocol === 'blob:' && url.origin === 'null'
+        && !/^blob:null\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(reference)) throw new Error();
       return reference;
     } catch { throw new PromptFrameResourceError('resource.representation_invalid'); }
   }
