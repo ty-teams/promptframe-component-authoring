@@ -6,7 +6,7 @@
 
 修改前阅读 [README](README.md)、[AUTHORING](AUTHORING.md)、[架构与开发说明](docs/architecture-and-history.md)及[公开导出政策](PUBLIC_EXPORT_POLICY.md)。调整组件创作行为时，继续阅读[组件创作 Skill](skills/component-authoring/SKILL.md)。
 
-确认 Git 根、origin、当前分支和未提交改动。使用任务分支，运行受影响检查后普通提交、合并和推送，保留已有改动。
+确认真实Git根、origin、main和未提交改动。在同一常驻目录的main修改，不创建任务分支或worktree；同一文件串行，保留既有改动，不自动stash、覆盖或强推。完成受影响检查后只暂存本次路径，普通提交并推送。
 
 说明性文档使用中文；代码标识、命令、schema、状态值、包名和必要第三方名称保留英文。
 
