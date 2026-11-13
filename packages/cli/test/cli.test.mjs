@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -832,6 +832,19 @@ test('discovery and project commands fetch self-service context without owner ov
     await server.close();
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('init retains the canonical project namespace when it differs from the project id', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-init-namespace-'));
+  const server = await createServer(async (_req, res) => writeJson(res, {
+    contractVersion: 'cli-auth.v0.1.0', currentProjectId: 'opaque-project-id', selectionRequired: false,
+    projects: [{ tenantId: 'tenant-a', projectId: 'opaque-project-id', namespace: 'author-project', isCurrent: true }],
+  }));
+  try {
+    const result = JSON.parse((await execFileAsync('node', [cliPath, 'init', dir, '--endpoint', server.url, '--json'])).stdout);
+    assert.equal(result.context.projectId, 'opaque-project-id');
+    assert.equal(result.context.projectNamespace, 'author-project');
+  } finally { await server.close(); await rm(dir, { recursive: true, force: true }); }
 });
 
 test('init writes a secret-free promptframe project context from current project', async () => {
@@ -2307,19 +2320,19 @@ test('candidate promotion stage is non-blocking but never reports stable current
         success: true,
         sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47',
         authoringStandardRelease: {
-          releaseId: 'authoring-release-2026-11-11.1',
+          releaseId: 'authoring-release-2026-11-13.1',
           releaseDigest: `sha256:${'7'.repeat(64)}`,
           minPackageVersions: {
-            contracts: '0.1.32',
-            componentKit: '0.1.26',
-            cli: '0.1.64',
-            createComponent: '0.1.54',
+            contracts: '0.1.33',
+            componentKit: '0.1.27',
+            cli: '0.1.65',
+            createComponent: '0.1.55',
           },
           recommendedAuthoringPackages: {
-            contracts: '0.1.32',
-            componentKit: '0.1.26',
-            cli: '0.1.64',
-            createComponent: '0.1.54',
+            contracts: '0.1.33',
+            componentKit: '0.1.27',
+            cli: '0.1.65',
+            createComponent: '0.1.55',
           },
         },
         releasePromotion: {
@@ -2960,6 +2973,100 @@ test('upload default output prints status link and next status command', async (
   }
 });
 
+test('package applies root and nested gitignore rules while retaining public resources and lockfile evidence', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-ignore-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFileTree(componentDir, {
+      '.gitignore': '/local-renders/\n*.fixture.ts\n!/keep.fixture.ts\npnpm-lock.yaml\n',
+      'local-renders/frame.ts': 'eval("not component source");',
+      'src/skip.fixture.ts': 'eval("not component source");',
+      'keep.fixture.ts': 'export const retained = true;',
+      'src/.gitignore': '!keep.fixture.ts\n',
+      'src/keep.fixture.ts': 'export const retained = true;',
+      'public/logo.png': 'fixture image',
+    });
+    const out = path.join(dir, 'component.zip');
+    await execFileAsync('node', [cliPath, 'package', componentDir, '--out', out, '--json']);
+    const names = zipEntryNames(await readFile(out));
+    for (const name of ['manifest.json', 'src/Component.tsx', 'src/schema.ts', 'public/logo.png', 'keep.fixture.ts', 'src/keep.fixture.ts', 'promptframe-lockfile-evidence.json']) assert.equal(names.includes(name), true, name);
+    for (const name of ['local-renders/frame.ts', 'src/skip.fixture.ts', 'pnpm-lock.yaml']) assert.equal(names.includes(name), false, name);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('gitignore cannot reinclude a file below an ignored directory or follow a symlinked rules file', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-ignore-boundary-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFileTree(componentDir, { '.gitignore': 'blocked/\n!blocked/keep.ts', 'blocked/keep.ts': 'eval("excluded");' });
+    const out = path.join(dir, 'component.zip');
+    await execFileAsync('node', [cliPath, 'package', componentDir, '--out', out, '--json']);
+    assert.equal(zipEntryNames(await readFile(out)).includes('blocked/keep.ts'), false);
+    await rm(path.join(componentDir, '.gitignore'));
+    await writeFile(path.join(dir, 'external-ignore'), 'src/');
+    await symlink(path.join(dir, 'external-ignore'), path.join(componentDir, '.gitignore'));
+    await assert.rejects(execFileAsync('node', [cliPath, 'package', componentDir, '--out', out, '--json']), (error) => {
+      assert.equal(JSON.parse(error.stderr).diagnostic.code, 'package.gitignore.invalid');
+      return true;
+    });
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('package rejects ignored required files and public resources instead of silently shipping an incomplete component', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-ignore-required-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFileTree(componentDir, { 'public/logo.png': 'fixture image' });
+    for (const pattern of ['manifest.json', 'src/', 'src/schema.ts', 'public/']) {
+      await writeFile(path.join(componentDir, '.gitignore'), `${pattern}\n`);
+      await assert.rejects(execFileAsync('node', [cliPath, 'package', componentDir, '--out', path.join(dir, 'component.zip'), '--json']), (error) => {
+        assert.equal(JSON.parse(error.stderr).diagnostic.code, 'package.required_file.ignored');
+        return true;
+      });
+    }
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('gitignore does not bypass security checks for files still selected for the component', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-ignore-safety-'));
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFileTree(componentDir, { '.gitignore': '/local-renders/', 'src/unsafe.ts': 'eval("unsafe");' });
+    await assert.rejects(execFileAsync('node', [cliPath, 'package', componentDir, '--out', path.join(dir, 'component.zip'), '--json']), (error) => {
+      assert.match(JSON.parse(error.stderr).diagnostic.code, /eval/);
+      return true;
+    });
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('directory upload uses the same gitignore selection as package', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-ignore-upload-'));
+  let uploaded;
+  const server = await createServer(async (req, res) => {
+    if (req.url === '/components/standard') {
+      writeJson(res, { success: true, sourceHash: 'sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47', authoringStandardRelease: PROMPTFRAME_AUTHORING_STANDARD_RELEASE });
+    } else if (req.url === '/components/marketplace/upload') {
+      uploaded = await readRequestBody(req);
+      writeJson(res, { success: true, buildId: 'fixture-build', status: 'queued' });
+    } else writeJson(res, { success: false }, 404);
+  });
+  try {
+    const componentDir = path.join(dir, 'component');
+    await writeFixtureComponent(componentDir);
+    await writeFileTree(componentDir, { '.gitignore': '/local-renders/', 'local-renders/test.ts': 'eval("local test only");', 'public/logo.png': 'fixture image' });
+    const out = path.join(dir, 'component.zip');
+    await execFileAsync('node', [cliPath, 'package', componentDir, '--out', out, '--json']);
+    const response = JSON.parse((await execFileAsync('node', [cliPath, 'upload', componentDir, '--target', 'project_private_generation', '--endpoint', server.url, '--json'])).stdout);
+    assert.equal(response.success, true);
+    assert.deepEqual(zipEntryNames(uploaded), zipEntryNames(await readFile(out)));
+    assert.equal(zipEntryNames(uploaded).includes('local-renders/test.ts'), false);
+  } finally { await server.close(); await rm(dir, { recursive: true, force: true }); }
+});
+
 test('package validates a component folder and writes a platform zip artifact', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-package-'));
   try {
@@ -3579,15 +3686,15 @@ test('local standard, doctor, and validate expose stable JSON diagnostics', asyn
       'transition_effect',
     ]);
     assert.equal(standard.authoringStandardRelease.releaseVersion, 'authoring-standard-release.v0.1.0');
-    assert.equal(standard.authoringStandardRelease.releaseId, 'authoring-release-2026-11-11.1');
+    assert.equal(standard.authoringStandardRelease.releaseId, 'authoring-release-2026-11-13.1');
     assert.match(standard.authoringStandardRelease.releaseDigest, /^sha256:[a-f0-9]{64}$/);
     assert.equal(standard.authoringStandardRelease.standardVersion, 'component-standard.v0.1.0');
     assert.match(standard.authoringStandardRelease.standardSourceHash, /^sha256:[a-f0-9]{64}$/);
     assert.deepEqual(standard.recommendedAuthoringPackages, {
-      contracts: '0.1.32',
-      componentKit: '0.1.26',
-      cli: '0.1.64',
-      createComponent: '0.1.54',
+      contracts: '0.1.33',
+      componentKit: '0.1.27',
+      cli: '0.1.65',
+      createComponent: '0.1.55',
     });
     assert.deepEqual(
       standard.recommendedAuthoringPackages,
@@ -3724,15 +3831,15 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
     assert.ok(upgrade.packageChanges.some((change) => (
       change.name === '@promptframe/contracts'
       && change.current === '^0.1.4'
-      && change.next === '^0.1.32'
+      && change.next === '^0.1.33'
     )));
     assert.ok(upgrade.packageChanges.some((change) => (
       change.name === '@promptframe/component-kit'
-      && change.next === '^0.1.26'
+      && change.next === '^0.1.27'
     )));
     assert.ok(upgrade.packageChanges.some((change) => (
       change.name === '@promptframe/cli'
-      && change.next === '^0.1.64'
+      && change.next === '^0.1.65'
     )));
 
     const applied = JSON.parse((await execFileAsync('node', [
@@ -3747,19 +3854,19 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
     assert.equal(applied.apply, true);
     assert.ok(applied.packageChanges.some((change) => change.name === '@promptframe/contracts'));
     const appliedPackageJson = JSON.parse(await readFile(path.join(componentDir, 'package.json'), 'utf8'));
-    assert.equal(appliedPackageJson.dependencies['@promptframe/contracts'], '^0.1.32');
-    assert.equal(appliedPackageJson.dependencies['@promptframe/component-kit'], '^0.1.26');
-    assert.equal(appliedPackageJson.devDependencies['@promptframe/cli'], '^0.1.64');
+    assert.equal(appliedPackageJson.dependencies['@promptframe/contracts'], '^0.1.33');
+    assert.equal(appliedPackageJson.dependencies['@promptframe/component-kit'], '^0.1.27');
+    assert.equal(appliedPackageJson.devDependencies['@promptframe/cli'], '^0.1.65');
 
     await writeFile(path.join(componentDir, 'package.json'), JSON.stringify({
       name: 'fixture-component',
       version: '0.1.0',
       dependencies: {
-        '@promptframe/contracts': '^0.1.32',
-        '@promptframe/component-kit': '^0.1.26',
+        '@promptframe/contracts': '^0.1.33',
+        '@promptframe/component-kit': '^0.1.27',
       },
       devDependencies: {
-        '@promptframe/cli': '^0.1.64',
+        '@promptframe/cli': '^0.1.65',
       },
     }, null, 2));
     const current = JSON.parse((await execFileAsync('node', [
@@ -3779,7 +3886,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-scaffold-freshness-'));
   try {
     const componentDir = path.join(dir, 'component');
-    const currentReactRemotionTemplateDigest = 'sha256:3ec8d6eea87dbc2d593017688eebedafab90098d4ef08c164f7052a6a3005707';
+    const currentReactRemotionTemplateDigest = 'sha256:0b5b09d8561f1b2a6cdfb0db4cdd39acfb8f8a000a7aa1f84f29728c25663ffe';
     await writeFixtureComponent(componentDir);
     await mkdir(path.join(componentDir, '.promptframe'), { recursive: true });
     await writeFile(path.join(componentDir, '.promptframe/scaffold.json'), `${JSON.stringify({
@@ -3801,7 +3908,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     const doctorDiagnostic = doctor.diagnostics.find((item) => item.code === 'scaffold.template.stale');
     assert.equal(doctorDiagnostic.severity, 'warning');
     assert.equal(doctorDiagnostic.current, '0.1.0');
-    assert.equal(doctorDiagnostic.minimum, '0.1.54');
+    assert.equal(doctorDiagnostic.minimum, '0.1.55');
     assert.equal(doctorDiagnostic.expectedTemplateDigest, currentReactRemotionTemplateDigest);
     assert.match(doctorDiagnostic.repairHint, /local scaffold freshness/);
 
@@ -3826,7 +3933,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     await writeFile(path.join(componentDir, '.promptframe/scaffold.json'), `${JSON.stringify({
       schemaVersion: 'promptframe.scaffold.v0.1.0',
       createdByPackage: 'create-promptframe-component',
-      createdByVersion: '0.1.54',
+      createdByVersion: '0.1.55',
       templateName: 'react-remotion',
       templateDigest: `sha256:${'b'.repeat(64)}`,
       createdAt: '2026-07-01T00:00:00.000Z',
@@ -3839,7 +3946,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     ])).stdout);
     const sameVersionDiagnostic = sameVersionWrongDigest.diagnostics.find((item) => item.code === 'scaffold.template.stale');
     assert.equal(sameVersionDiagnostic.severity, 'warning');
-    assert.equal(sameVersionDiagnostic.current, '0.1.54');
+    assert.equal(sameVersionDiagnostic.current, '0.1.55');
     assert.equal(sameVersionDiagnostic.templateDigest, `sha256:${'b'.repeat(64)}`);
     assert.equal(sameVersionDiagnostic.expectedTemplateDigest, currentReactRemotionTemplateDigest);
     assert.match(sameVersionDiagnostic.message, /templateDigest/i);
@@ -3847,7 +3954,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     await writeFile(path.join(componentDir, '.promptframe/scaffold.json'), `${JSON.stringify({
       schemaVersion: 'promptframe.scaffold.v0.1.0',
       createdByPackage: 'create-promptframe-component',
-      createdByVersion: '0.1.54',
+      createdByVersion: '0.1.55',
       templateName: 'react-remotion',
       templateDigest: currentReactRemotionTemplateDigest,
       createdAt: '2026-07-01T00:00:00.000Z',

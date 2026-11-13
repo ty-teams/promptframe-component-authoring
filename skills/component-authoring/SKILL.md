@@ -170,6 +170,8 @@ third-party components are not browser extensions. They run as deterministic Pro
 
 ### Asset and resource truth
 
+本地出图和测试产物可通过组件目录或子目录中的 `.gitignore` 排除，`package` 与目录 `upload` 使用同一选择规则。必需源码、manifest 声明入口和 `public/` 资源被忽略时会明确报错；修正规则，不要删除安全检查或漏传必需资源。
+
 Use JSON props, safe fallback defaults, platform-managed asset references, or the component-level `public/` resource contract. Put small bundled resources under `public/` and resolve them in component code with `promptFramePublicResource(props, '/asset.png', fallback)` from `@promptframe/component-kit`. The CLI reports `publicResources` in `validate/check/package/upload --json`; `promptframe dev .` also writes `.promptframe/dev-public-resources.json` and `src/promptframe-dev-public-resources.generated.ts` so the local PreviewRoot can show public-resource picker buttons for text props. After platform build admission accepts the files, preview/render receive platform-managed runtime URLs. Platform build/status diagnostics remain the final authority for accepted files, hosted URLs and rejection reasons. Do not rely on raw external URLs or component-side `fetch()` unless a platform-mediated API explicitly allows it.
 
 ## Component Types

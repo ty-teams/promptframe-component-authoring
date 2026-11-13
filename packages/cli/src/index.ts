@@ -16,6 +16,7 @@ import {
 import os from 'node:os';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { inflateRawSync } from 'node:zlib';
+import ignore, { type Ignore } from 'ignore';
 import {
   COMPONENT_MANIFEST_SCHEMA_VERSION,
   COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION,
@@ -2447,6 +2448,7 @@ async function initProjectContext(argv: string[]): Promise<void> {
     projectId,
     projectNamespace: valueAfter(argv, '--project-namespace')
       ?? stringValue(project.projectNamespace)
+      ?? stringValue(project.namespace)
       ?? normalizeProjectNamespace(projectId),
     defaultUploadTarget: valueAfter(argv, '--target')
       ?? valueAfter(argv, '--upload-target')
@@ -4671,23 +4673,52 @@ function decodeZipEntry(data: Buffer, method: number): Buffer {
 
 function collectPackageFiles(root: string): Array<{ name: string; data: Buffer }> {
   const files: Array<{ name: string; data: Buffer }> = [];
-  function walk(dir: string): void {
+  const manifest = parseComponentManifest(normalizeLegacyManifest(JSON.parse(readFileSync(join(root, 'manifest.json'), 'utf8'))));
+  const requiredPaths = new Set([
+    ...REQUIRED_COMPONENT_FILES,
+    manifest.entry.sourcePath,
+    manifest.entry.propsSchemaPath,
+  ]);
+  type IgnoreRules = { root: string; matcher: Ignore };
+  function walk(dir: string, inherited: IgnoreRules[]): void {
+    const rules = [...inherited];
+    const ignorePath = join(dir, '.gitignore');
+    if (existsSync(ignorePath)) {
+      if (!lstatSync(ignorePath).isFile()) {
+        fail('.gitignore must be an ordinary file inside the component directory.', 'package.gitignore.invalid');
+      }
+      rules.push({ root: dir, matcher: ignore({ ignorecase: false }).add(readFileSync(ignorePath, 'utf8')) });
+    }
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       if (['node_modules', 'dist', '.git', '.component-packages', '.promptframe'].includes(entry.name)) continue;
       const full = join(dir, entry.name);
+      const name = relative(root, full).replace(/\\/g, '/');
+      let ignored = false;
+      for (const rule of rules) {
+        const result = rule.matcher.test(`${relative(rule.root, full).replace(/\\/g, '/')}${entry.isDirectory() ? '/' : ''}`);
+        if (result.ignored) ignored = true;
+        else if (result.unignored) ignored = false;
+      }
+      if (ignored) {
+        const containsRequiredPath = [...requiredPaths].some((requiredPath) => requiredPath === name || (entry.isDirectory() && requiredPath.startsWith(`${name}/`)));
+        if (containsRequiredPath || name === 'public' || name.startsWith('public/')) {
+          fail(`.gitignore excludes required component content: ${name}. Remove that rule or explicitly include the required source/resource.`, 'package.required_file.ignored');
+        }
+        continue;
+      }
       if (entry.isDirectory()) {
-        walk(full);
+        walk(full, rules);
       } else if (entry.isFile()) {
         if (entry.name === LOCKFILE_EVIDENCE_FILE_NAME) continue;
         if (isPackageManagerLockfile(entry.name)) continue;
         files.push({
-          name: relative(root, full).replace(/\\/g, '/'),
+          name,
           data: readFileSync(full),
         });
       }
     }
   }
-  walk(root);
+  walk(root, []);
   const evidence = buildLockfileEvidenceFile(root);
   if (evidence) files.push(evidence);
   return files.sort((a, b) => a.name.localeCompare(b.name));
