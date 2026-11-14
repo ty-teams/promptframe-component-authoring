@@ -130,10 +130,16 @@ function evaluatePatternSource(
   const findings: PromptFrameSecurityPolicyFinding[] = [];
   const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.Unknown);
   for (const rule of rules) {
+    const patternSourceText=rule.id==='network.remote_url'&&/\.(?:md|markdown)$/i.test(file)
+      ? source.replace(/https?:\/\/[^\s<>()"'`]+/gi,url=>{
+        const preview=url.replace(/[.,;!?，。；！？]+$/u,'');
+        if(/^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):5173(?:[/?#][^\s]*)?$/iu.test(preview))return ' '.repeat(url.length);
+        return url;
+      }):source;
     const patterns = rule.patterns ?? rule.rawApis?.map(apiToPattern) ?? [];
     for (const patternSource of patterns) {
       const pattern = new RegExp(patternSource, 'i');
-      const match = source.match(pattern);
+      const match = patternSourceText.match(pattern);
       if (!match || match.index === undefined) continue;
       findings.push(buildFinding({
         file,
@@ -157,6 +163,12 @@ function matchAstRule(
   localDeclarations: Set<string>,
   aliases: Map<string, string>,
 ): { node: ts.Node; confidence: PromptFrameSecurityPolicyConfidence; trace: string[] } | undefined {
+  if(rule.id==='network.remote_url'&&ts.isStringLiteralLike(node)&&/^https?:\/\//i.test(node.text)){
+    const parent=ts.isJsxExpression(node.parent)?node.parent.parent:node.parent;
+    if(ts.isJsxAttribute(parent)&&['src','href','poster'].includes(parent.name.getText(sourceFile))){
+      return{node,confidence:'high',trace:['resourceUrlLiteral']};
+    }
+  }
   const matcher = rule.astMatchers;
   if (!matcher) return undefined;
 

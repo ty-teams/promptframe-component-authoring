@@ -1,6 +1,6 @@
 {
   "name": "create-promptframe-component",
-  "version": "0.1.64",
+  "version": "0.1.65",
   "license": "MIT",
   "type": "module",
   "files": [
@@ -43,6 +43,9 @@
     "test:previewroot-geometry": "pnpm build && node --test test/previewroot-browser-geometry.smoke.mjs",
     "pack:dry-run": "pnpm build && npm pack --dry-run --json",
     "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@promptframe/contracts": "0.1.43"
   },
   "devDependencies": {
     "@types/node": "^24.12.4",

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import test from 'node:test';
-import { evaluatePromptFrameDependencyPolicy } from '../../contracts/dist/index.js';
+import { evaluatePromptFrameDependencyPolicy, PROMPTFRAME_AUTHORING_STANDARD_RELEASE } from '../../contracts/dist/index.js';
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(import.meta.dirname, '..');
@@ -72,6 +72,7 @@ test('create CLI honors explicit component name independently of target director
     assert.equal(scaffold.createdByVersion, createPackage.version);
     assert.equal(scaffold.templateName, 'react-remotion');
     assert.match(scaffold.templateDigest, /^sha256:[a-f0-9]{64}$/);
+    assert.equal(scaffold.templateDigest, PROMPTFRAME_AUTHORING_STANDARD_RELEASE.scaffoldTemplates.find(row => row.name === 'react-remotion').digest);
     assert.match(scaffold.createdAt, /^\d{4}-\d{2}-\d{2}T/);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -147,6 +148,7 @@ test('create CLI scaffolds an advanced workspace with one component', async () =
     assert.equal(scaffold.createdByPackage, 'create-promptframe-component');
     assert.equal(scaffold.templateName, 'react-remotion');
     assert.match(scaffold.templateDigest, /^sha256:[a-f0-9]{64}$/);
+    assert.equal(scaffold.templateDigest, PROMPTFRAME_AUTHORING_STANDARD_RELEASE.scaffoldTemplates.find(row => row.name === 'react-remotion').digest);
     assert.equal(await fileExists(path.join(target, 'components/image-particle-remotion/.github/workflows/promptframe-component.yml')), false);
   } finally {
     await rm(dir, { recursive: true, force: true });

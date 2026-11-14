@@ -1,5 +1,7 @@
 import ts from 'typescript';
+import {z} from 'zod';
 import { componentResourceSlotSchema, type ComponentResourceSlot } from './resource-slots.js';
+import {promptFrameStyleIntentSchema} from './style-intent.js';
 
 export const PROMPTFRAME_SCHEMA_EVALUATOR_VERSION = 'promptframe-schema-evaluator/v1' as const;
 
@@ -24,6 +26,7 @@ export interface PromptFrameStaticSchemaNode {
   required?: string[];
   additionalProperties?: boolean | PromptFrameStaticSchemaNode;
   format?: string;
+  pattern?: string;
   minLength?: number;
   maxLength?: number;
   minItems?: number;
@@ -186,6 +189,10 @@ function resolveSchemaExpression(expression: ts.Expression, context: ParseContex
 
 function resolveSchemaIdentifier(identifier: ts.Identifier, context: ParseContext): ResolvedSchema {
   const name = identifier.text;
+  const imported = context.imports.get(name);
+  if(imported?.source==='@promptframe/contracts'&&imported.imported==='promptFrameStyleIntentSchema'){
+    return officialStyleFacts(promptFrameStyleIntentSchema);
+  }
   const initializer = context.variables.get(name);
   if (!initializer) return unresolvedReference(identifier, context, name);
   if (context.resolving.has(name)) {
@@ -204,6 +211,25 @@ function resolveSchemaIdentifier(identifier: ts.Identifier, context: ParseContex
   const resolved = resolveSchemaExpression(initializer, context);
   context.resolving.delete(name);
   return resolved;
+}
+
+/** Read the actual exported contract, never a component's executable module.
+ * Optional/describe calls on its import still use the ordinary static chain. */
+function officialStyleFacts(schema:z.ZodTypeAny,depth=0):ResolvedSchema{
+  if(depth>8)throw Error('schema.official_style_depth');
+  if(schema instanceof z.ZodOptional){const inner=officialStyleFacts(schema.unwrap(),depth+1);return {...inner,required:false};}
+  if(schema instanceof z.ZodDefault){const inner=officialStyleFacts(schema._def.innerType,depth+1);
+    return {...inner,required:false,schema:{...inner.schema,default:schema._def.defaultValue()}};}
+  if(schema instanceof z.ZodObject){const properties:Record<string,PromptFrameStaticSchemaNode>={},required:string[]=[];
+    for(const [key,value]of Object.entries(schema.shape)as Array<[string,z.ZodTypeAny]>){const child=officialStyleFacts(value,depth+1);properties[key]=child.schema;if(child.required)required.push(key);}
+    return resolved({type:'object',properties,required,additionalProperties:schema._def.unknownKeys!=='strict'});}
+  if(schema instanceof z.ZodEnum)return resolved({type:'string',enum:[...schema.options]});
+  if(schema instanceof z.ZodLiteral&&typeof schema.value==='string')return resolved({type:'string',const:schema.value});
+  if(schema instanceof z.ZodString){const result:PromptFrameStaticSchemaNode={type:'string'};
+    for(const check of schema._def.checks){if(check.kind==='min')result.minLength=check.value;
+      else if(check.kind==='max')result.maxLength=check.value;else if(check.kind==='regex')result.pattern=check.regex.source;}
+    return resolved(result);}
+  throw Error('schema.official_style_type_unsupported');
 }
 
 function resolveWrapperCall(

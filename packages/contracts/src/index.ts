@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import {PROMPTFRAME_STYLE_CONTRACT_VERSION} from './style-intent.js';
+export * from './style-intent.js';
 import { createPromptFramePublicSecurityPolicyDigest } from './security-policy-fingerprint.js';
 import { componentPublicResourceKindSchema } from './resource-slots.js';
 export * from './resource-slots.js';
@@ -19,9 +21,8 @@ export const LAYOUT_CAPABILITY_VERSION = 'layout-capability.v0.1.0' as const;
 export const CAPABILITY_CARD_VERSION = 'component-capability-card.v0.1.0' as const;
 export const COMPONENT_STANDARD_POLICY_VERSION = 'component-standard-policy.v0.1.0' as const;
 export const COMPONENT_SECURITY_POLICY_VERSION = 'component-security-policy.v0.1.0' as const;
-export const PROMPTFRAME_STYLE_CONTRACT_VERSION = 'promptframe-style.v0.1.0' as const;
 export const AUTHORING_STANDARD_RELEASE_VERSION = 'authoring-standard-release.v0.1.0' as const;
-export const AUTHORING_STANDARD_RELEASE_ID = 'authoring-release-2026-11-14.3' as const;
+export const AUTHORING_STANDARD_RELEASE_ID = 'authoring-release-2026-11-14.4' as const;
 export const COMPONENT_REUSABILITY_CONTRACT_VERSION = 'component-reusability.v0.1.0' as const;
 export const COMPONENT_DEPENDENCY_POLICY_VERSION = 'component-dependency-policy.v0.1.0' as const;
 export const COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION = 'component-public-resources.v0.1.0' as const;
@@ -879,44 +880,6 @@ export const componentVisibilitySchema = z.enum([
 ]);
 export type ComponentVisibility = z.infer<typeof componentVisibilitySchema>;
 
-export const promptFrameToneSchema = z.enum([
-  'business',
-  'tech',
-  'minimal',
-  'warm',
-  'playful',
-  'luxury',
-  'documentary',
-]);
-export type PromptFrameTone = z.infer<typeof promptFrameToneSchema>;
-
-export const promptFrameDensitySchema = z.enum(['compact', 'balanced', 'spacious']);
-export type PromptFrameDensity = z.infer<typeof promptFrameDensitySchema>;
-
-export const promptFrameMotionIntensitySchema = z.enum(['none', 'subtle', 'balanced', 'expressive']);
-export type PromptFrameMotionIntensity = z.infer<typeof promptFrameMotionIntensitySchema>;
-
-export const promptFrameFontScaleSchema = z.enum(['small', 'normal', 'large']);
-export type PromptFrameFontScale = z.infer<typeof promptFrameFontScaleSchema>;
-
-export const promptFrameHexColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/);
-
-export const promptFrameStyleIntentSchema = z.object({
-  contractVersion: z.literal(PROMPTFRAME_STYLE_CONTRACT_VERSION).default(PROMPTFRAME_STYLE_CONTRACT_VERSION),
-  stylePackId: z.string().trim().min(1).max(80).optional(),
-  tone: promptFrameToneSchema.optional(),
-  accentColor: promptFrameHexColorSchema.optional(),
-  density: promptFrameDensitySchema.optional(),
-  motionIntensity: promptFrameMotionIntensitySchema.optional(),
-  fontScale: promptFrameFontScaleSchema.optional(),
-  brandTokens: z.object({
-    primaryColor: promptFrameHexColorSchema.optional(),
-    logoAssetId: z.string().trim().min(1).max(160).regex(/^asset:\/\/[a-zA-Z0-9._:-]+$/).optional(),
-    fontFamilyHint: z.string().trim().min(1).max(120).optional(),
-  }).strict().optional(),
-}).strict();
-export type PromptFrameStyleIntent = z.infer<typeof promptFrameStyleIntentSchema>;
-
 export const PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE = {
   id: 'component.style.unknown_custom_style_prop',
   stage: 'schema',
@@ -1270,10 +1233,10 @@ export const authoringStandardFreshnessDecisionSchema = z.object({
 export type AuthoringStandardFreshnessDecision = z.infer<typeof authoringStandardFreshnessDecisionSchema>;
 
 export const PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_COHORT: AuthoringPackageCohort = authoringPackageCohortSchema.parse({
-  contracts: { name: '@promptframe/contracts', version: '0.1.42' },
-  componentKit: { name: '@promptframe/component-kit', version: '0.1.36' },
-  cli: { name: '@promptframe/cli', version: '0.1.74' },
-  createComponent: { name: 'create-promptframe-component', version: '0.1.64' },
+  contracts: { name: '@promptframe/contracts', version: '0.1.43' },
+  componentKit: { name: '@promptframe/component-kit', version: '0.1.37' },
+  cli: { name: '@promptframe/cli', version: '0.1.75' },
+  createComponent: { name: 'create-promptframe-component', version: '0.1.65' },
 });
 
 export const PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS = authoringPackageFloorSchema.parse({
@@ -1293,7 +1256,7 @@ export const PROMPTFRAME_MIN_AUTHORING_PACKAGE_VERSIONS = authoringPackageFloorS
 export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = authoringStandardReleaseSchema.parse({
   releaseVersion: AUTHORING_STANDARD_RELEASE_VERSION,
   releaseId: AUTHORING_STANDARD_RELEASE_ID,
-  releaseDigest: 'sha256:8686e03ef0bdead8b8da8bb0ef42c894034490fa1e8256c016efb15efb156373',
+  releaseDigest: 'sha256:dd8b218cbe34c704adbc1c2e6bfc9ee935aa38f7bc97ca1b26bb9116307120c6',
   contractsVersion: PROMPTFRAME_CONTRACTS_VERSION,
   manifestSchemaVersion: COMPONENT_MANIFEST_SCHEMA_VERSION,
   componentRefVersion: COMPONENT_REF_VERSION,
@@ -1309,7 +1272,7 @@ export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = 
   scaffoldTemplates: [
     {
       name: 'react-remotion',
-      digest: 'sha256:8061b35d3944183c00a6bc09af8e6c3c6ae53a3fe458441d682c19d4f8f6e556',
+      digest: 'sha256:7e0b62a4c4490454804d104fa27a2cdf23355d6e403fa149a283470ef68c7938',
     },
   ],
   uploadTargets: [

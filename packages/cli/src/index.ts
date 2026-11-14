@@ -2387,7 +2387,11 @@ async function loginWithDeviceCode(endpoint: string, argv: string[]): Promise<vo
   }, 'login.device_start.failed');
   const deviceCode = requiredPayloadString(startPayload, 'deviceCode', 'login.device_start.invalid');
   const device = redactDeviceStart(startPayload);
-  if (!hasFlag(argv, '--json')) {
+  if (hasFlag(argv, '--json')) {
+    process.stderr.write(JSON.stringify({command:'login',status:'waiting_for_browser_approval',
+      verificationUri:device.verificationUriComplete??device.verificationUri,
+      ...(device.userCode?{userCode:device.userCode}:{})})+'\n');
+  }else{
     console.log('Open this PromptFrame login URL in your browser:');
     console.log(`  ${device.verificationUriComplete ?? device.verificationUri}`);
     if (device.userCode) console.log(`Code: ${device.userCode}`);

@@ -183,3 +183,24 @@ test('schema evaluator reports non-static propsSchema without executing source',
   assert.equal(facts.status, 'schema_not_static');
   assert.equal(facts.diagnostics[0]?.code, 'schema.props_schema_not_static');
 });
+
+test('official style schema imports and aliases retain the actual public contract and static optional/describe chain', async()=>{
+ const {promptFrameStyleIntentSchema:runtime}=await import('../dist/index.js');
+ for(const [symbol,declaration,expression,optional]of [
+  ['promptFrameStyleIntentSchema','promptFrameStyleIntentSchema','promptFrameStyleIntentSchema',false],
+  ['style','promptFrameStyleIntentSchema as style',"style.optional().describe('Visual treatment')",true],
+ ]){
+  const facts=evaluatePromptFrameSchemaSource(`import {z} from 'zod';import {${declaration}} from '@promptframe/contracts';export const propsSchema=z.object({styleIntent:${expression}});`);
+  assert.equal(facts.status,'resolved');assert.deepEqual(facts.diagnostics,[]);assert.equal(facts.requiredPropKeys.includes('styleIntent'),!optional);
+  const style=facts.properties.styleIntent;assert.equal(style.additionalProperties,false);assert.deepEqual(style.required,[]);
+  assert.deepEqual(style.properties.tone.enum,runtime.shape.tone.unwrap().options);
+  assert.deepEqual(Object.keys(style.properties),Object.keys(runtime.shape));
+  assert.equal(style.properties.contractVersion.default,runtime.parse({}).contractVersion);
+  assert.equal(style.properties.accentColor.pattern,runtime.shape.accentColor.unwrap()._def.checks[0].regex.source);
+  assert.equal(style.properties.brandTokens.additionalProperties,false);
+  assert.equal(style.properties.brandTokens.properties.logoAssetId.maxLength,160);
+  if(optional)assert.equal(style.description,'Visual treatment');
+ }
+ const rejected=evaluatePromptFrameSchemaSource(`import {z} from 'zod';import {promptFrameStyleIntentSchema as style} from 'unknown-style-package';export const propsSchema=z.object({styleIntent:style.optional()});`);
+ assert.equal(rejected.status,'partial');assert(rejected.diagnostics.some(d=>d.propPath==='styleIntent'&&d.line>0&&d.column>0));
+});

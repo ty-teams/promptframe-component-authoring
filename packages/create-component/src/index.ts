@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {canonicalizePromptFramePolicy} from '@promptframe/contracts';
 
 const targetArg = process.argv[2];
 if (!targetArg || targetArg === '--help' || targetArg === '-h') {
@@ -241,14 +242,10 @@ function writeScaffoldMetadata(templateDir: string, componentDir: string, input:
 }
 
 function hashTemplateDirectory(root: string): string {
-  const hash = createHash('sha256');
-  for (const relativePath of listTemplateFiles(root)) {
-    hash.update(relativePath);
-    hash.update('\0');
-    hash.update(readFileSync(join(root, relativePath)));
-    hash.update('\0');
-  }
-  return `sha256:${hash.digest('hex')}`;
+  const entries=listTemplateFiles(root).map(relativePath=>({path:relativePath,
+    sha256:createHash('sha256').update(readFileSync(join(root,relativePath))).digest('hex')}));
+  entries.sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);
+  return `sha256:${createHash('sha256').update(canonicalizePromptFramePolicy(entries)).digest('hex')}`;
 }
 
 function listTemplateFiles(root: string, prefix = ''): string[] {

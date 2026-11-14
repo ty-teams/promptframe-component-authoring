@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
@@ -2327,19 +2327,19 @@ test('candidate promotion stage is non-blocking but never reports stable current
         success: true,
         sourceHash: COMPONENT_STANDARD_SOURCE_HASH,
         authoringStandardRelease: {
-          releaseId: 'authoring-release-2026-11-14.3',
+          releaseId: 'authoring-release-2026-11-14.4',
           releaseDigest: `sha256:${'7'.repeat(64)}`,
           minPackageVersions: {
-            contracts: '0.1.42',
-            componentKit: '0.1.36',
-            cli: '0.1.74',
-            createComponent: '0.1.64',
+            contracts: '0.1.43',
+            componentKit: '0.1.37',
+            cli: '0.1.75',
+            createComponent: '0.1.65',
           },
           recommendedAuthoringPackages: {
-            contracts: '0.1.42',
-            componentKit: '0.1.36',
-            cli: '0.1.74',
-            createComponent: '0.1.64',
+            contracts: '0.1.43',
+            componentKit: '0.1.37',
+            cli: '0.1.75',
+            createComponent: '0.1.65',
           },
         },
         releasePromotion: {
@@ -3745,15 +3745,15 @@ test('local standard, doctor, and validate expose stable JSON diagnostics', asyn
       'transition_effect',
     ]);
     assert.equal(standard.authoringStandardRelease.releaseVersion, 'authoring-standard-release.v0.1.0');
-    assert.equal(standard.authoringStandardRelease.releaseId, 'authoring-release-2026-11-14.3');
+    assert.equal(standard.authoringStandardRelease.releaseId, 'authoring-release-2026-11-14.4');
     assert.match(standard.authoringStandardRelease.releaseDigest, /^sha256:[a-f0-9]{64}$/);
     assert.equal(standard.authoringStandardRelease.standardVersion, 'component-standard.v0.1.0');
     assert.match(standard.authoringStandardRelease.standardSourceHash, /^sha256:[a-f0-9]{64}$/);
     assert.deepEqual(standard.recommendedAuthoringPackages, {
-      contracts: '0.1.42',
-      componentKit: '0.1.36',
-      cli: '0.1.74',
-      createComponent: '0.1.64',
+      contracts: '0.1.43',
+      componentKit: '0.1.37',
+      cli: '0.1.75',
+      createComponent: '0.1.65',
     });
     assert.deepEqual(
       standard.recommendedAuthoringPackages,
@@ -3895,15 +3895,15 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
     assert.ok(upgrade.packageChanges.some((change) => (
       change.name === '@promptframe/contracts'
       && change.current === '^0.1.4'
-      && change.next === '^0.1.42'
+      && change.next === '^0.1.43'
     )));
     assert.ok(upgrade.packageChanges.some((change) => (
       change.name === '@promptframe/component-kit'
-      && change.next === '^0.1.36'
+      && change.next === '^0.1.37'
     )));
     assert.ok(upgrade.packageChanges.some((change) => (
       change.name === '@promptframe/cli'
-      && change.next === '^0.1.74'
+      && change.next === '^0.1.75'
     )));
 
     const applied = JSON.parse((await execFileAsync('node', [
@@ -3918,19 +3918,19 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
     assert.equal(applied.apply, true);
     assert.ok(applied.packageChanges.some((change) => change.name === '@promptframe/contracts'));
     const appliedPackageJson = JSON.parse(await readFile(path.join(componentDir, 'package.json'), 'utf8'));
-    assert.equal(appliedPackageJson.dependencies['@promptframe/contracts'], '^0.1.42');
-    assert.equal(appliedPackageJson.dependencies['@promptframe/component-kit'], '^0.1.36');
-    assert.equal(appliedPackageJson.devDependencies['@promptframe/cli'], '^0.1.74');
+    assert.equal(appliedPackageJson.dependencies['@promptframe/contracts'], '^0.1.43');
+    assert.equal(appliedPackageJson.dependencies['@promptframe/component-kit'], '^0.1.37');
+    assert.equal(appliedPackageJson.devDependencies['@promptframe/cli'], '^0.1.75');
 
     await writeFile(path.join(componentDir, 'package.json'), JSON.stringify({
       name: 'fixture-component',
       version: '0.1.0',
       dependencies: {
-        '@promptframe/contracts': '^0.1.42',
-        '@promptframe/component-kit': '^0.1.36',
+        '@promptframe/contracts': '^0.1.43',
+        '@promptframe/component-kit': '^0.1.37',
       },
       devDependencies: {
-        '@promptframe/cli': '^0.1.74',
+        '@promptframe/cli': '^0.1.75',
       },
     }, null, 2));
     const current = JSON.parse((await execFileAsync('node', [
@@ -3972,7 +3972,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     const doctorDiagnostic = doctor.diagnostics.find((item) => item.code === 'scaffold.template.stale');
     assert.equal(doctorDiagnostic.severity, 'warning');
     assert.equal(doctorDiagnostic.current, '0.1.0');
-    assert.equal(doctorDiagnostic.minimum, '0.1.64');
+    assert.equal(doctorDiagnostic.minimum, '0.1.65');
     assert.equal(doctorDiagnostic.expectedTemplateDigest, currentReactRemotionTemplateDigest);
     assert.match(doctorDiagnostic.repairHint, /local scaffold freshness/);
 
@@ -3997,7 +3997,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     await writeFile(path.join(componentDir, '.promptframe/scaffold.json'), `${JSON.stringify({
       schemaVersion: 'promptframe.scaffold.v0.1.0',
       createdByPackage: 'create-promptframe-component',
-      createdByVersion: '0.1.64',
+      createdByVersion: '0.1.65',
       templateName: 'react-remotion',
       templateDigest: `sha256:${'b'.repeat(64)}`,
       createdAt: '2026-07-01T00:00:00.000Z',
@@ -4010,7 +4010,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     ])).stdout);
     const sameVersionDiagnostic = sameVersionWrongDigest.diagnostics.find((item) => item.code === 'scaffold.template.stale');
     assert.equal(sameVersionDiagnostic.severity, 'warning');
-    assert.equal(sameVersionDiagnostic.current, '0.1.64');
+    assert.equal(sameVersionDiagnostic.current, '0.1.65');
     assert.equal(sameVersionDiagnostic.templateDigest, `sha256:${'b'.repeat(64)}`);
     assert.equal(sameVersionDiagnostic.expectedTemplateDigest, currentReactRemotionTemplateDigest);
     assert.match(sameVersionDiagnostic.message, /templateDigest/i);
@@ -4018,7 +4018,7 @@ test('doctor and upgrade --check-latest expose stale scaffold template metadata'
     await writeFile(path.join(componentDir, '.promptframe/scaffold.json'), `${JSON.stringify({
       schemaVersion: 'promptframe.scaffold.v0.1.0',
       createdByPackage: 'create-promptframe-component',
-      createdByVersion: '0.1.64',
+      createdByVersion: '0.1.65',
       templateName: 'react-remotion',
       templateDigest: currentReactRemotionTemplateDigest,
       createdAt: '2026-07-01T00:00:00.000Z',
@@ -5058,3 +5058,27 @@ async function writeFileTree(root, files) {
     await writeFile(full, `${content}\n`);
   }
 }
+
+
+test('JSON device login exposes one actionable progress event before approval and one secret-free terminal payload',async()=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'promptframe-cli-device-progress-'));
+ let ready,progressTimer;const seen=new Promise((resolve,reject)=>{ready=resolve;progressTimer=setTimeout(()=>reject(Error('approval_link_not_emitted_before_poll')),3000);});let stderr='',stdout='',progressCount=0,child;
+ const server=await createServer(async(req,res)=>{
+  await readRequestBody(req);
+  if(req.url==='/cli/auth/device/start'){writeJson(res,{contractVersion:'cli-auth.v0.1.0',deviceCode:'private-device-secret',userCode:'PF-ACTION',verificationUri:server.url+'/approve',verificationUriComplete:server.url+'/approve?user_code=PF-ACTION',expiresAt:'2099-01-01T00:00:00Z',intervalSeconds:1},201);return;}
+  if(req.url==='/cli/auth/device/poll'){await seen;assert.equal(stdout,'');writeJson(res,{contractVersion:'cli-auth.v0.1.0',status:'approved',credential:{contractVersion:'cli-auth.v0.1.0',endpoint:server.url,tokenId:'device-approved',tokenKind:'human',tenantId:'test-tenant',projectId:'test-project',expiresAt:'2099-01-01T00:00:00Z',tokenSecret:'private-approved-token'}});return;}
+  writeJson(res,{error:'unexpected_path'},404);
+ });
+ try{
+  child=spawn(process.execPath,[cliPath,'login','--endpoint',server.url,'--config',path.join(dir,'config.json'),'--json','--timeout-seconds','3'],{env:{...process.env,PROMPTFRAME_CLI_TOKEN:'',PROMPTFRAME_CI_TOKEN:''},stdio:['ignore','pipe','pipe']});
+  child.stdout.on('data',part=>{stdout+=part;});let parsed=0;child.stderr.on('data',part=>{stderr+=part;const lines=stderr.split('\n');while(parsed<lines.length-1){const line=lines[parsed++];if(!line)continue;const event=JSON.parse(line);if(event.status==='waiting_for_browser_approval'){progressCount++;assert.equal(event.command,'login');assert.equal(event.userCode,'PF-ACTION');assert.equal(event.verificationUri,server.url+'/approve?user_code=PF-ACTION');assert.equal(stdout,'');clearTimeout(progressTimer);ready();}}});
+  const exit=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',(code,signal)=>resolve({code,signal}));});assert.deepEqual(exit,{code:0,signal:null});assert.equal(progressCount,1);const terminal=JSON.parse(stdout);assert.equal(terminal.command,'login');assert.equal(terminal.diagnostic.code,'login.completed');assert.doesNotMatch(stdout+stderr,/private-device-secret|private-approved-token/u);assert.equal(JSON.parse(await readFile(path.join(dir,'config.json'),'utf8')).credential.tokenSecret,'private-approved-token');
+ }finally{clearTimeout(progressTimer);if(child&&child.exitCode===null&&!child.killed)child.kill('SIGTERM');await server.close();await rm(dir,{recursive:true,force:true});}
+});
+
+for(const status of ['expired','denied'])test(`JSON device login keeps ${status} diagnostic after the approval hint`,async()=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'promptframe-cli-device-negative-'));const code='cli.auth.device_'+status;
+ const server=await createServer(async(req,res)=>{await readRequestBody(req);if(req.url==='/cli/auth/device/start'){writeJson(res,{contractVersion:'cli-auth.v0.1.0',deviceCode:'never-print-device-secret',userCode:'PF-NO',verificationUri:server.url+'/approve',expiresAt:'2099-01-01T00:00:00Z',intervalSeconds:1},201);return;}writeJson(res,{contractVersion:'cli-auth.v0.1.0',status,diagnostic:{code,message:'Device approval '+status}});});
+ try{await assert.rejects(()=>execFileAsync(process.execPath,[cliPath,'login','--endpoint',server.url,'--config',path.join(dir,'config.json'),'--json'],{env:{...process.env,PROMPTFRAME_CLI_TOKEN:'',PROMPTFRAME_CI_TOKEN:''}}),error=>{const events=parseStderrJsonLines(error.stderr);assert.equal(events.filter(e=>e.status==='waiting_for_browser_approval').length,1);assert.equal(events.at(-1).diagnostic.code,code);assert.equal(error.code,2);assert.equal(error.stdout,'');assert.doesNotMatch(error.stderr,/never-print-device-secret/u);return true;});await assert.rejects(()=>stat(path.join(dir,'config.json')),e=>e.code==='ENOENT');}
+ finally{await server.close();await rm(dir,{recursive:true,force:true});}
+});
