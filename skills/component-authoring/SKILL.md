@@ -65,7 +65,10 @@ npx promptframe init . --endpoint <promptframe-api-base>
 npx promptframe component create @project-namespace/my-component --display-name "My Component"
 npx promptframe upload . --endpoint <promptframe-api-base>
 npx promptframe status <buildId> --endpoint <promptframe-api-base>
+npx promptframe status <buildId> --wait --json --endpoint <promptframe-api-base>
 ```
+
+`status --wait` observes only that existing build, with a default 300-second budget and bounded backoff. `--timeout-seconds` changes the observation budget, and Ctrl-C stops only the observer. Read `wait.state`; failed, manual-action, timed-out and unconfirmed results are not usable-build success. Only a ready result adds a top-level locked `componentRef`. Keep the original build id and inspect its diagnostics instead of repeating upload or build.
 
 Do not guess private service addresses. Endpoint resolution is explicit: command `--endpoint`, then `PROMPTFRAME_API_BASE`, then `REMOTION_MEDIA_API_BASE`, then local config from `promptframe configure --endpoint <url>`, then secret-free `.promptframerc`. If no endpoint is provided, finish local video preview, validation, and local preview envelope checks, then report the missing endpoint.
 

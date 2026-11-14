@@ -19,6 +19,7 @@ import { inflateRawSync } from 'node:zlib';
 import { cliBearerToken, readCliConfiguration } from './configuration.js';
 import ignore from 'ignore';
 import { ComponentFileSelectionError, selectComponentSourceFiles } from './component-file-selection.js';
+import {BuildStatusReadError,waitForOriginalBuild,type BuildWaitState} from './build-status-wait.js';
 import {
   COMPONENT_MANIFEST_SCHEMA_VERSION,
   COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION,
@@ -249,7 +250,7 @@ async function run(name: string, argv: string[]): Promise<void> {
   const flagOptions = new Set([
     '--apply', '--check-latest', '--dry-run', '--fail-on-build-failed', '--force',
     '--help', '-h', '--json', '--replace', '--show', '--strict', '--upgrade',
-    '--with-assets', '--workspace', '--write-local-report',
+    '--wait', '--with-assets', '--workspace', '--write-local-report',
   ]);
   for (let index = 0; index < ownArgs.length; index++) {
     const argument = ownArgs[index];
@@ -266,6 +267,7 @@ async function run(name: string, argv: string[]): Promise<void> {
     help(name);
     return;
   }
+  if(hasFlag(ownArgs,'--wait')&&name!=='status')fail('--wait is supported only by status.','cli.option.unsupported',2);
   switch (name) {
     case 'standard':
       standard();
@@ -2252,8 +2254,34 @@ function extractRemoteStandardSourceHash(payload: Record<string, unknown>): stri
 }
 
 async function showStatus(argv: string[]): Promise<void> {
-  const buildId = requiredArg(argv[0], 'status requires a build id', 'status.build_id.missing');
+  const buildId = requiredArg(argv[0]?.startsWith('-')?undefined:argv[0], 'status requires a build id', 'status.build_id.missing');
+  const waiting=hasFlag(argv,'--wait');
+  const seconds=waiting?parsePositiveSeconds(valueAfter(argv,'--timeout-seconds'),'--timeout-seconds',300):0;
+  if(waiting&&(seconds<0.1||seconds>1800))fail('Status wait timeout must be between 0.1 and 1800 seconds.','status.wait.timeout_invalid',2);
   const endpoint = resolveEndpoint('status', argv);
+  if(waiting){
+    const controller=new AbortController();let cancelledBy:string|undefined;
+    const interrupt=()=>{cancelledBy='SIGINT';controller.abort('SIGINT');},terminate=()=>{cancelledBy='SIGTERM';controller.abort('SIGTERM');};
+    process.once('SIGINT',interrupt);process.once('SIGTERM',terminate);
+    try{
+      const headers=buildRemoteHeaders(endpoint,argv);
+      const result=await waitForOriginalBuild({buildId,timeoutMs:seconds*1000,signal:controller.signal,
+        read:async signal=>{const response=await fetch(`${endpoint}/components/marketplace/builds/${encodeURIComponent(buildId)}`,{headers,signal,redirect:'error'});
+          if(!response.ok)throw new BuildStatusReadError(response.status);
+          const payload=await response.json() as Record<string,unknown>;if(!payload||typeof payload!=='object'||Array.isArray(payload)||payload.success===false)throw new BuildStatusReadError(response.status);return payload;},
+        progress:value=>{if(hasFlag(argv,'--json'))process.stderr.write(JSON.stringify({command:'status',observation:value})+'\n');
+          else process.stderr.write(`Build ${value.buildId}: ${value.status} (read ${value.reads})\n`);},
+      });
+      const codes:Record<BuildWaitState,string>={ready:'status.wait.ready',failed:'status.build.failed',action_required:'status.build.action_required',timed_out:'status.wait.timed_out',cancelled:'status.wait.cancelled',unconfirmed:'status.wait.unconfirmed'};
+      const messages:Record<BuildWaitState,string>={ready:'The original build has a ready preview and an exact mirrored artifact receipt.',failed:'The original build failed or was cancelled. No new build was submitted.',action_required:'The original build requires explicit action. No recovery or rebuild was submitted.',timed_out:'Observation timed out. The original build may still be running; read this same build again.',cancelled:'Observation cancelled. The original build was not cancelled or changed.',unconfirmed:'The original build state is unconfirmed. Read this same build; do not repeat upload.'};
+      const {componentRef:_unconfirmedReference,...observedPayload}=result.payload??{};
+      const output={...observedPayload,command:'status',endpoint,buildId,wait:{state:result.state,reads:result.reads,elapsedMs:result.elapsedMs,reason:result.reason,httpStatus:result.httpStatus},
+        ...(result.componentRef?{componentRef:result.componentRef}:{}),diagnostic:diagnostic(codes[result.state],result.state==='ready'?'info':result.state==='failed'?'error':'warning',messages[result.state])};
+      if(hasFlag(argv,'--json'))printJson(output);else{printBuildSummary(output);console.log(`${codes[result.state]}: ${messages[result.state]}`);if(result.componentRef)console.log('ComponentRef: '+JSON.stringify(result.componentRef));}
+      process.exitCode=result.state==='ready'?0:result.state==='failed'?1:result.state==='cancelled'?(cancelledBy==='SIGTERM'?143:130):result.state==='timed_out'?3:2;
+    }finally{process.removeListener('SIGINT',interrupt);process.removeListener('SIGTERM',terminate);}
+    return;
+  }
   const payload = await fetchJson(`${endpoint}/components/marketplace/builds/${encodeURIComponent(buildId)}`, {
     headers: buildRemoteHeaders(endpoint, argv),
   }, 'status.http.failed');
@@ -5075,9 +5103,17 @@ function printBuildSummary(payload: Record<string, unknown>): void {
   console.log(`Build: ${stringValue(build.buildId) ?? stringValue(build.id) ?? 'unknown'}`);
   console.log(`Status: ${stringValue(build.status) ?? 'unknown'}`);
   printStatusUrl(stringValue(payload.endpoint) ?? '', build);
-  for (const item of arrayValue(build.diagnostics)) {
+  for (const item of arrayValue(build.diagnostics).slice(0,80)) {
     const diagnosticItem = asRecord(item);
-    console.log(`${stringValue(diagnosticItem?.severity)?.toUpperCase() ?? 'INFO'} ${stringValue(diagnosticItem?.code) ?? 'unknown'}: ${stringValue(diagnosticItem?.message) ?? ''}`);
+    const stage=stringValue(diagnosticItem?.stage);
+    console.log(`${stringValue(diagnosticItem?.severity)?.toUpperCase() ?? 'INFO'}${stage?' ['+stage+']':''} ${stringValue(diagnosticItem?.code) ?? 'unknown'}: ${stringValue(diagnosticItem?.message) ?? ''}`);
+    const hint=stringValue(diagnosticItem?.repairHint);if(hint)console.log('Hint: '+hint);
+  }
+  for(const value of arrayValue(build.logs).slice(0,40)){
+    const log=asRecord(value),lines=arrayValue(log?.lines).filter((line):line is string=>typeof line==='string').flatMap(line=>line.split(/\r?\n/u)).slice(0,20);
+    if(!lines.length)continue;console.log(`Log: ${stringValue(log?.title)??'Build diagnostic'}`);
+    for(const line of lines)console.log(line);
+    if(log?.truncated)console.log('[excerpt truncated]');
   }
 }
 
@@ -5195,6 +5231,8 @@ Commands:
     --target <target>              marketplace_authoring or project_private_generation
     --target marketplace --strict  Alias for strict external marketplace authoring
   status <buildId>                 Fetch component build status
+    --wait                        Observe this same build until usable, failed, manual review, or a bounded timeout
+    --timeout-seconds <seconds>    --wait budget (default 300, maximum 1800); Ctrl-C stops observation only
     --fail-on-build-failed         Exit nonzero when platform build status is failed/cancelled
   reindex <buildId>                Rebuild component search/evidence indexes
   probe <buildId> --level <level>  Rerun component layout/security probe

@@ -1233,10 +1233,10 @@ export const authoringStandardFreshnessDecisionSchema = z.object({
 export type AuthoringStandardFreshnessDecision = z.infer<typeof authoringStandardFreshnessDecisionSchema>;
 
 export const PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_COHORT: AuthoringPackageCohort = authoringPackageCohortSchema.parse({
-  contracts: { name: '@promptframe/contracts', version: '0.1.43' },
-  componentKit: { name: '@promptframe/component-kit', version: '0.1.37' },
-  cli: { name: '@promptframe/cli', version: '0.1.75' },
-  createComponent: { name: 'create-promptframe-component', version: '0.1.65' },
+  contracts: { name: '@promptframe/contracts', version: '0.1.44' },
+  componentKit: { name: '@promptframe/component-kit', version: '0.1.38' },
+  cli: { name: '@promptframe/cli', version: '0.1.76' },
+  createComponent: { name: 'create-promptframe-component', version: '0.1.66' },
 });
 
 export const PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS = authoringPackageFloorSchema.parse({
@@ -1256,7 +1256,7 @@ export const PROMPTFRAME_MIN_AUTHORING_PACKAGE_VERSIONS = authoringPackageFloorS
 export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = authoringStandardReleaseSchema.parse({
   releaseVersion: AUTHORING_STANDARD_RELEASE_VERSION,
   releaseId: AUTHORING_STANDARD_RELEASE_ID,
-  releaseDigest: 'sha256:dd8b218cbe34c704adbc1c2e6bfc9ee935aa38f7bc97ca1b26bb9116307120c6',
+  releaseDigest: 'sha256:1abdeb55b0826a5776babf1d61c7ac454206fdd8a4aa6384fa1e8bb413adf3f6',
   contractsVersion: PROMPTFRAME_CONTRACTS_VERSION,
   manifestSchemaVersion: COMPONENT_MANIFEST_SCHEMA_VERSION,
   componentRefVersion: COMPONENT_REF_VERSION,
@@ -1272,7 +1272,7 @@ export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = 
   scaffoldTemplates: [
     {
       name: 'react-remotion',
-      digest: 'sha256:7e0b62a4c4490454804d104fa27a2cdf23355d6e403fa149a283470ef68c7938',
+      digest: 'sha256:7b5621b0b2c8de6b2203b493fe004d448c2d656b97bb035484046ae22fc17734',
     },
   ],
   uploadTargets: [

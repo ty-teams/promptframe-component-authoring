@@ -36,6 +36,7 @@ process.on('exit',()=>process.stderr.write('HELP_EFFECT_CALLS='+calls+'\\n'));
       ['setup-ci', '.', '--provider', 'github', '--help'], ['dev', '.', '-h'],
       ['dev', '.', '--studio-origin', 'https://studio.example', '--help'],
       ['status', 'build-example', '--json', '--help'],
+      ['status', 'build-example', '--wait', '--timeout-seconds', '5', '--json', '--help'],
     ]) {
       await t.test(args.join(' '), async () => {
         const {stdout, stderr} = await execute(process.execPath, ['--require', guard, cli, ...args], {
