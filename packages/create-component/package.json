@@ -37,8 +37,8 @@
   },
   "homepage": "https://github.com/ty-teams/promptframe-component-authoring#readme",
   "scripts": {
-    "build": "tsc",
-    "lint": "tsc --noEmit",
+    "build": "pnpm --filter @promptframe/contracts build && tsc",
+    "lint": "pnpm --filter @promptframe/contracts build && tsc --noEmit",
     "test": "pnpm build && node --test test/*.test.mjs",
     "test:previewroot-geometry": "pnpm build && node --test test/previewroot-browser-geometry.smoke.mjs",
     "pack:dry-run": "pnpm build && npm pack --dry-run --json",
