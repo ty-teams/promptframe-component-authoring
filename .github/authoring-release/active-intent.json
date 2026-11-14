@@ -1,7 +1,7 @@
 {
   "schemaVersion": "promptframe-authoring-release-intent/v1",
   "releaseId": "authoring-release-2026-11-15.1",
-  "artifactTag": "authoring-candidate-2026-11-15.1-r1",
+  "artifactTag": "authoring-candidate-2026-11-15.1-r2",
   "createdAt": "2026-11-14T18:21:54.190Z",
   "expiresAt": "2026-11-21T18:21:54.191Z",
   "registry": "https://registry.npmjs.org/",
@@ -23,5 +23,5 @@
       "version": "0.1.66"
     }
   ],
-  "intentDigest": "sha256:a2db5156917f58fdfcdef54d6d29d8ee387d043360f1b5333097864dc28596fa"
+  "intentDigest": "sha256:91f1883f94cf8d8c2099aae14c2dd6b3eb29e78cd06995b44ac52e285a05bcdb"
 }

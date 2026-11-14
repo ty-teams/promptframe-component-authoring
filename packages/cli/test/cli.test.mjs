@@ -3745,7 +3745,7 @@ test('local standard, doctor, and validate expose stable JSON diagnostics', asyn
       'transition_effect',
     ]);
     assert.equal(standard.authoringStandardRelease.releaseVersion, 'authoring-standard-release.v0.1.0');
-    assert.equal(standard.authoringStandardRelease.releaseId, 'authoring-release-2026-11-14.4');
+    assert.equal(standard.authoringStandardRelease.releaseId, PROMPTFRAME_AUTHORING_STANDARD_RELEASE.releaseId);
     assert.match(standard.authoringStandardRelease.releaseDigest, /^sha256:[a-f0-9]{64}$/);
     assert.equal(standard.authoringStandardRelease.standardVersion, 'component-standard.v0.1.0');
     assert.match(standard.authoringStandardRelease.standardSourceHash, /^sha256:[a-f0-9]{64}$/);
