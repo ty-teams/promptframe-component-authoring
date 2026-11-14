@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import type {DevelopmentTemporaryRoot} from './development-temporary.js';
 
 export class DevelopmentProcessError extends Error {
   constructor(readonly code: string, readonly diagnosticCode?: string) {
@@ -9,12 +10,14 @@ export class DevelopmentProcessError extends Error {
 /** A bounded compiler/checker process, never a component execution sandbox. */
 export function runDevelopmentProcess(options: {
   worker: string; cwd: string; input: string; timeoutMs: number;
-  maximumOutputBytes: number; signal?: AbortSignal;
+  maximumOutputBytes: number; signal?: AbortSignal;temporary?:DevelopmentTemporaryRoot;
 }): Promise<string> {
   options.signal?.throwIfAborted();
+  options.temporary?.beforeSpawn();
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [options.worker], {
       cwd: options.cwd, stdio: ['pipe', 'pipe', 'pipe'],
+      detached:Boolean(options.temporary&&process.platform==='linux'),
       env: { NO_COLOR: '1', NODE_ENV: 'development',
         ...(process.platform === 'win32' && process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) },
     });
@@ -38,6 +41,7 @@ export function runDevelopmentProcess(options: {
     const timeout = setTimeout(() => fail(new DevelopmentProcessError('development.build.timeout')), options.timeoutMs);
     child.once('close', code => {
       clearTimeout(timeout); options.signal?.removeEventListener('abort', abort);
+      try{options.temporary?.joined();}catch(error){if(!failed){failed=true;firstError=error;}}
       if (failed) return reject(firstError);
       if (code === 0) return resolve(Buffer.concat(stdout).toString('utf8'));
       let diagnosticCode: string | undefined;
@@ -47,7 +51,8 @@ export function runDevelopmentProcess(options: {
       } catch { /* Raw compiler paths/output are not public diagnostics. */ }
       reject(new DevelopmentProcessError('development.build.rejected', diagnosticCode));
     });
-    child.stdin.end(options.input);
+    try{options.temporary?.spawned(child.pid);}catch(error){fail(error);}
+    child.stdin.end(failed?undefined:options.input);
     if (options.signal?.aborted) abort();
   });
 }

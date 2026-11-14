@@ -5,11 +5,12 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { buildAuthoringCandidateArtifacts } from './authoring-release-candidate.mjs';
-import { expectedArtifactName } from './authoring-release-receipt.mjs';
+import { expectedArtifactName,readAuthoringReleaseIntent } from './authoring-release-receipt.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourceCommit = 'c'.repeat(40);
 const now = new Date('2026-10-18T12:00:00.000Z');
+const activeIntent = await readAuthoringReleaseIntent(undefined,{root,now});
 
 test('candidate builder packs the exact cohort without lifecycle scripts or inherited credentials', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'authoring-candidate-builder-'));
@@ -22,7 +23,7 @@ test('candidate builder packs the exact cohort without lifecycle scripts or inhe
       sourceCommit,
       headCommit: sourceCommit,
       repositoryClean: true,
-      artifactTag: 'authoring-candidate-2026-11-13.7',
+      artifactTag: activeIntent.artifactTag,
       createdAt: '2026-10-18T10:00:00.000Z',
       now,
       baseEnv: {
@@ -64,7 +65,7 @@ test('candidate builder fails closed and removes partial output', async () => {
         sourceCommit,
         headCommit: sourceCommit,
         repositoryClean: true,
-        artifactTag: 'authoring-candidate-2026-11-13.7',
+        artifactTag: activeIntent.artifactTag,
         now,
         execFileImpl: async () => ({
           stdout: JSON.stringify([{ name: '@promptframe/wrong', version: '9.9.9', filename: 'wrong.tgz' }]),

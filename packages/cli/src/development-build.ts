@@ -1,9 +1,7 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DevelopmentContents } from './development-revisions.js';
 import { DevelopmentProcessError, runDevelopmentProcess } from './development-process.js';
+import {createDevelopmentTemporary} from './development-temporary.js';
 
 const outputLimits = Object.freeze({ maximumFiles: 512, maximumBytes: 8 * 1024 * 1024 });
 export interface DevelopmentBuildReceipt {
@@ -32,12 +30,12 @@ export async function buildDevelopmentContents(
   if (files.length > 2048) throw new DevelopmentProcessError('development.build.input_limit');
   const input = JSON.stringify({ sourceRevision: contents.revision,
     files: files.map(file => ({ path: file.path, base64: Buffer.from(file.bytes).toString('base64') })) });
-  const directory = await mkdtemp(join(options.temporaryParent ?? tmpdir(), 'promptframe-build-'));
+  const temporary=await createDevelopmentTemporary('build',options.temporaryParent),directory=temporary.directory;
   let hadFailure = false;
   try {
     const raw = await runDevelopmentProcess({
       worker: fileURLToPath(new URL('./development-build-worker.js', import.meta.url)),
-      cwd: directory, input, timeoutMs, maximumOutputBytes: 20 * 1024 * 1024, signal: options.signal,
+      cwd: directory, input, timeoutMs, maximumOutputBytes: 20 * 1024 * 1024, signal: options.signal,temporary,
     });
     const result = JSON.parse(raw) as {
       sourceRevision: string; builder: string; files: Array<{ path: string; base64: string }>;
@@ -62,7 +60,7 @@ export async function buildDevelopmentContents(
   } finally {
     // The worker has actually closed before returning/throwing above. A cleanup
     // failure must not replace the original abort/compiler cause.
-    try { await rm(directory, { recursive: true, force: true }); }
+    try { temporary.release(); }
     catch (error) {
       if (!hadFailure) throw error;
       // Keep the first failure and make any retained private directory

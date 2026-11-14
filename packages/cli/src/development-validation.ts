@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir,writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { DevelopmentContents } from './development-revisions.js';
+import {createDevelopmentTemporary,type DevelopmentTemporaryRoot} from './development-temporary.js';
 
 export interface DevelopmentValidationReceipt {
   readonly sourceRevision: string;
@@ -37,7 +37,7 @@ export async function validateDevelopmentContents(
       throw new DevelopmentValidationError('development.validation.excluded_input');
     }
   }
-  const directory = await mkdtemp(join(options.temporaryParent ?? tmpdir(), 'promptframe-check-'));
+  const temporary=await createDevelopmentTemporary('check',options.temporaryParent),directory=temporary.directory;
   let hadFailure = false;
   try {
     for (const file of files) {
@@ -46,7 +46,7 @@ export async function validateDevelopmentContents(
       await mkdir(dirname(path), { recursive: true });
       await writeFile(path, file.bytes, { flag: 'wx', mode: 0o400 });
     }
-    const result = await runCapturedValidation(directory, timeoutMs, options.signal);
+    const result = await runCapturedValidation(directory, timeoutMs, options.signal,temporary);
     const output = JSON.parse(result) as Record<string, unknown>;
     if (output.command !== 'validate' || output.securityEvaluatorMode !== 'ast'
       || typeof output.securityPolicyVersion !== 'string' || typeof output.securityPolicyDigest !== 'string'
@@ -61,7 +61,7 @@ export async function validateDevelopmentContents(
   } finally {
     // runCapturedValidation waits for actual child close, also after abort or
     // timeout. Its reader cannot outlive this private input directory.
-    try { await rm(directory, { recursive: true, force: true }); }
+    try { temporary.release(); }
     catch (error) {
       if (!hadFailure) throw error;
       process.stderr.write(JSON.stringify({ code: 'development.validation.cleanup_failed', directory }) + '\n');
@@ -69,11 +69,13 @@ export async function validateDevelopmentContents(
   }
 }
 
-function runCapturedValidation(directory: string, timeoutMs: number, signal?: AbortSignal): Promise<string> {
+function runCapturedValidation(directory: string, timeoutMs: number, signal?: AbortSignal,temporary?:DevelopmentTemporaryRoot): Promise<string> {
   signal?.throwIfAborted();
+  temporary?.beforeSpawn();
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [fileURLToPath(new URL('./index.js', import.meta.url)), 'validate', directory, '--json'], {
       cwd: directory, stdio: ['ignore', 'pipe', 'pipe'],
+      detached:Boolean(temporary&&process.platform==='linux'),
       // Validation is local. Neither endpoint/auth configuration nor arbitrary
       // Node preload options from the host belong in this subprocess.
       env: { NO_COLOR: '1', ...(process.platform === 'win32' && process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) },
@@ -97,6 +99,7 @@ function runCapturedValidation(directory: string, timeoutMs: number, signal?: Ab
     child.once('error', error => { if (!failed) { failed = true; firstError = error; } });
     child.once('close', code => {
       clearTimeout(timeout); signal?.removeEventListener('abort', abort);
+      try{temporary?.joined();}catch(error){if(!failed){failed=true;firstError=error;}}
       if (failed) return reject(firstError);
       if (code === 0) return resolve(Buffer.concat(stdout).toString('utf8'));
       let diagnosticCode: string | undefined;
@@ -107,6 +110,7 @@ function runCapturedValidation(directory: string, timeoutMs: number, signal?: Ab
       } catch { /* Unstructured child output is not a diagnostic contract. */ }
       reject(new DevelopmentValidationError('development.validation.rejected', diagnosticCode));
     });
+    try{temporary?.spawned(child.pid);}catch(error){fail(error);}
     if (signal?.aborted) abort();
   });
 }

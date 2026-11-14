@@ -20,6 +20,7 @@ function birth(pid:number):string|null{
     return execFileSync('ps',['-p',String(pid),'-o','lstart=','-o','uid='],{encoding:'utf8',timeout:3000,stdio:['ignore','pipe','ignore']}).trim();
   }catch{try{process.kill(pid,0);}catch(error){if((error as NodeJS.ErrnoException).code==='ESRCH')return null;}throw Error('development.owner.identity_unavailable');}
 }
+export {birth as developmentProcessBirth};
 function paths(root:string,create=false){
   root=realpathSync(root);
   const directory=join(root,'.promptframe','dev'),rootDigest=createHash('sha256').update(root).digest('hex');
