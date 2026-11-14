@@ -2,6 +2,45 @@
 
 本文是外部组件作者的单页恢复入口。组件项目应把业务代码留在 `src/Component.tsx`、`src/schema.ts`、`manifest.json`、`public/` 等作者文件里，把本地预览壳交给 `@promptframe/component-kit` 和 `promptframe sync` 维护。
 
+<a id="authoring-decisions"></a>
+## 作者决策表
+
+本节随工具链发行保存；使用固定版本时，从对应的 `authoring-release-*` tag 阅读本节。当前源码对应 contracts `0.1.45`、component-kit `0.1.39`、CLI `0.1.77`、scaffold `0.1.67`；公开版本和平台实际支持以 registry 与 `/components/standard` 为准。
+
+| 需要 | 采用方式 | 边界与当前支持 |
+| --- | --- | --- |
+| 独立组件 | 组件根放 `manifest.json`、`package.json`、`src/`、`public/` | `check/package/upload .` 只读取此根，不因同 Git 仓而扩大边界 |
+| 同仓共享本地源码 | 工作区清单显式声明 `sharedDirectories`，从根选择 `--workspace-component` | 捕获选中组件及实际引用的共享 JS/TS/JSON/文本闭包，保留真实根相对路径；不纳入未引用组件或共享文件 |
+| 跨仓公共库 | 使用允许的精确 npm 版本并保留依赖锁证据 | 不自动内联 `workspace:*`、`file:`、宿主 `node_modules` 或任意 path alias；运行依赖仍须原准入 |
+| 手动上传 | `check` → `package` → `upload` → `status --wait` | 平台须声明 `sourcePackageLayouts` 支持 `promptframe-component-source-layout/v1`，否则新格式在上传前拒绝 |
+| CI 上传 | 原 `setup-ci --workspace` 矩阵及 upload CI Token | 组件选择来自清单和 manifest；Token 不选择组件，也不授予其它项目权限 |
+| 从历史版本恢复 | 原作者在 Studio 的构建历史选版本并下载源码；MCP 使用 `platform_read_component_source` | 逐次核项目、作者、版本和归档；MCP 只返回版本摘要与短期下载入口，不把 ZIP 塞入模型上下文，不授编辑或发布权 |
+| 依赖恢复 | 原 Git 历史和安全的原锁文件优先；归档只含脱敏锁证据 | 证据绑定 package.json 和锁摘要，不是可执行锁文件；不得把 `.npmrc`、凭据或原始锁文件发布进源包 |
+| 本地与正式预览 | 共用上述捕获输入及原 public/素材槽 | dev 输入上限仍 16MiB，正式源包仍 50MiB；CSS Modules 继续沿原限制，不支持 CSS import/URL 或全局样式 |
+
+显式共享工作区示例：
+
+```json
+{
+  "schemaVersion": "promptframe-workspace.v0.1.0",
+  "components": [
+    {"id": "@demo/part-a", "path": "components/part-a"},
+    {"id": "@demo/part-b", "path": "components/part-b"},
+    {"id": "@demo/part-c", "path": "components/part-c"}
+  ],
+  "sharedDirectories": ["shared"]
+}
+```
+
+组件可从 `components/part-a/src/Component.tsx` 静态导入 `../../../shared/theme`。A/B 引用主题而 C 不引用时，修改主题只改变 A/B 的新包输入；旧固定源包不变。单组件内部合法的 `../` 引用不会仅因向上一级而拒绝，实际路径仍须在组件根内。
+
+```bash
+npx -y -p @promptframe/cli@0.1.77 promptframe check . --workspace-component @demo/part-a --json
+npx -y -p @promptframe/cli@0.1.77 promptframe package . --workspace-component @demo/part-a --out ./part-a.zip --json
+```
+
+每个历史 ZIP 解压到独立的新空目录，保留 `promptframe-source-layout.json` 和包内路径，然后在恢复根运行 `promptframe validate . --json`。不要把不同版本的 `shared/` 合并，不自动写回 Git；缺归档或无源码读取权时保留明确失败，不重新上传或生成替代版本。
+
 ## Preview Shell
 
 新模板的 `src/PreviewRoot.tsx` 只是 thin shell（薄入口）：它导入 `PromptFramePreviewApp`，注入组件、schema、`preview-props.json` 和 `promptFrameDevPublicResources`。通用的 reset、locale（语言）、resource slot（资源槽）、Inspector 布局和 Remotion Player 装配都在 `@promptframe/component-kit/preview-react`。

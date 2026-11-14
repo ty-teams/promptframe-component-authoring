@@ -9,14 +9,17 @@ import { captureDevelopmentFiles } from './development-files.js';
 import { DevelopmentContents } from './development-revisions.js';
 import { PROMPTFRAME_PUBLIC_STANDARD_POLICY } from '@promptframe/contracts';
 import { isComponentSourcePathIgnored, selectComponentSourceFiles } from './component-file-selection.js';
+import {captureComponentWorkspaceSource,readSharedSourceWorkspace} from './workspace-source.js';
 
 const limits = { maximumFiles: 2048, maximumBytes: 16 * 1024 * 1024 };
 const lockfiles = ['package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'bun.lockb'];
 export interface DevelopmentWorkspaceModule { id: string; path: string }
 
-/** One capture includes the module and its real shared pnpm lock bytes. Source
- * aliases/parent imports remain explicitly unsupported by the common policy. */
+/** Ordinary modules keep their component-root format. Explicit shared-source
+ * workspaces keep one root-relative, independently recoverable snapshot. */
 export function captureDevelopmentModule(root: string, module: DevelopmentWorkspaceModule): DevelopmentContents {
+  if(readSharedSourceWorkspace(root))return new DevelopmentContents(captureComponentWorkspaceSource(root,module,limits)
+    .map(file=>({path:file.name,bytes:file.data})),limits);
   if (!module.path || module.path.includes('\\') || posix.isAbsolute(module.path)
     || /^[A-Za-z]:/u.test(module.path)
     || posix.normalize(module.path) !== module.path || module.path.split('/').some(part => !part || part === '.' || part === '..')) {
@@ -243,6 +246,10 @@ export async function startDevelopmentWorkspace(options: {
   });
   const changed = (_event: string, path: string) => {
     const local = relative(root, resolve(path)).split(sep).join('/');
+    try{
+      const shared=readSharedSourceWorkspace(root)?.sharedDirectories??[];
+      if(shared.some(directory=>local===directory||local.startsWith(directory+'/'))){observe();return;}
+    }catch{watcherDiagnostic='workspace.source.declaration_changed';observe();return;}
     for (const [id, module] of modules) {
       if (local === module.path || local === 'pnpm-lock.yaml' || local === 'package.json'
         || local === 'pnpm-workspace.yaml' || local === 'promptframe-workspace.json') { enqueue(id); continue; }

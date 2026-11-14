@@ -1,6 +1,6 @@
 {
   "name": "@promptframe/contracts",
-  "version": "0.1.44",
+  "version": "0.1.45",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -33,6 +33,14 @@
     },
     "./package.json": {
       "default": "./package.json"
+    },
+    "./source-layout": {
+      "import": "./dist/source-layout.js",
+      "types": "./dist/source-layout.d.ts"
+    },
+    "./source-layout-evaluator": {
+      "import": "./dist/source-layout-evaluator.js",
+      "types": "./dist/source-layout-evaluator.d.ts"
     }
   },
   "publishConfig": {

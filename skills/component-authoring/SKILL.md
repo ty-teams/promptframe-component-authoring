@@ -122,6 +122,8 @@ Do not paste `PROMPTFRAME_CI_TOKEN` into the workflow, README, source, issue, pu
 
 ### Repository layout choice
 
+先按[作者决策表](https://github.com/ty-teams/promptframe-component-authoring/blob/authoring-release-2026-11-15.2/AUTHORING.md#authoring-decisions)选择结构、共享方式、CI 或历史源码恢复。显式清单的 `sharedDirectories` 支持选中组件实际引用的同根共享代码；普通组件路径不会自动扩大到 Git 根。
+
 Default to a single component repository. The repo root is the component package, and `promptframe check .`, `promptframe upload .`, and `promptframe setup-ci --provider github` all run from that root.
 
 Use a monorepo only when the user or team explicitly needs multiple independent components in one repository. In a monorepo, never ask the platform to infer the component from the repository, branch, commit, or tag. The CI job must pass the component directory explicitly, and the uploaded directory's `manifest.json` is the component identity source.

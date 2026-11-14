@@ -3,6 +3,8 @@ import ts from 'typescript';
 import { build, version, type Plugin } from 'vite';
 import { DevelopmentContents } from './development-revisions.js';
 import { compileDevelopmentCssModule } from './development-css.js';
+import {componentSourceEntryPath,componentSourceLocalName} from '@promptframe/contracts/source-layout';
+import {validateComponentSourceLayoutFiles} from '@promptframe/contracts/source-layout-evaluator';
 
 const prefix = '\0promptframe-captured:';
 const entryPrefix = '\0promptframe-entry:';
@@ -30,12 +32,14 @@ async function main() {
   })), { maximumFiles: 2048, maximumBytes: 16 * 1024 * 1024 });
   if (captured.revision !== request.sourceRevision || version !== '8.0.10') fail('development.build.input_mismatch');
   const files = new Map(captured.readFiles().map(file => [file.path, file.bytes]));
-  const manifestBytes = files.get('manifest.json');
+  const layout=validateComponentSourceLayoutFiles(captured.readFiles());
+  const manifestBytes = files.get(componentSourceEntryPath(layout,'manifest.json'));
   if (!manifestBytes) fail('development.build.manifest_missing');
   const manifest = JSON.parse(Buffer.from(manifestBytes).toString('utf8')) as {
     entry: { sourcePath: string; componentExport?: string; propsSchemaPath: string };
   };
-  const entries = { component: manifest.entry.sourcePath, schema: manifest.entry.propsSchemaPath, index: 'src/index.ts' };
+  const entries = { component: componentSourceEntryPath(layout,manifest.entry.sourcePath),
+    schema: componentSourceEntryPath(layout,manifest.entry.propsSchemaPath), index: componentSourceEntryPath(layout,'src/index.ts') };
   const cssPlaceholder = `__PROMPTFRAME_CAPTURED_CSS_${captured.revision}__`;
   const styles = new Map<string, string>();
   // Normalize the manifest's real component export and both supported schema
@@ -142,8 +146,9 @@ async function main() {
   if (replacements !== 1) fail('development.build.invalid_output');
   output.push({ path: 'manifest.json', bytes: Buffer.from(manifestBytes) });
   for (const [path, bytes] of files) {
-    if (path.startsWith('public/')) output.push({ path: 'resources/public/' + path.slice(7), bytes: Buffer.from(bytes) });
-    if (path === 'src/preview-props.json') output.push({ path: 'preview.json', bytes: Buffer.from(bytes) });
+    const local=componentSourceLocalName(layout,path);
+    if (local?.startsWith('public/')) output.push({ path: 'resources/public/' + local.slice(7), bytes: Buffer.from(bytes) });
+    if (local === 'src/preview-props.json') output.push({ path: 'preview.json', bytes: Buffer.from(bytes) });
   }
   const artifacts = new DevelopmentContents(output, { maximumFiles: 512, maximumBytes: 8 * 1024 * 1024 });
   process.stdout.write(JSON.stringify({ sourceRevision: captured.revision, builder: `vite/${version}/captured-v1`,

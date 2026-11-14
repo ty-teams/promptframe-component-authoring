@@ -1,6 +1,6 @@
 {
   "name": "create-promptframe-component",
-  "version": "0.1.66",
+  "version": "0.1.67",
   "license": "MIT",
   "type": "module",
   "files": [
@@ -45,7 +45,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@promptframe/contracts": "0.1.44"
+    "@promptframe/contracts": "0.1.45"
   },
   "devDependencies": {
     "@types/node": "^24.12.4",

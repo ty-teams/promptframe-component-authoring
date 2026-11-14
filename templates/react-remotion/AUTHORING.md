@@ -1,5 +1,7 @@
 # PromptFrame Authoring Guide
 
+结构、共享源码、CI 和历史恢复统一见[本版本作者决策表](https://github.com/ty-teams/promptframe-component-authoring/blob/authoring-release-2026-11-15.2/AUTHORING.md#authoring-decisions)。
+
 本文是当前组件项目的恢复入口。业务代码属于作者：`src/Component.tsx`、`src/schema.ts`、`manifest.json`、`public/` 不会被 `promptframe sync` 静默覆盖。平台生成的本地预览壳可以随工具链升级刷新。
 
 ## Preview Shell

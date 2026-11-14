@@ -19,6 +19,11 @@ import { inflateRawSync } from 'node:zlib';
 import { cliBearerToken, readCliConfiguration } from './configuration.js';
 import ignore from 'ignore';
 import { ComponentFileSelectionError, selectComponentSourceFiles } from './component-file-selection.js';
+import {captureRegisteredComponentSource,capturedComponentSourceModule,componentSourceWorkspaceContext,registerComponentSourceWorkspace,validComponentLockEvidence,WorkspaceSourceError} from './workspace-source.js';
+import {COMPONENT_SOURCE_LAYOUT_FILE, COMPONENT_SOURCE_LAYOUT_VERSION, componentSourceEntryPath,
+  componentSourceLayoutSchema, componentSourceWorkspaceSchema, readComponentSourceLayout,
+  type ComponentSourceLayout} from '@promptframe/contracts/source-layout';
+import {componentSourceImportSpecifiers,componentSourceRequestCandidates} from '@promptframe/contracts/source-layout-evaluator';
 import {BuildStatusReadError,waitForOriginalBuild,type BuildWaitState} from './build-status-wait.js';
 import {
   COMPONENT_MANIFEST_SCHEMA_VERSION,
@@ -937,16 +942,20 @@ function readScaffoldMetadata(dir: string): ScaffoldMetadata | undefined {
 
 function evaluateDirectoryDependencyPolicy(dir: string): PromptFrameDependencyPolicyReceipt {
   const manifest = parseComponentManifest(normalizeLegacyManifest(JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'))));
+  const context=componentSourceWorkspaceContext(dir),prefix=context?context.module.path+'/':'';
   return evaluatePromptFrameDependencyPolicy({
     packageJson: readPackageManifest(join(dir, 'package.json')),
     lockfilePresent: hasPackageManagerLockfile(dir),
-    runtimeEntryPaths: [manifest.entry.sourcePath, manifest.entry.propsSchemaPath, 'src/index.ts'],
+    runtimeEntryPaths: [manifest.entry.sourcePath, manifest.entry.propsSchemaPath, 'src/index.ts'].map(path=>prefix+path),
     files: collectPackageFiles(dir).map(file => ({ path: file.name,
       sourceText: /\.[cm]?[jt]sx?$/i.test(file.name) ? file.data.toString('utf8') : '' })),
   });
 }
 
 function hasPackageManagerLockfile(dir: string): boolean {
+  const context=componentSourceWorkspaceContext(dir);
+  if(context){const evidence=collectPackageFiles(dir).find(file=>file.name===context.module.path+'/promptframe-lockfile-evidence.json');
+    return validComponentLockEvidence(readFileSync(join(dir,'package.json')),evidence?.data);}
   return collectPackageManagerLockfileEvidence(dir).length > 0;
 }
 
@@ -1026,7 +1035,8 @@ async function uploadComponent(argv: string[]): Promise<void> {
   const prepared = prepareComponentUpload(input, uploadTarget, valueAfter(argv, '--out'));
   const endpoint = resolveEndpoint('upload', argv);
   reportUploadProgress(argv, 'standard', 'Checking platform component standard.');
-  await assertRemoteStandardFreshness(endpoint, argv);
+  const remoteStandard = await assertRemoteStandardFreshness(endpoint, argv);
+  assertSourceLayoutSupported(prepared.artifact, remoteStandard);
   reportUploadProgress(argv, 'upload', 'Uploading source package.');
   const output = await uploadPreparedComponent(input, argv, endpoint, uploadTarget, prepared);
   reportUploadProgress(argv, 'accepted', 'Platform accepted upload.');
@@ -1069,7 +1079,8 @@ async function uploadWorkspace(
   });
   const endpoint = resolveEndpoint('upload', argv);
   reportUploadProgress(argv, 'standard', 'Checking platform component standard.');
-  await assertRemoteStandardFreshness(endpoint, argv);
+  const remoteStandard = await assertRemoteStandardFreshness(endpoint, argv);
+  for (const item of preparedUploads) assertSourceLayoutSupported(item.prepared.artifact, remoteStandard);
   const uploads = [];
   for (const item of preparedUploads) {
     reportUploadProgress(argv, 'upload', 'Uploading workspace source package.');
@@ -1325,7 +1336,7 @@ function assertAuthoringZipPackageFreshness(path: string, target: AuthoringUploa
   fail(formatPackageFreshnessFailure(diagnostics, target), diagnostics[0]!.code);
 }
 
-async function assertRemoteStandardFreshness(endpoint: string, argv: string[]): Promise<void> {
+async function assertRemoteStandardFreshness(endpoint: string, argv: string[]): Promise<Record<string, unknown>> {
   const payload = await fetchJson(`${endpoint}/components/standard`, {
     headers: buildRemoteHeaders(endpoint, argv),
   }, 'standard.freshness.fetch_failed');
@@ -1335,6 +1346,16 @@ async function assertRemoteStandardFreshness(endpoint: string, argv: string[]): 
   }
   const evaluation = evaluateRemoteStandardFreshness(payload, remoteSourceHash);
   if (evaluation.uploadBlocking) fail(evaluation.message, evaluation.code);
+  return payload;
+}
+
+function assertSourceLayoutSupported(artifact: ComponentPackageArtifact, standard: Record<string, unknown>): void {
+  if (!readZipComponentSourceLayout(readFileSync(artifact.out))) return;
+  if (!Array.isArray(standard.sourcePackageLayouts)
+    || !standard.sourcePackageLayouts.includes(COMPONENT_SOURCE_LAYOUT_VERSION)) {
+    fail('This platform does not support shared workspace source packages. Update the platform before uploading this archive.',
+      'workspace.source.platform_unsupported');
+  }
 }
 
 async function resolveSoftRemoteStandardFreshness(
@@ -1743,7 +1764,7 @@ function workspaceAdd(argv: string[]): void {
   const current = readWorkspaceConfig(root);
   const components = [...current.components, { id, path: componentPath }];
   assertNoDuplicateWorkspaceComponents(components);
-  writeWorkspaceConfig(root, components);
+  writeWorkspaceConfig(root, components,current.sharedDirectories);
   const output = {
     command: 'workspace.add',
     workspace: workspaceSummary(root),
@@ -1760,6 +1781,8 @@ function workspaceAdd(argv: string[]): void {
 function resolveComponentInput(argv: string[]): ResolvedComponentInput {
   const workspaceComponentId = valueAfter(argv, '--workspace-component');
   if (!workspaceComponentId) {
+    const target=resolve(componentPathArg(argv)??'.'),captured=capturedComponentSourceModule(target);
+    if(captured){const report=resolveWorkspaceComponent(target,captured.id);return workspaceComponentInput(report);}
     return {
       dir: resolve(componentPathArg(argv) ?? '.'),
       source: {
@@ -1803,7 +1826,7 @@ function workspaceComponentInput(report: WorkspaceComponentReport): ResolvedComp
 }
 
 function resolveWorkspaceComponent(root: string, componentId: string): WorkspaceComponentReport {
-  const reports = collectWorkspaceComponentReports(root);
+  const reports = collectWorkspaceComponentReports(root,componentId);
   const report = reports.find((component) => component.id === componentId);
   if (!report) {
     fail(
@@ -1815,7 +1838,7 @@ function resolveWorkspaceComponent(root: string, componentId: string): Workspace
   return report;
 }
 
-function collectWorkspaceComponentReports(root: string): WorkspaceComponentReport[] {
+function collectWorkspaceComponentReports(root: string,onlyComponentId?:string): WorkspaceComponentReport[] {
   const workspace = readWorkspaceConfig(root);
   if (workspace.components.length === 0) {
     fail(
@@ -1824,8 +1847,7 @@ function collectWorkspaceComponentReports(root: string): WorkspaceComponentRepor
       2,
     );
   }
-  const sharedPackages = collectWorkspaceSharedPackages(root);
-  return workspace.components.map((component) => {
+  return workspace.components.filter(component=>!onlyComponentId||component.id===onlyComponentId).map((component) => {
     const absolutePath = resolve(root, component.path);
     assertWorkspacePathInsideRoot(root, absolutePath, component.path);
     if (!existsSync(absolutePath)) {
@@ -1835,7 +1857,9 @@ function collectWorkspaceComponentReports(root: string): WorkspaceComponentRepor
         2,
       );
     }
-    assertWorkspaceSharedPackageDependencies(component, absolutePath, sharedPackages);
+    const packageInput=readPackageManifest(join(absolutePath,'package.json'));
+    const needsWorkspacePackage=workspaceDependencyRows(packageInput).length>0;
+    if(needsWorkspacePackage)assertWorkspaceSharedPackageDependencies(component,absolutePath,collectWorkspaceSharedPackages(root));
     const manifest = validateComponentDirectory(absolutePath);
     if (manifest.id !== component.id) {
       fail(
@@ -1871,7 +1895,7 @@ function workspaceConfigPath(root: string): string {
   return join(root, 'promptframe-workspace.json');
 }
 
-function readWorkspaceConfig(root: string): { schemaVersion: string; components: WorkspaceComponentDeclaration[] } {
+function readWorkspaceConfig(root: string): { schemaVersion: string; components: WorkspaceComponentDeclaration[];sharedDirectories?:string[] } {
   const configPath = workspaceConfigPath(root);
   if (!existsSync(configPath)) {
     fail(
@@ -1922,10 +1946,15 @@ function readWorkspaceConfig(root: string): { schemaVersion: string; components:
     };
   });
   assertNoDuplicateWorkspaceComponents(components);
+  if(Object.hasOwn(config,'sharedDirectories')){
+    const parsed=componentSourceWorkspaceSchema.safeParse(config);
+    if(!parsed.success)fail('Shared source needs canonical separate sharedDirectories and component paths.','workspace.source.declaration_invalid',2);
+    registerComponentSourceWorkspace(root,parsed.data);return parsed.data;
+  }
   return { schemaVersion, components };
 }
 
-function writeWorkspaceConfig(root: string, components: WorkspaceComponentDeclaration[]): void {
+function writeWorkspaceConfig(root: string, components: WorkspaceComponentDeclaration[],sharedDirectories?:string[]): void {
   assertNoDuplicateWorkspaceComponents(components);
   mkdirSync(root, { recursive: true });
   writeFileSync(
@@ -1933,6 +1962,7 @@ function writeWorkspaceConfig(root: string, components: WorkspaceComponentDeclar
     `${JSON.stringify({
       schemaVersion: PROMPTFRAME_WORKSPACE_SCHEMA_VERSION,
       components,
+      ...(sharedDirectories===undefined?{}:{sharedDirectories}),
     }, null, 2)}\n`,
     'utf8',
   );
@@ -4111,10 +4141,12 @@ function collectLayoutPolicyTextFiles(
   primarySourcePath: string,
   options: ComponentDirectoryValidationOptions = {},
 ): Array<{ path: string; sourceText: string }> {
+  const context=componentSourceWorkspaceContext(dir),prefix=context?context.module.path+'/':'';
+  const local=(name:string)=>prefix&&name.startsWith(prefix)?name.slice(prefix.length):name;
   return collectPackageFiles(dir)
-    .filter((entry) => entry.name !== primarySourcePath)
-    .filter((entry) => !shouldSkipGeneratedPreviewRoot(entry.name, options))
-    .filter((entry) => /^src\/.+\.(?:css|tsx?|jsx?)$/i.test(entry.name))
+    .filter((entry) => entry.name !== prefix+primarySourcePath)
+    .filter((entry) => !shouldSkipGeneratedPreviewRoot(local(entry.name), options))
+    .filter((entry) => (context&&!entry.name.startsWith(prefix)||/^src\//i.test(local(entry.name)))&&/\.(?:css|tsx?|jsx?)$/i.test(entry.name))
     .map((entry) => ({
       path: entry.name,
       sourceText: entry.data.toString('utf8'),
@@ -4165,9 +4197,11 @@ async function runDevServer(dir: string, commandLine: string[]): Promise<void> {
 }
 
 function validateSourceSafety(dir: string, options: ComponentDirectoryValidationOptions = {}): void {
+  const context=componentSourceWorkspaceContext(dir),prefix=context?context.module.path+'/':'';
   for (const entry of collectPackageFiles(dir)) {
-    if (shouldSkipGeneratedPreviewRoot(entry.name, options)) continue;
-    if (!isSourceSafetyScannableFile(entry.name)) continue;
+    const local=prefix&&entry.name.startsWith(prefix)?entry.name.slice(prefix.length):entry.name;
+    if (shouldSkipGeneratedPreviewRoot(local, options)) continue;
+    if (!isSourceSafetyScannableFile(context&&!entry.name.startsWith(prefix)?'src/'+entry.name:local)) continue;
     const source = entry.data.toString('utf8');
     for (const rule of PROMPTFRAME_PUBLIC_STANDARD_POLICY.sourceSafetyRules) {
       const match = source.match(new RegExp(rule.pattern, sourceSafetyRuleFlags(rule.id)));
@@ -4188,8 +4222,9 @@ function sourceSafetyRuleFlags(ruleId: string): string {
 }
 
 function validateSecurityPolicy(dir: string, options: ComponentDirectoryValidationOptions = {}): void {
+  const context=componentSourceWorkspaceContext(dir),prefix=context?context.module.path+'/':'';
   for (const entry of collectPackageFiles(dir)) {
-    if (shouldSkipGeneratedPreviewRoot(entry.name, options)) continue;
+    if (shouldSkipGeneratedPreviewRoot(prefix&&entry.name.startsWith(prefix)?entry.name.slice(prefix.length):entry.name, options)) continue;
     if (!isSecurityScannableFile(entry.name)) continue;
     const source = entry.data.toString('utf8');
     const finding = firstBlockingSecurityFindingFromEvaluator(entry.name, source);
@@ -4274,12 +4309,12 @@ function isPackageManifestSecurityFile(fileName: string): boolean {
 }
 
 function checkImportBoundary(dir: string): void {
-  const component = readIfExists(join(dir, 'src/Component.tsx'));
-  const schema = readIfExists(join(dir, 'src/schema.ts'));
-  const joined = `${component}\n${schema}`;
-  if (/\bfrom\s+['"]\.\.\//.test(joined) || /\bimport\s*\(\s*['"]\.\.\//.test(joined)) {
-    fail('Component source imports from outside the component directory.', 'package.no_parent_imports');
-  }
+  const files=collectPackageFiles(dir);
+  if(componentSourceWorkspaceContext(dir))return; // The shared capture already resolved its complete allowed graph.
+  for(const file of files.filter(file=>/\.[mc]?[jt]sx?$/iu.test(file.name)))
+    for(const request of componentSourceImportSpecifiers(file.name,file.data.toString('utf8')))
+      if(request.startsWith('.')&&!componentSourceRequestCandidates(file.name,request).length)
+        fail('A local import leaves the selected component. Declare sharedDirectories and select the workspace component for shared source.','package.no_parent_imports');
 }
 
 function normalizeLegacyManifest(input: Record<string, unknown>): Record<string, unknown> {
@@ -4298,7 +4333,9 @@ function packageZipForUpload(path: string, uploadTarget: AuthoringUploadTarget):
 
 function assertZipPropsHaveDescriptions(path: string): void {
   const zip = readFileSync(path);
-  const manifestEntry = readZipEntry(zip, isManifestZipEntry);
+  const layout = readZipComponentSourceLayout(zip);
+  const manifestEntry = readZipEntry(zip, layout
+    ? name => name === componentSourceEntryPath(layout, 'manifest.json') : isManifestZipEntry);
   if (!manifestEntry) return;
   let manifest: ComponentManifest;
   try {
@@ -4306,7 +4343,9 @@ function assertZipPropsHaveDescriptions(path: string): void {
   } catch {
     return;
   }
-  const schemaEntry = readZipEntry(zip, (entryName) => isComponentSourceZipEntry(entryName, manifest.entry.propsSchemaPath));
+  const schemaEntry = readZipEntry(zip, (entryName) => layout
+    ? entryName === componentSourceEntryPath(layout, manifest.entry.propsSchemaPath)
+    : isComponentSourceZipEntry(entryName, manifest.entry.propsSchemaPath));
   if (!schemaEntry) return;
   const facts = evaluatePromptFrameSchemaSource(schemaEntry.toString('utf8'));
   assertStaticSchemaResolved(facts, manifest.entry.propsSchemaPath);
@@ -4753,10 +4792,30 @@ function readPackageManifestFromZip(path: string): ComponentPackageJson {
 }
 
 function readPackageJsonEntryFromZip(zip: Buffer): Buffer | undefined {
-  return readZipEntry(zip, isPackageJsonZipEntry);
+  const layout = readZipComponentSourceLayout(zip);
+  return readZipEntry(zip, layout
+    ? name => name === componentSourceEntryPath(layout, 'package.json') : isPackageJsonZipEntry);
 }
 
-function readZipEntry(zip: Buffer, predicate: (entryName: string) => boolean): Buffer | undefined {
+function readZipComponentSourceLayout(zip: Buffer): ComponentSourceLayout | undefined {
+  const metadata = readZipEntry(zip, name => name === COMPONENT_SOURCE_LAYOUT_FILE, 16 * 1024);
+  if (!metadata) return undefined;
+  try {
+    const layout = componentSourceLayoutSchema.parse(JSON.parse(metadata.toString('utf8')));
+    const config = readZipEntry(zip, name => name === 'promptframe-workspace.json', 64 * 1024);
+    const manifest = readZipEntry(zip, name => name === componentSourceEntryPath(layout, 'manifest.json'), 1024 * 1024);
+    if (!config || !manifest) throw Error();
+    return readComponentSourceLayout([
+      {path: COMPONENT_SOURCE_LAYOUT_FILE, bytes: metadata},
+      {path: 'promptframe-workspace.json', bytes: config},
+      {path: componentSourceEntryPath(layout, 'manifest.json'), bytes: manifest},
+    ]);
+  } catch {
+    fail('Source archive workspace layout is invalid or does not match the selected component.', 'workspace.source.layout_invalid');
+  }
+}
+
+function readZipEntry(zip: Buffer, predicate: (entryName: string) => boolean, maximumBytes = 50 * 1024 * 1024): Buffer | undefined {
   let offset = 0;
   let selected: Buffer | undefined;
   let selectedName: string | undefined;
@@ -4780,7 +4839,8 @@ function readZipEntry(zip: Buffer, predicate: (entryName: string) => boolean): B
 
     const entryName = zip.subarray(nameStart, nameStart + nameLength).toString('utf8').replace(/\\/g, '/');
     if ((flags & 0x08) === 0 && predicate(entryName)) {
-      const data = decodeZipEntry(zip.subarray(dataStart, dataEnd), method);
+      if (entryName === selectedName) fail('Source archive contains a duplicate entry.', 'upload.source.duplicate_entry');
+      const data = decodeZipEntry(zip.subarray(dataStart, dataEnd), method, maximumBytes);
       if (!selectedName || entryName.length < selectedName.length) {
         selected = data;
         selectedName = entryName;
@@ -4810,13 +4870,19 @@ function isComponentSourceZipEntry(entryName: string, expectedPath: string): boo
     );
 }
 
-function decodeZipEntry(data: Buffer, method: number): Buffer {
-  if (method === 0) return Buffer.from(data);
-  if (method === 8) return inflateRawSync(data);
+function decodeZipEntry(data: Buffer, method: number, maximumBytes: number): Buffer {
+  if (method === 0 && data.byteLength <= maximumBytes) return Buffer.from(data);
+  if (method === 8) {
+    try { return inflateRawSync(data, {maxOutputLength: maximumBytes}); }
+    catch { fail('Source archive entry exceeds its byte limit or has invalid compressed data.', 'upload.source.entry_invalid'); }
+  }
+  if (method === 0) fail('Source archive entry exceeds its byte limit.', 'upload.source.entry_invalid');
   fail(`Unsupported package.json compression method in source archive: ${method}.`, 'upload.package_json.unsupported_zip');
 }
 
 function collectPackageFiles(root: string): Array<{ name: string; data: Buffer }> {
+  try{const shared=captureRegisteredComponentSource(root);if(shared)return shared;}
+  catch(error){if(error instanceof WorkspaceSourceError)fail(error.code,error.code);throw error;}
   const files: Array<{ name: string; data: Buffer }> = [];
   const manifest = parseComponentManifest(normalizeLegacyManifest(JSON.parse(readFileSync(join(root, 'manifest.json'), 'utf8'))));
   const requiredPaths = new Set([
