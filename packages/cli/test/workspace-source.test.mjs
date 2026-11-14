@@ -33,7 +33,7 @@ async function fixture(root){
   await writeFile(join(dir,'src/schema.ts'),'import {z} from "zod";export const PropsSchema=z.object({title:z.string().describe("Title")});');
   if(name!=='c')await writeFile(join(dir,'src/Component.tsx'),(await readFile(join(dir,'src/Component.tsx'),'utf8')).replace("'./shared'","'../../../shared/theme'"));
  }
- await mkdir(join(root,'shared'));await writeFile(join(root,'shared/theme.ts'),'export {title} from "./palette";');
+ await mkdir(join(root,'shared'));await writeFile(join(root,'shared/theme.ts'),'export {title} from "./palette.js";');
  await writeFile(join(root,'shared/palette.ts'),'export const title="first-theme";');
  await writeFile(join(root,'shared/unused.ts'),'UNUSED_PRIVATE_CONTROL');await writeFile(join(root,'shared/.env'),'UNUSED_PRIVATE_CONFIGURATION');
  await writeFile(join(root,'promptframe-workspace.json'),JSON.stringify({schemaVersion:'promptframe-workspace.v0.1.0',components:modules,sharedDirectories:['shared']}));

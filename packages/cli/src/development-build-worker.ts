@@ -4,7 +4,7 @@ import { build, version, type Plugin } from 'vite';
 import { DevelopmentContents } from './development-revisions.js';
 import { compileDevelopmentCssModule } from './development-css.js';
 import {componentSourceEntryPath,componentSourceLocalName} from '@promptframe/contracts/source-layout';
-import {validateComponentSourceLayoutFiles} from '@promptframe/contracts/source-layout-evaluator';
+import {componentSourceRequestCandidates,validateComponentSourceLayoutFiles} from '@promptframe/contracts/source-layout-evaluator';
 
 const prefix = '\0promptframe-captured:';
 const entryPrefix = '\0promptframe-entry:';
@@ -101,7 +101,7 @@ async function main() {
       if (!id.startsWith('.') || /[\\?#\0]/u.test(id)) return fail('development.build.unsupported_dependency');
       const path = posix.normalize(posix.join(posix.dirname(importer.slice(prefix.length)), id));
       if (path === '..' || path.startsWith('../') || posix.isAbsolute(path)) return fail('development.build.uncaptured_import');
-      const resolved = [path, ...['.ts', '.tsx', '.js', '.jsx', '.mjs', '.mts', '.json', '/index.ts', '/index.tsx', '/index.js'].map(ext => path + ext)]
+      const resolved = componentSourceRequestCandidates(importer.slice(prefix.length),id)
         .find(candidate => files.has(candidate));
       if (!resolved) return fail('development.build.uncaptured_import');
       source(resolved);
