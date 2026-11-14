@@ -80,7 +80,7 @@ function runCapturedValidation(directory: string, timeoutMs: number, signal?: Ab
       // Node preload options from the host belong in this subprocess.
       env: { NO_COLOR: '1', ...(process.platform === 'win32' && process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) },
     });
-    let firstError: unknown, failed = false, total = 0;
+    let firstError: unknown, failed = false, total = 0,spawnError=false;
     const stdout: Buffer[] = [], stderr: Buffer[] = [];
     const fail = (error: unknown) => {
       if (!failed) { failed = true; firstError = error; }
@@ -96,10 +96,10 @@ function runCapturedValidation(directory: string, timeoutMs: number, signal?: Ab
     const abort = () => fail(signal!.reason);
     signal?.addEventListener('abort', abort, { once: true });
     const timeout = setTimeout(() => fail(new DevelopmentValidationError('development.validation.timeout')), timeoutMs);
-    child.once('error', error => { if (!failed) { failed = true; firstError = error; } });
+    child.once('error', error => {spawnError=true; if (!failed) { failed = true; firstError = error; } });
     child.once('close', code => {
       clearTimeout(timeout); signal?.removeEventListener('abort', abort);
-      try{temporary?.joined();}catch(error){if(!failed){failed=true;firstError=error;}}
+      try{temporary?.joined({notStarted:spawnError&&child.pid===undefined});}catch(error){if(!failed){failed=true;firstError=error;}}
       if (failed) return reject(firstError);
       if (code === 0) return resolve(Buffer.concat(stdout).toString('utf8'));
       let diagnosticCode: string | undefined;

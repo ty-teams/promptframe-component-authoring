@@ -21,7 +21,7 @@ export function runDevelopmentProcess(options: {
       env: { NO_COLOR: '1', NODE_ENV: 'development',
         ...(process.platform === 'win32' && process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) },
     });
-    let failed = false, firstError: unknown, total = 0;
+    let failed = false, firstError: unknown, total = 0,spawnError=false;
     const stdout: Buffer[] = [], stderr: Buffer[] = [];
     const fail = (error: unknown) => {
       if (!failed) { failed = true; firstError = error; }
@@ -35,13 +35,13 @@ export function runDevelopmentProcess(options: {
     child.stdout.on('data', chunk => receive(stdout, chunk));
     child.stderr.on('data', chunk => receive(stderr, chunk));
     child.stdin.on('error', error => { if (!failed) fail(error); });
-    child.once('error', fail);
+    child.once('error', error=>{spawnError=true;fail(error);});
     const abort = () => fail(options.signal!.reason);
     options.signal?.addEventListener('abort', abort, { once: true });
     const timeout = setTimeout(() => fail(new DevelopmentProcessError('development.build.timeout')), options.timeoutMs);
     child.once('close', code => {
       clearTimeout(timeout); options.signal?.removeEventListener('abort', abort);
-      try{options.temporary?.joined();}catch(error){if(!failed){failed=true;firstError=error;}}
+      try{options.temporary?.joined({notStarted:spawnError&&child.pid===undefined});}catch(error){if(!failed){failed=true;firstError=error;}}
       if (failed) return reject(firstError);
       if (code === 0) return resolve(Buffer.concat(stdout).toString('utf8'));
       let diagnosticCode: string | undefined;

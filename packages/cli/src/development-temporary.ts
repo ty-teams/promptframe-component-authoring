@@ -7,7 +7,7 @@ import {developmentProcessBirth} from './development-owner.js';
 
 type Producer={pid:number;birth:string|null;group?:number};
 type RecordValue={version:1;kind:'build'|'check';nonce:string;directory:string;dev:string;ino:string;
-  creator:Producer;phase:'preparing'|'launching'|'running'|'joined';worker:Producer|null};
+  creator:Producer;phase:'preparing'|'launching'|'running'|'joined'|'not-started';worker:Producer|null};
 const marker='.promptframe-temporary.json',active=new Set<string>();
 const sha=(value:string)=>createHash('sha256').update(value).digest('hex');
 const fail=()=>{throw Error('development.temporary.identity_unconfirmed');};
@@ -56,7 +56,8 @@ function read(root:string):{value:RecordValue;digest:string}{
     ||value.version!==1||!['build','check'].includes(value.kind)||!/^[a-f0-9]{32}$/u.test(value.nonce)
     ||!basename(root).startsWith('promptframe-'+value.kind+'-')
     ||value.directory!==sha(root)||value.dev!==before.dev||value.ino!==before.ino||!producer(value.creator)||!value.creator.birth
-    ||!['preparing','launching','running','joined'].includes(value.phase)||value.worker!==null&&!producer(value.worker))fail();
+    ||!['preparing','launching','running','joined','not-started'].includes(value.phase)||value.worker!==null&&!producer(value.worker)
+    ||value.phase==='not-started'&&value.worker!==null)fail();
   return{value,digest:sha(raw!)};
 }
 function gone(producer:Producer){return producer.birth!==null&&developmentProcessBirth(producer.pid)!==producer.birth;}
@@ -76,8 +77,11 @@ function groupEmpty(group:number):boolean|null{
   }return true;}finally{directory.closeSync();}
 }
 function retired(value:RecordValue){
+  if(value.phase==='not-started')return value.worker===null;
   if(value.phase==='joined'){
-    if(!value.worker)return true;
+    // Older writers could persist joined/null after a failed worker identity
+    // write. That record does not prove NoStart or descendant exit.
+    if(!value.worker)return false;
     return Boolean(value.worker.group&&gone(value.worker)&&groupEmpty(value.worker.group)===true);
   }
   if(!gone(value.creator))return false;
@@ -90,7 +94,7 @@ export interface DevelopmentTemporaryRoot {
   directory:string;
   beforeSpawn():void;
   spawned(pid:number|undefined):void;
-  joined():void;
+  joined(observation?:{notStarted:boolean}):void;
   release():void;
 }
 export interface DevelopmentTemporaryCleanup {removed:number;retained:number;unknown:number;truncated:boolean;lock:'held'|'busy'|'unsupported'}
@@ -130,16 +134,22 @@ export async function createDevelopmentTemporary(kind:'build'|'check',parent?:st
   mkdirSync(join(directory,'content'),{mode:0o700});
   if(!creator.birth)fail();
   let value:RecordValue={version:1,kind,nonce:randomBytes(16).toString('hex'),directory:sha(directory),...identity(directory),creator,phase:'preparing',worker:null};
-  let released=false;
+  let released=false,spawnObservation:'unobserved'|'started'|'not-created'='unobserved';
   write(directory,value);active.add(directory);
   const update=(next:RecordValue)=>{if(released||read(directory).value.nonce!==value.nonce)fail();write(directory,next);value=next;};
   return{directory:join(directory,'content'),
     beforeSpawn(){if(value.phase!=='preparing')fail();update({...value,phase:'launching'});},
-    spawned(pid){if(value.phase!=='launching')fail();if(!pid)return;const birth=developmentProcessBirth(pid),group=process.platform==='linux'&&processGroup(pid)===pid?pid:undefined;
+    spawned(pid){spawnObservation=pid?'started':'not-created';if(value.phase!=='launching')fail();if(!pid)return;const birth=developmentProcessBirth(pid),group=process.platform==='linux'&&processGroup(pid)===pid?pid:undefined;
       update({...value,phase:'running',worker:{pid,birth,...(group?{group}:{})}});},
-    joined(){if(!['launching','running'].includes(value.phase))fail();update({...value,phase:'joined'});},
+    joined(observation){if(!['launching','running'].includes(value.phase))fail();
+      if(value.phase==='launching'){
+        if(spawnObservation!=='not-created'||observation?.notStarted!==true)fail();
+        update({...value,phase:'not-started',worker:null});
+      }else{if(!value.worker)fail();update({...value,phase:'joined'});}
+    },
     release(){if(released)return;try{if(!existsSync(directory))return;const current=read(directory).value;
-      if(current.nonce!==value.nonce||!['preparing','joined'].includes(current.phase)||current.creator.pid!==process.pid||current.creator.birth!==creator.birth)fail();
+      if(current.nonce!==value.nonce||!['preparing','joined','not-started'].includes(current.phase)
+        ||current.phase==='joined'&&!current.worker||current.creator.pid!==process.pid||current.creator.birth!==creator.birth)fail();
       if(process.platform==='linux'&&current.worker&&(!current.worker.group||groupEmpty(current.worker.group)!==true)){
         process.stderr.write(JSON.stringify({code:'development.temporary.producer_exit_unconfirmed',directory})+'\n');return;
       }
