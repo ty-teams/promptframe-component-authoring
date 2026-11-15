@@ -21,6 +21,7 @@ import { cliBearerToken, readCliConfiguration } from './configuration.js';
 import ignore from 'ignore';
 import { ComponentFileSelectionError, selectComponentSourceFiles } from './component-file-selection.js';
 import {captureRegisteredComponentSource,capturedComponentSourceModule,componentSourceWorkspaceContext,registerComponentSourceWorkspace,validComponentLockEvidence,WorkspaceSourceError} from './workspace-source.js';
+import {capturePnpmWorkspaceLock} from './workspace-lockfile.js';
 import {COMPONENT_SOURCE_LAYOUT_FILE, COMPONENT_SOURCE_LAYOUT_VERSION, componentSourceEntryPath,
   componentSourceLayoutSchema, componentSourceWorkspaceSchema, readComponentSourceLayout,
   type ComponentSourceLayout} from '@promptframe/contracts/source-layout';
@@ -4966,22 +4967,10 @@ function collectDirectPackageManagerLockfiles(root: string): PackageManagerLockf
 }
 
 function findPnpmWorkspaceRootLockfile(root: string): PackageManagerLockfileEvidence | undefined {
-  let current = resolve(root);
-  while (true) {
-    const workspaceConfig = join(current, 'pnpm-workspace.yaml');
-    const lockfile = join(current, 'pnpm-lock.yaml');
-    if (existsSync(workspaceConfig) && existsSync(lockfile)) {
-      return {
-        name: 'pnpm-lock.yaml',
-        data: readFileSync(lockfile),
-        source: 'workspace_root',
-        relativePath: relative(root, lockfile).replace(/\\/g, '/'),
-      };
-    }
-    const parent = dirname(current);
-    if (parent === current) return undefined;
-    current = parent;
-  }
+  const captured = capturePnpmWorkspaceLock(root);
+  if (!captured) return undefined;
+  captured.verifyUnchanged();
+  return {name: 'pnpm-lock.yaml', data: Buffer.from(captured.lockBytes), source: 'workspace_root', relativePath: captured.relativePath};
 }
 
 function sha256Buffer(data: Buffer): string {

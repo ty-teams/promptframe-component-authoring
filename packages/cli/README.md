@@ -109,6 +109,8 @@ promptframe dev . --studio-origin https://studio.example
 
 每个模块先捕获自身文件、实际 workspace pnpm 锁和声明，再运行普通 CLI validate、固定 Vite 闭合图构建和当前内容重捕获。漏通知、快速保存或旧构建晚回不能授权旧字节覆盖新版；失败保留明确标记的 lastChecked。检查状态是构建/规则事实，Player 必须在隔离执行后另报实际加载版本。Studio 开发连接面板消费该连接；只有 Player 回报的实际加载版本能证明画面已更新，根服务 checked 状态不代替此回报或平台正式 upload/admission。
 
+同一仓库包含多个作品工作区时，可以在覆盖这些作品的顶层 pnpm 工作区安装一次，再从各作品自己的 `promptframe-workspace.json` 启动 dev。dev 与 package 使用相同的根锁来源：只读取声明覆盖当前组件且 importer 与当前依赖规格匹配的 pnpm 控制文件；缺锁、过期 importer、错误归属和符号链接返回明确错误。父级锁与工作区声明的变化会重新检查受影响模块，但不会把其它作品加入当前开发连接；原锁内容不会进入公开源码包。
+
 构建采用 Vite 8.0.10 和自动 JSX，支持捕获内的 JS/TS/JSON 静态图与 `.module.css`。CSS Modules 的类名按捕获版本和文件路径隔离，样式随实际组件挂载和卸载；默认脚手架的 `propsSchema`、命名 index 与 manifest 指定的组件导出会对齐 Player 原有入口。样式只支持本模块类选择器和纯布局、颜色表达式，不解析 CSS import、URL、composition、全局选择器或独立动画时钟；资源仍使用原公共资源 helper。React/ReactDOM/Remotion、zod 及 PromptFrame 公共 runtime 作为明确列出的共享 external，由消费端按兼容合同提供；不从作者 `node_modules` 偷读依赖。其它 npm/本机 alias、未声明的父目录源码、普通全局 CSS、`import.meta` 和非字面动态 import 尚不支持，返回确定诊断。锁文件捕获证明实际输入，不冒依赖安装或解析完整性；正式各模块独立包仍走原检查和上传。
 
 默认界为 32 模块、每模块 2048 文件/16MiB 输入、512 文件/8MiB 输出；检查/构建串行并有超时，受检产物保留总量 64MiB，HTTP 传输另有有界预留，最多八个通知连接。关闭时停止 watcher/HTTP，abort 并 join 实际检查/构建子进程后回收自身临时目录。这些本机进程和内容预算不构成 OS/网络或网页执行沙箱，也不声称全进程 heap/RSS 上限。

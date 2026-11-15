@@ -10,6 +10,7 @@ import { DevelopmentContents } from './development-revisions.js';
 import { PROMPTFRAME_PUBLIC_STANDARD_POLICY } from '@promptframe/contracts';
 import { isComponentSourcePathIgnored, selectComponentSourceFiles } from './component-file-selection.js';
 import {captureComponentWorkspaceSource,readSharedSourceWorkspace} from './workspace-source.js';
+import {capturePnpmWorkspaceLock} from './workspace-lockfile.js';
 
 const limits = { maximumFiles: 2048, maximumBytes: 16 * 1024 * 1024 };
 const lockfiles = ['package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'bun.lockb'];
@@ -41,6 +42,8 @@ export function captureDevelopmentModule(root: string, module: DevelopmentWorksp
   const names = [...new Set([...selection.paths, ...selection.ignoreInputs.map(file => file.path)])];
   const sharedLock = !lockfiles.some(name => names.includes(name))
     && existsSync(join(base, 'pnpm-workspace.yaml')) && existsSync(join(base, 'pnpm-lock.yaml'));
+  const inheritedLock = !sharedLock && !lockfiles.some(name => names.includes(name))
+    ? capturePnpmWorkspaceLock(directory) : undefined;
   const prefix = module.path + '/';
   const paths = names.map(name => prefix + name);
   if (sharedLock) paths.push('pnpm-workspace.yaml', 'pnpm-lock.yaml');
@@ -51,11 +54,13 @@ export function captureDevelopmentModule(root: string, module: DevelopmentWorksp
     'sha256:' + createHash('sha256').update(capturedFiles.get(prefix + file.path)!).digest('hex') !== file.sha256)) {
     throw new Error('development.capture.changed_during_read');
   }
-  const normalized = new DevelopmentContents(captured.readFiles().map(file => ({
+  inheritedLock?.verifyUnchanged();
+  const normalized = new DevelopmentContents([...captured.readFiles().map(file => ({
     path: file.path.startsWith(prefix) ? file.path.slice(prefix.length)
       : file.path === 'promptframe-workspace.json' ? 'promptframe-workspace.captured.json' : file.path,
     bytes: file.bytes,
-  })), limits);
+  })), ...(inheritedLock ? [{path: 'pnpm-workspace.yaml', bytes: inheritedLock.workspaceBytes},
+    {path: 'pnpm-lock.yaml', bytes: inheritedLock.lockBytes}] : [])], limits);
   const manifest = normalized.readFiles().find(file => file.path === 'manifest.json');
   if (!manifest || JSON.parse(Buffer.from(manifest.bytes).toString()).id !== module.id) {
     throw new Error('development.workspace.manifest_id_mismatch');
@@ -244,7 +249,20 @@ export async function startDevelopmentWorkspace(options: {
     server: { middlewareMode: true, hmr: false, ws: false,
       watch: { followSymlinks: false, ignored: ['**/node_modules/**', '**/dist/**', '**/.git/**', '**/.promptframe/**', '**/.component-packages/**'] } },
   });
+  const inheritedControls = new Map<string, Set<string>>();
+  for (const [id, module] of modules) {
+    if (lockfiles.some(name => existsSync(join(root, module.path, name)))) continue;
+    try {
+      const lock = capturePnpmWorkspaceLock(resolve(root, module.path));
+      if (lock && lock.root !== root) for (const file of lock.paths) {
+        const affected = inheritedControls.get(file) ?? new Set<string>(); affected.add(id); inheritedControls.set(file, affected);
+      }
+    } catch { /* The ordinary checker reports the exact ownership/lock error. */ }
+  }
+  if (inheritedControls.size) vite.watcher.add([...inheritedControls.keys()]);
   const changed = (_event: string, path: string) => {
+    const affected = inheritedControls.get(resolve(path));
+    if (affected) {for (const id of affected) enqueue(id); return;}
     const local = relative(root, resolve(path)).split(sep).join('/');
     try{
       const shared=readSharedSourceWorkspace(root)?.sharedDirectories??[];

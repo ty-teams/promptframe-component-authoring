@@ -6,6 +6,7 @@ import { COMPONENT_SOURCE_LAYOUT_FILE, COMPONENT_SOURCE_LAYOUT_VERSION, componen
 import { collectComponentSourceGraph, validateComponentSourceLayoutFiles } from '@promptframe/contracts/source-layout-evaluator';
 import { captureDevelopmentFiles } from './development-files.js';
 import { isComponentSourcePathIgnored, selectComponentSourceFiles } from './component-file-selection.js';
+import {capturePnpmWorkspaceLock} from './workspace-lockfile.js';
 const limits = { maximumFiles: 2048, maximumBytes: 16 * 1024 * 1024 };
 const lockNames = ['package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'bun.lockb'];
 const contexts = new Map<string, {
@@ -105,7 +106,7 @@ export function captureComponentWorkspaceSource(root: string, module: {
     catch (error) {
         if (error instanceof WorkspaceSourceError)
             throw error;
-        const code = error instanceof Error && /^(?:workspace\.source\.|development\.capture\.|development\.contents\.|package\.required_file\.)[a-z_]+$/u.test(error.message)
+        const code = error instanceof Error && /^(?:workspace\.source\.|workspace\.lockfile\.|development\.capture\.|development\.contents\.|package\.required_file\.)[a-z_]+$/u.test(error.message)
             ? error.message : 'workspace.source.capture_failed';
         throw new WorkspaceSourceError(code);
     }
@@ -161,8 +162,9 @@ function capture(root: string, module: {
     const locks = directLocks.length ? directLocks : existsSync(join(base, 'pnpm-workspace.yaml')) && existsSync(join(base, 'pnpm-lock.yaml'))
         ? [{ path: 'pnpm-lock.yaml', name: 'pnpm-lock.yaml', source: 'workspace_root', relativePath: relative(directory, join(base, 'pnpm-lock.yaml')).replace(/\\/gu, '/') }] : [];
     const rawLocks = locks.length ? captureDevelopmentFiles(base, locks.map(file => file.path), limits).readFiles() : [];
+    const inheritedLock = !locks.length ? capturePnpmWorkspaceLock(directory) : undefined;
     const evidencePath = prefix + 'promptframe-lockfile-evidence.json';
-    const restoredEvidence = !locks.length && existsSync(join(base, evidencePath))
+    const restoredEvidence = !locks.length && !inheritedLock && existsSync(join(base, evidencePath))
         ? captureDevelopmentFiles(base, [evidencePath], limits).readFiles()[0] : undefined;
     const recapturePaths = [...closure.map(file => file.path), 'promptframe-workspace.json', ...locks.map(file => file.path), ...(restoredEvidence ? [evidencePath] : [])];
     const recaptured = new Map(captureDevelopmentFiles(base, recapturePaths, { maximumFiles: budget.maximumFiles + 8, maximumBytes: budget.maximumBytes + 16 * 1024 * 1024 + 64 * 1024 }).readFiles().map(file => [file.path, file.bytes]));
@@ -171,9 +173,13 @@ function capture(root: string, module: {
         || [...closure, ...rawLocks, ...(restoredEvidence ? [restoredEvidence] : [])].some(file => !Buffer.from(file.bytes).equals(Buffer.from(recaptured.get(file.path)!))))
         throw Error('development.capture.changed_during_read');
     const packageBytes = recaptured.get(prefix + 'package.json')!;
+    inheritedLock?.verifyUnchanged();
     const evidence = locks.length ? json({ schemaVersion: 'promptframe.lockfile-evidence.v0.1.0', packageJsonSha256: sha(packageBytes),
         lockfiles: locks.map((lock, index) => ({ fileName: lock.name, source: lock.source, relativePath: lock.relativePath,
             sizeBytes: rawLocks[index]!.bytes.byteLength, sha256: sha(rawLocks[index]!.bytes) })) })
+        : inheritedLock ? json({schemaVersion: 'promptframe.lockfile-evidence.v0.1.0', packageJsonSha256: sha(packageBytes),
+            lockfiles: [{fileName: 'pnpm-lock.yaml', source: 'workspace_root', relativePath: inheritedLock.relativePath,
+              sizeBytes: inheritedLock.lockBytes.byteLength, sha256: sha(inheritedLock.lockBytes)}]})
         : restoredEvidence && validComponentLockEvidence(packageBytes, restoredEvidence.bytes) ? Buffer.from(restoredEvidence.bytes) : undefined;
     if (restoredEvidence && !evidence)
         throw Error('workspace.source.lock_evidence_invalid');

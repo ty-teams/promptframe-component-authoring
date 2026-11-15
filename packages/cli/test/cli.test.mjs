@@ -3382,12 +3382,13 @@ test('package accepts pnpm workspace root lockfile evidence without component sy
     await writeFixtureComponent(componentDir);
     await rm(path.join(componentDir, 'pnpm-lock.yaml'), { force: true });
     await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "components/*"\n');
-    await writeFile(path.join(dir, 'pnpm-lock.yaml'), [
-      'lockfileVersion: "9.0"',
-      'packages:',
-      '  remotion@4.0.0:',
-      '    resolution: {integrity: sha512-workspace-demo}',
-    ].join('\n'));
+    const pkg = JSON.parse(await readFile(path.join(componentDir, 'package.json'), 'utf8'));
+    const importer = {};
+    for (const group of ['dependencies', 'devDependencies', 'optionalDependencies']) if (pkg[group]) {
+      importer[group] = Object.fromEntries(Object.entries(pkg[group]).map(([name, specifier]) => [name, {specifier, version: specifier.replace(/^[~^]/, '')}]));
+    }
+    await writeFile(path.join(dir, 'pnpm-lock.yaml'), JSON.stringify({lockfileVersion: '9.0',
+      importers: {'components/fixture-component': importer}, packages: {'remotion@4.0.0': {resolution: {integrity: 'sha512-workspace-demo'}}}}));
 
     const validate = JSON.parse((await execFileAsync('node', [
       cliPath,
