@@ -4,6 +4,11 @@ import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 const [parent,mode]=process.argv.slice(2),temporary=await createDevelopmentTemporary('build',parent);
 if(mode==='launching')temporary.beforeSpawn();
+if(mode==='joined'){
+  const worker=join(temporary.directory,'own-closed-worker.mjs');
+  writeFileSync(worker,'process.stdout.write("done");');
+  await runDevelopmentProcess({worker,cwd:temporary.directory,input:'',timeoutMs:5000,maximumOutputBytes:4096,temporary});
+}
 if(mode==='descendant'){
   const worker=join(temporary.directory,'own-worker.mjs');
   writeFileSync(join(temporary.directory,'own-descendant.mjs'),`import fs from 'node:fs';const deadline=Date.now()+10000;const timer=setInterval(()=>{if(fs.existsSync('release')){fs.writeFileSync('child-final.txt','original child finished');clearInterval(timer);}else if(Date.now()>deadline){clearInterval(timer);process.exitCode=2;}},10);`);
@@ -13,4 +18,5 @@ if(mode==='descendant'){
 process.send({directory:temporary.directory,mode});
 // Controlled interruption tests own this process and terminate it once. The
 // original descendant exits through its own release file, with no group signal.
-setInterval(()=>{},1000);
+if(mode==='joined')process.once('message',()=>{temporary.release();process.disconnect();});
+else setInterval(()=>{},1000);

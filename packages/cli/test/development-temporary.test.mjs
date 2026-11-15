@@ -8,6 +8,23 @@ import {fileURLToPath} from 'node:url';
 import {cleanupDevelopmentTemporaries,createDevelopmentTemporary} from '../dist/development-temporary.js';
 const fixture=fileURLToPath(new URL('./fixtures/development-temporary-producer.mjs',import.meta.url));
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+test('a different process cannot reap a joined root before its live creator releases it',{
+  skip:process.platform!=='linux',timeout:10_000,
+},async()=>{
+  const parent=await mkdtemp(join(tmpdir(),'pf-own-temp-live-joined-'));
+  const child=fork(fixture,[parent,'joined'],{env:{NO_COLOR:'1'},stdio:['ignore','ignore','ignore','ipc']});
+  const closed=new Promise(resolve=>child.once('close',(code,signal)=>resolve({code,signal})));
+  try{
+    const value=await new Promise((resolve,reject)=>{child.once('message',resolve);child.once('error',reject);});
+    const record=JSON.parse(await readFile(join(dirname(value.directory),'.promptframe-temporary.json'),'utf8'));
+    assert.equal(record.phase,'joined');assert.equal(record.creator.pid,child.pid);
+    const observed=await cleanupDevelopmentTemporaries(parent);
+    assert.equal(observed.removed,0);assert.equal(observed.retained,1);assert((await lstat(value.directory)).isDirectory());
+    child.send('normal release');assert.deepEqual(await closed,{code:0,signal:null});assert.deepEqual(await readdir(parent),[]);
+  }finally{
+    if(child.connected)child.send('normal release');await closed;await rm(parent,{recursive:true,force:true});
+  }
+});
 async function interrupted(parent,mode){
   const child=fork(fixture,[parent,mode],{env:{NO_COLOR:'1'},stdio:['ignore','ignore','ignore','ipc']});
   const closed=new Promise(resolve=>child.once('close',(code,signal)=>resolve({code,signal})));

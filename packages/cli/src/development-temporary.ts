@@ -77,6 +77,10 @@ function groupEmpty(group:number):boolean|null{
   }return true;}finally{directory.closeSync();}
 }
 function retired(value:RecordValue){
+  // A live creator still owns its final marker fsync and release, even after
+  // the compiler closed. Another process must not remove that directory
+  // between marker rename and parent fsync.
+  if(!gone(value.creator))return false;
   if(value.phase==='not-started')return value.worker===null;
   if(value.phase==='joined'){
     // Older writers could persist joined/null after a failed worker identity
@@ -84,7 +88,6 @@ function retired(value:RecordValue){
     if(!value.worker)return false;
     return Boolean(value.worker.group&&gone(value.worker)&&groupEmpty(value.worker.group)===true);
   }
-  if(!gone(value.creator))return false;
   if(value.phase==='preparing')return value.worker===null;
   // An interrupted spawn with no original worker identity is not NoStart.
   if(!value.worker||!value.worker.group||!gone(value.worker))return false;

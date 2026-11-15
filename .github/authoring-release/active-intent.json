@@ -1,7 +1,7 @@
 {
   "schemaVersion": "promptframe-authoring-release-intent/v2",
   "releaseId": "authoring-release-2026-11-15.6",
-  "artifactTag": "authoring-candidate-2026-11-15.6",
+  "artifactTag": "authoring-candidate-2026-11-15.6-r2",
   "createdAt": "2026-11-15T14:29:08.552Z",
   "expiresAt": "2026-11-22T14:29:08.552Z",
   "registry": "https://registry.npmjs.org/",
@@ -23,5 +23,5 @@
       "integrity": "sha512-P+zgllv+wrI1whE9aGO7732WoOrBd0PrvdKXHw5ljAUY/HJQ2JLnxR3byC6zSpPwa1t43BhvsyY3/2JvH+B5Ig=="
     }
   ],
-  "intentDigest": "sha256:7d423e949d849ea514ac48b2a3c8b027cdbae19e838e8ec112f9f8905de09c21"
+  "intentDigest": "sha256:8775eba63e0b64b89c60c6c16722b3e6eeabf617929bc62f48ad66dc54ceccbc"
 }
