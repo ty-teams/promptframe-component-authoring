@@ -85,6 +85,18 @@ test('selecting A does not validate or package an unrelated broken C',async()=>{
  }finally{await rm(root,{recursive:true,force:true});}
 });
 
+test('a shared workspace rejects nested component declarations before collecting another component source',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'pf-shared-nested-'));
+ try{
+  const [a]=await fixture(root),config=JSON.parse(await readFile(join(root,'promptframe-workspace.json'),'utf8'));
+  const nested=a.path+'/private-child';await mkdir(join(root,nested));
+  await writeFile(join(root,nested,'manifest.json'),JSON.stringify({id:'@demo/private-child'}));
+  config.components.push({id:'@demo/private-child',path:nested});
+  await writeFile(join(root,'promptframe-workspace.json'),JSON.stringify(config));
+  assert.throws(()=>captureDevelopmentModule(root,a),/workspace.source|Component directories must be separate/);
+ }finally{await rm(root,{recursive:true,force:true});}
+});
+
 test('real root watcher rebuilds A/B for a shared edit and preserves C and unused shared files',async()=>{
  const root=await mkdtemp(join(tmpdir(),'pf-shared-watch-')),origin='http://127.0.0.1:39001';
  const abort=new AbortController();let server,observer;const snapshots=[];
@@ -168,7 +180,7 @@ test('missing, ignored, private, undeclared, foreign component and symlink share
 test('a supplied archive layout cannot smuggle unused shared source, raw locks or another module',async()=>{
  const root=await mkdtemp(join(tmpdir(),'pf-shared-source-archive-'));
  try{const [a]=await fixture(root),captured=captureDevelopmentModule(root,a).readFiles();assert.equal(validateComponentSourceLayoutFiles(captured).componentId,a.id);
-  for(const path of ['shared/unreferenced.ts','shared/pnpm-lock.yaml','components/b/src/private.ts']){
+  for(const path of ['shared/unreferenced.ts','shared/pnpm-lock.yaml','components/b/src/private.ts','shared/file:private.ts','shared/.envrc','shared/.AWS/credentials']){
    assert.throws(()=>validateComponentSourceLayoutFiles([...captured,{path,bytes:Buffer.from('not an allowed closure input')}]),/workspace.source/);
   }
   const layout=captured.find(file=>file.path==='promptframe-source-layout.json');assert.throws(()=>validateComponentSourceLayoutFiles([...captured,layout]),/duplicate_file/);

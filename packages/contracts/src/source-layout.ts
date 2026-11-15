@@ -1,7 +1,7 @@
 import { z } from 'zod';
 export const COMPONENT_SOURCE_LAYOUT_FILE = 'promptframe-source-layout.json';
 export const COMPONENT_SOURCE_LAYOUT_VERSION = 'promptframe-component-source-layout/v1';
-export const componentSourceRelativePathSchema = z.string().min(1).max(512).refine(value => !value.includes('\\') && !value.includes('\0') && !value.startsWith('/') && !/^[A-Za-z]:/u.test(value)
+export const componentSourceRelativePathSchema = z.string().min(1).max(512).refine(value => !value.includes('\\') && !value.includes('\0') && !value.includes(':') && !value.startsWith('/')
     && value.split('/').every(part => !!part && part !== '.' && part !== '..'), 'Use a canonical root-relative path.');
 const declaration = z.object({ id: z.string().min(1).max(256), path: componentSourceRelativePathSchema }).strict();
 export const componentSourceWorkspaceSchema = z.object({
@@ -13,6 +13,8 @@ export const componentSourceWorkspaceSchema = z.object({
     for (const item of value.components) {
         if (ids.has(item.id) || paths.has(item.path))
             context.addIssue({ code: z.ZodIssueCode.custom, message: 'Duplicate component declaration.' });
+        if([...paths].some(path=>sourcePathInside(item.path,path)||sourcePathInside(path,item.path)))
+            context.addIssue({code:z.ZodIssueCode.custom,message:'Component directories must be separate.'});
         ids.add(item.id);
         paths.add(item.path);
     }

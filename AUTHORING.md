@@ -32,7 +32,7 @@
 }
 ```
 
-组件可从 `components/part-a/src/Component.tsx` 静态导入 `../../../shared/theme`。A/B 引用主题而 C 不引用时，修改主题只改变 A/B 的新包输入；旧固定源包不变。单组件内部合法的 `../` 引用不会仅因向上一级而拒绝，实际路径仍须在组件根内。
+组件根须互不嵌套，共享目录须与所有组件根分开。组件可从 `components/part-a/src/Component.tsx` 静态导入 `../../../shared/theme`。A/B 引用主题而 C 不引用时，修改主题只改变 A/B 的新包输入；旧固定源包不变。单组件内部合法的 `../` 引用不会仅因向上一级而拒绝，实际路径仍须在组件根内。
 
 ```bash
 npx -y -p @promptframe/cli@0.1.77 promptframe check . --workspace-component @demo/part-a --json

@@ -3,9 +3,9 @@ import { COMPONENT_SOURCE_LAYOUT_FILE, componentSourceEntryPath, componentSource
 const lockNames = new Set(['package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'bun.lockb']);
 const forbiddenParts = new Set(['node_modules', 'dist', '.git', '.promptframe', '.component-packages']);
 export function assertComponentSourceFilePath(file: string): void {
-    componentSourceRelativePathSchema.parse(file);
-    if (file.split('/').some(part => forbiddenParts.has(part) || /^\.env(?:\.|$)/iu.test(part)
-        || ['.npmrc', '.yarnrc', '.yarnrc.yml', '.netrc'].includes(part))
+    if(!componentSourceRelativePathSchema.safeParse(file).success)throw Error('workspace.source.path_invalid');
+    if (file.split('/').some(part => forbiddenParts.has(part.toLowerCase()) || /^\.env(?:\.|$)/iu.test(part)
+        || ['.npmrc', '.yarnrc', '.yarnrc.yml', '.netrc', '.envrc', '.pypirc', '.git-credentials', '.ssh', '.aws', '.azure'].includes(part.toLowerCase()))
         || /\.(?:pem|key|pfx|p12|exe|dll|so|node)$/iu.test(file))
         throw Error('workspace.source.private_or_unsupported_file');
 }
@@ -126,7 +126,7 @@ export function validateComponentSourceLayoutFiles(files: readonly ComponentSour
     const source = files.filter(file => file.path !== COMPONENT_SOURCE_LAYOUT_FILE && file.path !== 'promptframe-workspace.json');
     for (const file of source) {
         assertComponentSourceFilePath(file.path);
-        if (lockNames.has(file.path.split('/').at(-1)!))
+        if (lockNames.has(file.path.split('/').at(-1)!.toLowerCase()))
             throw Error('workspace.source.raw_lockfile_forbidden');
     }
     const selected = source.filter(file => componentSourceLocalName(layout, file.path) !== undefined);
