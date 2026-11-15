@@ -1,36 +1,21 @@
 {
   "schemaVersion": "promptframe-authoring-release-authorization/v2",
   "state": "publish_ready",
-  "releaseId": "authoring-release-2026-11-15.4",
-  "releaseTag": "authoring-release-2026-11-15.4-r2",
-  "artifactTag": "authoring-candidate-2026-11-15.4-r3",
-  "sourceCommit": "44b2cb34a81aec9a083133b8db55b304baa92b8c",
-  "candidateManifestDigest": "sha256:61be1c84d822f59104b08b3b0d91df5f7a4703748d7a296a0da16e177989d9cb",
-  "platformGateDigest": "sha256:fcf47ac43e583ab0911118a30b99186e44600d60cbc590d4d840160f0c35f8c5",
-  "releaseDigest": "sha256:4e7d6d133a85e0f9bb99ca9cbd12a92ecd75804e93ca1ff5396a614d22390594",
-  "createdAt": "2026-11-15T12:43:20.134Z",
-  "expiresAt": "2026-11-20T12:30:15.152Z",
+  "releaseId": "authoring-release-2026-11-15.5",
+  "releaseTag": "authoring-release-2026-11-15.5",
+  "artifactTag": "authoring-candidate-2026-11-15.5",
+  "sourceCommit": "ffd87ae818297c1ae7a6f8550b7fcec76fbe34bb",
+  "candidateManifestDigest": "sha256:edc842776b9d9aca9512a402282163bc28a8c9f873ee86971aa3d5c88b1f6d6c",
+  "platformGateDigest": "sha256:a62533af0bc8ec059ae4fdefd71a303cb7867cd865ed69a6c55df742af39448a",
+  "releaseDigest": "sha256:b4852b2292d86b8a4050188db0fc32863a3608b53a98e75b92a41a60854a55ff",
+  "createdAt": "2026-11-15T13:09:48.918Z",
+  "expiresAt": "2026-11-20T13:09:48.918Z",
   "packages": [
     {
-      "name": "@promptframe/contracts",
-      "version": "0.1.47",
-      "integrity": "sha512-P+zgllv+wrI1whE9aGO7732WoOrBd0PrvdKXHw5ljAUY/HJQ2JLnxR3byC6zSpPwa1t43BhvsyY3/2JvH+B5Ig=="
-    },
-    {
-      "name": "@promptframe/component-kit",
-      "version": "0.1.41",
-      "integrity": "sha512-dfQOuLT+Bi83H2f0cgtnZtKk38GE22VNxMH5SRAT/Hh4x0yLEqyyH5wd73+hf3/1UUN0s8Or25hrM+VDEwltBQ=="
-    },
-    {
       "name": "@promptframe/cli",
-      "version": "0.1.79",
-      "integrity": "sha512-OjRF5FUl53lHemTbQcLM/sMcIkAjRRf2Q1RngKMk+ekWQ2nfIk7nJgXSxixyu8lQkO9a346fRB2jm4MpGp/bTw=="
-    },
-    {
-      "name": "create-promptframe-component",
-      "version": "0.1.69",
-      "integrity": "sha512-gfKO4AGMqF62NHfd9I6FbYvNaA7mUeEfWKS9733K4PzhcY/F2S75v0AHFdMaqPpo04BZsaSeWV2RvcRBa+vMyw=="
+      "version": "0.1.80",
+      "integrity": "sha512-ARZrOExHplYilJ6m8nvMzOy4iuM0IYOlbTo2IQ1xplhoVoc6jsYCfKqu6lJS/zGAeTDi3WrMf7oTc6zUEtS+Iw=="
     }
   ],
-  "authorizationDigest": "sha256:fe0baffa21c4b2ccda31b04022dee5b61743a40236b0995347d72aa5634e7000"
+  "authorizationDigest": "sha256:2094e1c0bc90e7e7eee68ae9211b173be9c77c7129165584cd712edbc3e620d9"
 }
