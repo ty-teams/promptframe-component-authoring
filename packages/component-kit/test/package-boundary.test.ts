@@ -29,6 +29,7 @@ test('component-kit exposes only public authoring entrypoints', () => {
   assert.deepEqual(Object.keys(packageJson.exports ?? {}).sort(), [
     '.',
     './layout',
+    './model-react',
     './package.json',
     './preview',
     './preview-react',
@@ -51,7 +52,7 @@ test('component-kit records PromptFrame public release provenance metadata', () 
 
 test('component-kit keeps Remotion and React as optional peers', () => {
   assert.match(packageJson.peerDependencies?.react ?? '', /^\^19/);
-  assert.match(packageJson.peerDependencies?.remotion ?? '', /^\^4/);
+  assert.equal(packageJson.peerDependencies?.remotion, '>=4.0.374 <5');
   assert.equal(packageJson.peerDependenciesMeta?.react?.optional, true);
   assert.equal(packageJson.peerDependenciesMeta?.remotion?.optional, true);
 });
