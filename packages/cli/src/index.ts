@@ -457,7 +457,7 @@ async function check(argv: string[]): Promise<void> {
   }
   const input = resolveComponentInput(argv);
   const target = resolveUploadTarget(argv);
-  const freshness = await resolveSoftRemoteStandardFreshness(argv, target, 'check');
+  const freshness = await resolveSoftRemoteStandardFreshness(argv, target, 'check', [input.dir]);
   const output = buildCheckOutput(input, target, freshness);
   if (hasFlag(argv, '--json')) {
     printJson(output);
@@ -472,8 +472,8 @@ async function check(argv: string[]): Promise<void> {
 
 async function checkWorkspace(argv: string[], root: string): Promise<void> {
   const target = resolveUploadTarget(argv);
-  const freshness = await resolveSoftRemoteStandardFreshness(argv, target, 'check');
   const reports = collectWorkspaceComponentReports(root);
+  const freshness = await resolveSoftRemoteStandardFreshness(argv, target, 'check', reports.map(report => workspaceComponentInput(report).dir));
   const components = reports.map((report) => ({
     id: report.id,
     path: report.path,
@@ -742,7 +742,7 @@ async function dev(argv: string[]): Promise<void> {
   const target = resolveUploadTarget(argv);
   const manifest = validateComponentDirectory(dir);
   assertAuthoringPackageFreshness(dir, target);
-  const freshness = await resolveSoftRemoteStandardFreshness(argv, target, 'dev');
+  const freshness = await resolveSoftRemoteStandardFreshness(argv, target, 'dev', [dir]);
   const previewEnvelope = playbackPreviewProps(dir, manifest);
   const publicResources = evaluateDirectoryPublicResources(dir);
   assertPublicResourcesAccepted(publicResources);
@@ -1037,7 +1037,7 @@ async function uploadComponent(argv: string[]): Promise<void> {
   const prepared = prepareComponentUpload(input, uploadTarget, valueAfter(argv, '--out'));
   const endpoint = resolveEndpoint('upload', argv);
   reportUploadProgress(argv, 'standard', 'Checking platform component standard.');
-  const remoteStandard = await assertRemoteStandardFreshness(endpoint, argv);
+  const remoteStandard = await assertRemoteStandardFreshness(endpoint, argv, [prepared.artifact.out]);
   assertSourceLayoutSupported(prepared.artifact, remoteStandard);
   reportUploadProgress(argv, 'upload', 'Uploading source package.');
   const output = await uploadPreparedComponent(input, argv, endpoint, uploadTarget, prepared);
@@ -1081,7 +1081,7 @@ async function uploadWorkspace(
   });
   const endpoint = resolveEndpoint('upload', argv);
   reportUploadProgress(argv, 'standard', 'Checking platform component standard.');
-  const remoteStandard = await assertRemoteStandardFreshness(endpoint, argv);
+  const remoteStandard = await assertRemoteStandardFreshness(endpoint, argv, preparedUploads.map(item => item.prepared.artifact.out));
   for (const item of preparedUploads) assertSourceLayoutSupported(item.prepared.artifact, remoteStandard);
   const uploads = [];
   for (const item of preparedUploads) {
@@ -1325,20 +1325,20 @@ function normalizeUploadTargetAlias(raw: string): string {
   return raw;
 }
 
-function assertAuthoringPackageFreshness(dir: string, target: AuthoringUploadTarget): void {
-  const diagnostics = computePackageFreshnessDiagnostics(readPackageManifest(join(dir, 'package.json')), target);
+function assertAuthoringPackageFreshness(dir: string, target: AuthoringUploadTarget, floors?: AuthoringPackageVersions): void {
+  const diagnostics = computePackageFreshnessDiagnostics(readPackageManifest(join(dir, 'package.json')), target, floors);
   if (diagnostics.length === 0) return;
   fail(formatPackageFreshnessFailure(diagnostics, target), diagnostics[0]!.code);
 }
 
-function assertAuthoringZipPackageFreshness(path: string, target: AuthoringUploadTarget): void {
+function assertAuthoringZipPackageFreshness(path: string, target: AuthoringUploadTarget, floors?: AuthoringPackageVersions): void {
   const packageJson = readPackageManifestFromZip(path);
-  const diagnostics = computePackageFreshnessDiagnostics(packageJson, target);
+  const diagnostics = computePackageFreshnessDiagnostics(packageJson, target, floors);
   if (diagnostics.length === 0) return;
   fail(formatPackageFreshnessFailure(diagnostics, target), diagnostics[0]!.code);
 }
 
-async function assertRemoteStandardFreshness(endpoint: string, argv: string[]): Promise<Record<string, unknown>> {
+async function assertRemoteStandardFreshness(endpoint: string, argv: string[], archives: readonly string[] = []): Promise<Record<string, unknown>> {
   const payload = await fetchJson(`${endpoint}/components/standard`, {
     headers: buildRemoteHeaders(endpoint, argv),
   }, 'standard.freshness.fetch_failed');
@@ -1348,6 +1348,9 @@ async function assertRemoteStandardFreshness(endpoint: string, argv: string[]): 
   }
   const evaluation = evaluateRemoteStandardFreshness(payload, remoteSourceHash);
   if (evaluation.uploadBlocking) fail(evaluation.message, evaluation.code);
+  if (evaluation.minPackageVersions) {
+    for (const archive of archives) assertAuthoringZipPackageFreshness(archive, resolveUploadTarget(argv), evaluation.minPackageVersions);
+  }
   return payload;
 }
 
@@ -1364,6 +1367,7 @@ async function resolveSoftRemoteStandardFreshness(
   argv: string[],
   target: AuthoringUploadTarget,
   commandName: 'check' | 'dev',
+  directories: readonly string[] = [],
 ): Promise<AuthoringStandardFreshnessDecision> {
   const endpoint = resolveOptionalEndpoint(argv);
   if (!endpoint) {
@@ -1395,6 +1399,11 @@ async function resolveSoftRemoteStandardFreshness(
   }
   const evaluation = evaluateRemoteStandardFreshness(payload, remoteSourceHash);
   if (evaluation.kind === 'blocking') fail(evaluation.message, evaluation.code);
+  if (evaluation.minPackageVersions) {
+    for (const dir of directories) {
+      if (existsSync(join(dir, 'package.json'))) assertAuthoringPackageFreshness(dir, target, evaluation.minPackageVersions);
+    }
+  }
   if (evaluation.kind === 'warning') {
     return buildFreshnessWarningDecision(
       target,
@@ -1515,7 +1524,7 @@ function evaluateRemoteStandardFreshness(
   // Independently versioned packages need a per-package minimum comparison.
   // A higher CLI cannot compensate for a contracts version below its floor;
   // a mixed recommendation by itself does not make compatible packages invalid.
-  const belowFloor = minPackageVersions && authoringPackageVersionKeys.some(key =>
+  const belowFloor = minPackageVersions && (['contracts', 'cli'] as const).some(key =>
     (compareSemverCore(minPackageVersions[key], localCohort[key]) ?? 0) > 0);
   if (belowFloor) {
     const targetPackages = {...localCohort};
@@ -1618,7 +1627,7 @@ function evaluateRemoteStandardFreshness(
     kind: 'current',
     uploadBlocking: false,
     code: 'standard.freshness.current',
-    message: 'Local authoring standard and package cohort match the platform release.',
+    message: 'The local authoring standard and required package minimums are compatible with this platform.',
     minPackageVersions,
     recommendedAuthoringPackages,
     ...releaseMetadata,

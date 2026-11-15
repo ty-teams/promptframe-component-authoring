@@ -5,7 +5,7 @@ import test from 'node:test';
 import semver from 'semver';
 
 const repoRoot = path.resolve(import.meta.dirname, '../../..');
-const release = JSON.parse(await readFile(path.join(repoRoot, 'packages/cli/authoring-release.json'), 'utf8'));
+const release = JSON.parse(await readFile(path.join(repoRoot, 'authoring-release.json'), 'utf8'));
 function assertCompatibleRange(specifier, current) {
   assert.ok(semver.satisfies(current, specifier), 'generated dependency must accept the verified published version');
 }

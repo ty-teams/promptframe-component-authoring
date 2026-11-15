@@ -7,6 +7,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
+  AUTHORING_RELEASE_PACKAGES,
   computeAuthoringReleaseAuthorizationDigest,
   computeAuthoringReleaseIntentDigest,
   createAuthoringCandidateManifest,
@@ -205,7 +206,7 @@ test('existing Trusted Publisher workflows keep filenames and publish one shared
 });
 
 test('a kit-only release reuses a published contracts version and leaves other packages unrequested', async () => {
-  const old = await readAuthoringReleaseIntent(undefined, {root, now});
+  const old = await fullFixtureIntent();
   const selected = old.packages.find(entry => entry.name === '@promptframe/component-kit');
   const contracts = {...old.packages.find(entry => entry.name === '@promptframe/contracts'), integrity: 'sha512-' + Buffer.alloc(64, 3).toString('base64')};
   const source = {...old, schemaVersion: 'promptframe-authoring-release-intent/v2', packages: [selected],
@@ -280,7 +281,7 @@ test('observation expiry after a write stays unconfirmed, preflight failure stay
 });
 
 async function createFixture() {
-  const intent = await readAuthoringReleaseIntent(undefined, { root, now });
+  const intent = await fullFixtureIntent();
   const candidate = createAuthoringCandidateManifest({
     intent,
     sourceCommit: 'f'.repeat(40),
@@ -349,4 +350,13 @@ function metadata(entry, latest) {
       [entry.version]: { dist: { integrity: entry.integrity } },
     },
   };
+}
+
+async function fullFixtureIntent() {
+  const source = await readAuthoringReleaseIntent(undefined, {root, now});
+  const metadata = JSON.parse(await readFile(path.join(root, "authoring-release.json"), "utf8"));
+  const {dependencies, reusedPackages, ...legacy} = source;
+  const intent = {...legacy, schemaVersion: "promptframe-authoring-release-intent/v1", packages: AUTHORING_RELEASE_PACKAGES.map(({name, key}) => ({name, version: metadata.recommendedAuthoringPackages[key]})), intentDigest: ""};
+  intent.intentDigest = computeAuthoringReleaseIntentDigest(intent);
+  return parseAuthoringReleaseIntent(intent, {now});
 }

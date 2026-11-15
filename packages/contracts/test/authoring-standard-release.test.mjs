@@ -48,8 +48,8 @@ test('authoring standard release exposes one digest-bound package cohort', async
   assert.equal(releaseDigest, 'sha256:' + createHash('sha256').update(canonicalizePromptFramePolicy(material)).digest('hex'));
 });
 
-test('separate CLI release metadata binds the current templates and package versions', async () => {
-  const release = authoringStandardReleaseSchema.parse(JSON.parse(await readFile(new URL('../../cli/authoring-release.json', import.meta.url), 'utf8')));
+test('repository release metadata binds the current templates and independently selected package versions', async () => {
+  const release = authoringStandardReleaseSchema.parse(JSON.parse(await readFile(new URL('../../../authoring-release.json', import.meta.url), 'utf8')));
   assert.notEqual(release.releaseId, AUTHORING_STANDARD_RELEASE_ID);
   const template=new URL('../../create-component/templates/react-remotion/',import.meta.url),entries=[];
   async function files(prefix=''){
@@ -78,6 +78,14 @@ test('separate CLI release metadata binds the current templates and package vers
     .update(canonicalizePromptFramePolicy(digestMaterial))
     .digest('hex')}`;
   assert.equal(releaseDigest, computedDigest);
+});
+
+test('CLI offline metadata remains bound to its own version without forcing other package upgrades', async () => {
+  const release = authoringStandardReleaseSchema.parse(JSON.parse(await readFile(new URL('../../cli/authoring-release.json', import.meta.url), 'utf8')));
+  const cli = JSON.parse(await readFile(new URL('../../cli/package.json', import.meta.url), 'utf8'));
+  assert.equal(release.activePackageCohort.cli.version, cli.version);
+  const {releaseDigest, ...material} = release;
+  assert.equal(releaseDigest, 'sha256:' + createHash('sha256').update(canonicalizePromptFramePolicy(material)).digest('hex'));
 });
 
 test('freshness decision keeps local and current standard fingerprints separate', () => {

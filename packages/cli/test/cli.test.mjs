@@ -2260,6 +2260,13 @@ test('same-sourceHash recommended-only update stays non-blocking and is actionab
   try {
     const componentDir = path.join(dir, 'component');
     await writeFixtureComponent(componentDir);
+    const packageFile = path.join(componentDir, 'package.json');
+    const packageJson = JSON.parse(await readFile(packageFile, 'utf8'));
+    packageJson.dependencies['@promptframe/contracts'] = '^' + PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS.contracts;
+    packageJson.dependencies['@promptframe/component-kit'] = '^' + PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS.componentKit;
+    packageJson.devDependencies['@promptframe/cli'] = '^' + PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS.cli;
+    await writeFile(packageFile, JSON.stringify(packageJson));
+
 
     const jsonDev = JSON.parse((await execFileAsync('node', [
       cliPath,
@@ -2344,6 +2351,46 @@ test('independent package recommendations do not reject a compatible mixed combi
   } finally {await server.close(); await rm(dir, {recursive: true, force: true});}
 });
 
+test('project kit minimums use its declared dependency rather than the CLI offline recommendation', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-project-kit-floor-'));
+  const server = await createServer(async (req, res) => {
+    assert.equal(req.url, '/components/standard');
+    writeJson(res, {success: true, sourceHash: COMPONENT_STANDARD_SOURCE_HASH, authoringStandardRelease: {
+      ...PROMPTFRAME_AUTHORING_STANDARD_RELEASE,
+      minPackageVersions: {...PROMPTFRAME_AUTHORING_STANDARD_RELEASE.minPackageVersions, componentKit: nextAuthoringVersions.componentKit},
+      recommendedAuthoringPackages: {...PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS, componentKit: nextAuthoringVersions.componentKit},
+    }});
+  });
+  try {
+    const componentDir = path.join(dir, 'component'); await writeFixtureComponent(componentDir);
+    const file = path.join(componentDir, 'package.json'), manifest = JSON.parse(await readFile(file, 'utf8'));
+    manifest.dependencies['@promptframe/component-kit'] = '^' + nextAuthoringVersions.componentKit;
+    await writeFile(file, JSON.stringify(manifest));
+    const valid = await execFileAsync('node', [cliPath, 'check', componentDir, '--endpoint', server.url, '--json']);
+    assert.equal(JSON.parse(valid.stdout).freshness.status, 'warning');
+    manifest.dependencies['@promptframe/component-kit'] = '^' + PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS.componentKit;
+    await writeFile(file, JSON.stringify(manifest));
+    const rejected = await execFileAsync('node', [cliPath, 'check', componentDir, '--endpoint', server.url, '--json']).catch(error => error);
+    assert.equal(rejected.code, 1);
+    assert.equal(JSON.parse(rejected.stderr).diagnostic.code, 'component_standard.authoring_package.component_kit.min_version');
+  } finally {await server.close(); await rm(dir, {recursive: true, force: true});}
+});
+
+test('a newer scaffold is not judged against an older CLI template hash', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-newer-scaffold-'));
+  try {
+    const componentDir = path.join(dir, 'component'); await writeFixtureComponent(componentDir);
+    await mkdir(path.join(componentDir, '.promptframe'), {recursive: true});
+    await writeFile(path.join(componentDir, '.promptframe/scaffold.json'), JSON.stringify({
+      schemaVersion: 'promptframe.scaffold.v0.1.0', createdByPackage: 'create-promptframe-component',
+      createdByVersion: nextAuthoringVersions.createComponent, templateName: 'react-remotion',
+      templateDigest: 'sha256:' + 'c'.repeat(64), createdAt: '2026-11-15T00:00:00.000Z',
+    }));
+    const result = JSON.parse((await execFileAsync('node', [cliPath, 'doctor', componentDir, '--json'])).stdout);
+    assert.equal(result.diagnostics.some(item => item.code === 'scaffold.template.stale'), false);
+  } finally {await rm(dir, {recursive: true, force: true});}
+});
+
 test('candidate promotion stage is non-blocking but never reports stable current', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-candidate-promoting-'));
   const calls = [];
@@ -2385,6 +2432,13 @@ test('candidate promotion stage is non-blocking but never reports stable current
   try {
     const componentDir = path.join(dir, 'component');
     await writeFixtureComponent(componentDir);
+    const packageFile = path.join(componentDir, 'package.json');
+    const packageJson = JSON.parse(await readFile(packageFile, 'utf8'));
+    packageJson.dependencies['@promptframe/contracts'] = '^' + PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS.contracts;
+    packageJson.dependencies['@promptframe/component-kit'] = '^' + PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS.componentKit;
+    packageJson.devDependencies['@promptframe/cli'] = '^' + PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS.cli;
+    await writeFile(packageFile, JSON.stringify(packageJson));
+
 
     const dev = JSON.parse((await execFileAsync('node', [
       cliPath,

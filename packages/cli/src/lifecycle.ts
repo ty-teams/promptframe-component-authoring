@@ -156,8 +156,8 @@ export function computePackageChanges(packageJson: ComponentPackageJson): Packag
 export function computePackageFreshnessDiagnostics(
   packageJson: ComponentPackageJson,
   target: AuthoringUploadTarget,
+  floors = PROMPTFRAME_AUTHORING_STANDARD_RELEASE.minPackageVersions,
 ): PackageFreshnessDiagnostic[] {
-  const floors = PROMPTFRAME_AUTHORING_STANDARD_RELEASE.minPackageVersions;
   const diagnostics: PackageFreshnessDiagnostic[] = [];
   const requiresPublicAuthoringFloors = target === 'marketplace_authoring';
 
@@ -204,7 +204,9 @@ export function computeScaffoldFreshnessDiagnostics(
     ? PROMPTFRAME_AUTHORING_STANDARD_RELEASE.scaffoldTemplates.find((template) => template.name === templateName)?.digest
     : undefined;
   const versionStale = !current || isBelowRequiredRange(current, minimum);
-  const digestStale = Boolean(expectedTemplateDigest && templateDigest !== expectedTemplateDigest);
+  // An older CLI knows only its own template version's fingerprint. A newer
+  // scaffold is not stale merely because it has a different template hash.
+  const digestStale = Boolean(current === minimum && expectedTemplateDigest && templateDigest !== expectedTemplateDigest);
   if (!versionStale && !digestStale) return [];
   const staleReasons = [
     versionStale ? `version current=${current ?? '<unknown>'}, minimum=${minimum}` : null,

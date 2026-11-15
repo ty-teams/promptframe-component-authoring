@@ -40,8 +40,8 @@ test('candidate builder packs the exact cohort without lifecycle scripts or inhe
       },
     });
 
-    assert.equal(manifest.packages.length, 4);
-    assert.equal(calls.length, 4);
+    assert.equal(manifest.packages.length, activeIntent.packages.length);
+    assert.equal(calls.length, activeIntent.packages.length);
     for (const call of calls) {
       assert.equal(call.command, 'npm');
       assert.deepEqual(call.args.slice(0, 3), ['pack', '--json', '--ignore-scripts']);
@@ -96,8 +96,9 @@ test('candidate workflow is tag-bound, no-clobber and contains no npm publish pa
 test('candidate builder packs only the explicit changed package and reuses the dependency SRI', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'authoring-candidate-subset-'));
   const outputDir = path.join(tempRoot, 'output');
-  const kit = activeIntent.packages.find(entry => entry.name === '@promptframe/component-kit');
-  const contracts = activeIntent.packages.find(entry => entry.name === '@promptframe/contracts');
+  const metadata = JSON.parse(await readFile(path.join(root, 'authoring-release.json'), 'utf8'));
+  const kit = metadata.activePackageCohort.componentKit;
+  const contracts = metadata.activePackageCohort.contracts;
   const reused = {...contracts, integrity: 'sha512-' + Buffer.alloc(64, 4).toString('base64')};
   const intent = {...activeIntent, schemaVersion: 'promptframe-authoring-release-intent/v2', packages: [kit],
     dependencies: {componentKit: ['contracts']}, reusedPackages: [reused], intentDigest: ''};
