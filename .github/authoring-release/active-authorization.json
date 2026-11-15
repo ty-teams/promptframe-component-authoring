@@ -1,21 +1,21 @@
 {
   "schemaVersion": "promptframe-authoring-release-authorization/v2",
   "state": "publish_ready",
-  "releaseId": "authoring-release-2026-11-15.5",
-  "releaseTag": "authoring-release-2026-11-15.5",
-  "artifactTag": "authoring-candidate-2026-11-15.5",
-  "sourceCommit": "ffd87ae818297c1ae7a6f8550b7fcec76fbe34bb",
-  "candidateManifestDigest": "sha256:edc842776b9d9aca9512a402282163bc28a8c9f873ee86971aa3d5c88b1f6d6c",
-  "platformGateDigest": "sha256:a62533af0bc8ec059ae4fdefd71a303cb7867cd865ed69a6c55df742af39448a",
-  "releaseDigest": "sha256:b4852b2292d86b8a4050188db0fc32863a3608b53a98e75b92a41a60854a55ff",
-  "createdAt": "2026-11-15T13:09:48.918Z",
-  "expiresAt": "2026-11-20T13:09:48.918Z",
+  "releaseId": "authoring-release-2026-11-15.6",
+  "releaseTag": "authoring-release-2026-11-15.6",
+  "artifactTag": "authoring-candidate-2026-11-15.6-r2",
+  "sourceCommit": "26b1b1e01a08b007f6d901c963f9395bad213a9f",
+  "candidateManifestDigest": "sha256:48dbd5e93254aa03f8206989c6c5af993069bdf1a0810de8a6a2c3f29788e7a1",
+  "platformGateDigest": "sha256:213023a62aac5310c295a6c9f8efe6adcb9792e0d7a6d34f98911c73d209070d",
+  "releaseDigest": "sha256:d914c5d7604c479dc73d14f8380e2302795084413d98c9047ef637d8e2596745",
+  "createdAt": "2026-11-15T14:54:26.722Z",
+  "expiresAt": "2026-11-20T14:54:26.722Z",
   "packages": [
     {
       "name": "@promptframe/cli",
-      "version": "0.1.80",
-      "integrity": "sha512-ARZrOExHplYilJ6m8nvMzOy4iuM0IYOlbTo2IQ1xplhoVoc6jsYCfKqu6lJS/zGAeTDi3WrMf7oTc6zUEtS+Iw=="
+      "version": "0.1.81",
+      "integrity": "sha512-0iL0Fl9bkpdAFPz6R/ES3EHRh0OuirAVpVEIQzIt+Bwr0GQ9dIurjmUzjcqE+VYVP6D3Alr1NilWQhTGdQ9WNw=="
     }
   ],
-  "authorizationDigest": "sha256:2094e1c0bc90e7e7eee68ae9211b173be9c77c7129165584cd712edbc3e620d9"
+  "authorizationDigest": "sha256:ef6c75a03ca1b10972135f697724c37b0fe194ca7e026b1d12e12389bc45806e"
 }
