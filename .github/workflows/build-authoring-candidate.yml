@@ -32,9 +32,11 @@ jobs:
       - run: corepack prepare pnpm@10.30.1 --activate
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint:public
-      - run: pnpm -r lint
-      - run: pnpm -r test
-      - run: pnpm -r build
+      # Package scripts also build contracts for standalone use. Serialize
+      # them so another package never imports a concurrently rewritten dist.
+      - run: pnpm --workspace-concurrency=1 -r lint
+      - run: pnpm --workspace-concurrency=1 -r test
+      - run: pnpm --workspace-concurrency=1 -r build
       - name: Build immutable candidate artifacts
         run: node scripts/authoring-release-candidate.mjs
       - name: Refuse candidate asset replacement

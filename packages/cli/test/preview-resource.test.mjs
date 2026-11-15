@@ -14,6 +14,24 @@ import {capturePreviewResourceFile,writePreviewResourceSelection,readPreviewReso
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j3ioAAAAASUVORK5CYII=','base64');
 const hash=bytes=>'sha256:'+createHash('sha256').update(bytes).digest('hex');
 const exec=promisify(execFile);
+test('selected self-contained model has path-free reader metadata and original lifecycle controls', async()=>{
+ const root=await fixture();let host;
+ try{
+  await writeFile(join(root,'src/schema.ts'),"import {z} from 'zod'; import {promptFrameResourceSchema} from '@promptframe/contracts'; export const propsSchema=z.object({illustration:promptFrameResourceSchema({kinds:['model'],sources:['public','asset']}).default('/example.glb')});");
+  const text=Buffer.from(JSON.stringify({asset:{version:'2.0'}}));
+  const json=Buffer.concat([text,Buffer.alloc((4-text.length%4)%4,32)]),header=Buffer.alloc(20);
+  header.writeUInt32LE(0x46546c67);header.writeUInt32LE(2,4);header.writeUInt32LE(20+json.length,8);
+  header.writeUInt32LE(json.length,12);header.writeUInt32LE(0x4e4f534a,16);const bytes=Buffer.concat([header,json]);
+  const file=join(root,'selected.glb');await writeFile(file,bytes);
+  writePreviewResourceSelection(root,{prop:'/illustration',file:capturePreviewResourceFile(file)});host=await server(root);
+  const state=await(await fetch(host.url+'/__promptframe/local-preview/state')).json();
+  assert.deepEqual(state.issues,[]);assert.equal(state.models.length,1);assert.equal(state.models[0].sha256,hash(bytes));
+  assert(!JSON.stringify(state).includes(root));assert.equal(state.models[0].url,state.props.illustration);
+  assert.deepEqual(Buffer.from(await(await fetch(host.url+state.models[0].url)).arrayBuffer()),bytes);
+  clearPreviewResourceDraft(root);assert.equal((await fetch(host.url+state.models[0].url)).status,404);
+  assert.deepEqual(await readFile(file),bytes);
+ }finally{await host?.value.close();await rm(root,{recursive:true,force:true});}
+});
 async function fixture(){
   const root=await mkdtemp(join(tmpdir(),'component-resource-'));
   await mkdir(join(root,'src'));await mkdir(join(root,'public'));

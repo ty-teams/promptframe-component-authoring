@@ -4,6 +4,7 @@ export * from './style-intent.js';
 import { createPromptFramePublicSecurityPolicyDigest } from './security-policy-fingerprint.js';
 import { componentPublicResourceKindSchema } from './resource-slots.js';
 export * from './resource-slots.js';
+export * from './model-resource.js';
 export * from './component-preview.js';
 
 export {
@@ -22,7 +23,7 @@ export const CAPABILITY_CARD_VERSION = 'component-capability-card.v0.1.0' as con
 export const COMPONENT_STANDARD_POLICY_VERSION = 'component-standard-policy.v0.1.0' as const;
 export const COMPONENT_SECURITY_POLICY_VERSION = 'component-security-policy.v0.1.0' as const;
 export const AUTHORING_STANDARD_RELEASE_VERSION = 'authoring-standard-release.v0.1.0' as const;
-export const AUTHORING_STANDARD_RELEASE_ID = 'authoring-release-2026-11-15.2' as const;
+export const AUTHORING_STANDARD_RELEASE_ID = 'authoring-release-2026-11-15.3' as const;
 export const COMPONENT_REUSABILITY_CONTRACT_VERSION = 'component-reusability.v0.1.0' as const;
 export const COMPONENT_DEPENDENCY_POLICY_VERSION = 'component-dependency-policy.v0.1.0' as const;
 export const COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION = 'component-public-resources.v0.1.0' as const;
@@ -41,6 +42,7 @@ export const PROMPTFRAME_PUBLIC_RESOURCE_ALLOWED_EXTENSIONS = {
   font: ['.woff', '.woff2'],
   json: ['.json'],
   text: ['.txt', '.csv'],
+  model: ['.glb'],
 } as const;
 
 export const PROMPTFRAME_PUBLIC_RESOURCE_POLICY = {
@@ -1233,10 +1235,10 @@ export const authoringStandardFreshnessDecisionSchema = z.object({
 export type AuthoringStandardFreshnessDecision = z.infer<typeof authoringStandardFreshnessDecisionSchema>;
 
 export const PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_COHORT: AuthoringPackageCohort = authoringPackageCohortSchema.parse({
-  contracts: { name: '@promptframe/contracts', version: '0.1.45' },
-  componentKit: { name: '@promptframe/component-kit', version: '0.1.39' },
-  cli: { name: '@promptframe/cli', version: '0.1.77' },
-  createComponent: { name: 'create-promptframe-component', version: '0.1.67' },
+  contracts: { name: '@promptframe/contracts', version: '0.1.46' },
+  componentKit: { name: '@promptframe/component-kit', version: '0.1.40' },
+  cli: { name: '@promptframe/cli', version: '0.1.78' },
+  createComponent: { name: 'create-promptframe-component', version: '0.1.68' },
 });
 
 export const PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS = authoringPackageFloorSchema.parse({
@@ -1256,7 +1258,7 @@ export const PROMPTFRAME_MIN_AUTHORING_PACKAGE_VERSIONS = authoringPackageFloorS
 export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = authoringStandardReleaseSchema.parse({
   releaseVersion: AUTHORING_STANDARD_RELEASE_VERSION,
   releaseId: AUTHORING_STANDARD_RELEASE_ID,
-  releaseDigest: 'sha256:da9afef2a329bb2b1463b838ca24bb42d2e9ca69c71355fd4447894b27081d59',
+  releaseDigest: 'sha256:38373fa541351420abd393e250a1dc340db06fb2fe7a10441c49e33637208a3d',
   contractsVersion: PROMPTFRAME_CONTRACTS_VERSION,
   manifestSchemaVersion: COMPONENT_MANIFEST_SCHEMA_VERSION,
   componentRefVersion: COMPONENT_REF_VERSION,
@@ -1272,7 +1274,7 @@ export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = 
   scaffoldTemplates: [
     {
       name: 'react-remotion',
-      digest: 'sha256:475d87ace03151f99045bd9dc952858d49efed68cf5b3c577177204c961aad4a',
+      digest: 'sha256:602096f7567105805a411789c25f8c3be091161a7ba7765c2cbe14e0e4b34045',
     },
   ],
   uploadTargets: [

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync,
   readSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, extname, isAbsolute, join, resolve } from 'node:path';
-import { parsePromptFrameAssetReference } from '@promptframe/contracts';
+import { parsePromptFrameAssetReference, assertSelfContainedGlb } from '@promptframe/contracts';
 
 export const PREVIEW_RESOURCE_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 export const PREVIEW_RESOURCE_FILE_BYTES = 16 * 1024 * 1024;
@@ -53,7 +53,7 @@ export function readPreviewResourceDraft(root: string, now = Date.now()): Previe
       if (!!row.reference === !!row.file) throw Error();
       if (row.reference && (!parsePromptFrameAssetReference(row.reference) || !row.sessionId || row.sessionId.length > 160)) throw Error();
       if (row.file && (typeof row.file.path !== 'string' || !isAbsolute(row.file.path) || !/^sha256:[a-f0-9]{64}$/u.test(row.file.sha256)
-        || !['image/png', 'image/jpeg', 'image/webp'].includes(row.file.contentType)
+        || !['image/png', 'image/jpeg', 'image/webp', 'model/gltf-binary'].includes(row.file.contentType)
         || !Number.isSafeInteger(row.file.ino) || !Number.isSafeInteger(row.file.dev) || !Number.isFinite(row.file.mtimeMs)
         || !Number.isSafeInteger(row.file.size) || row.file.size < 1 || row.file.size > PREVIEW_RESOURCE_FILE_BYTES)) throw Error();
     }
@@ -74,9 +74,9 @@ export function capturePreviewResourceFile(file: string): PreviewResourceFile {
   const path = resolve(file), fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const stat = fstatSync(fd); if (!stat.isFile() || stat.size < 1 || stat.size > PREVIEW_RESOURCE_FILE_BYTES) throw Error('preview.resource.file_budget');
-    const contentType = new Map([['.png', 'image/png'], ['.jpg', 'image/jpeg'], ['.jpeg', 'image/jpeg'], ['.webp', 'image/webp']]).get(extname(path).toLowerCase());
+    const contentType = new Map([['.png', 'image/png'], ['.jpg', 'image/jpeg'], ['.jpeg', 'image/jpeg'], ['.webp', 'image/webp'], ['.glb', 'model/gltf-binary']]).get(extname(path).toLowerCase());
     if (!contentType) throw Error('preview.resource.file_type');
-    const buffer = Buffer.alloc(65_536), hash = createHash('sha256'); let total = 0, first = true;
+    const buffer = Buffer.alloc(65_536), hash = createHash('sha256'), modelChunks: Buffer[] = []; let total = 0, first = true;
     while (true) {
       const count = readSync(fd, buffer); if (!count) break; total += count;
       if (total > PREVIEW_RESOURCE_FILE_BYTES) throw Error('preview.resource.file_budget');
@@ -87,9 +87,11 @@ export function capturePreviewResourceFile(file: string): PreviewResourceFile {
           || contentType === 'image/webp' && !(buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP')) throw Error('preview.resource.file_type');
       }
       hash.update(buffer.subarray(0, count));
+      if (contentType === 'model/gltf-binary') modelChunks.push(Buffer.from(buffer.subarray(0, count)));
     }
     const after = fstatSync(fd);
     if (total !== stat.size || after.size !== stat.size || after.mtimeMs !== stat.mtimeMs || after.ino !== stat.ino || after.dev !== stat.dev) throw Error('preview.resource.file_changed');
+    if (contentType === 'model/gltf-binary') assertSelfContainedGlb(Buffer.concat(modelChunks, total), PREVIEW_RESOURCE_FILE_BYTES);
     return { path, dev: stat.dev, ino: stat.ino, size: stat.size, mtimeMs: stat.mtimeMs,
       sha256: 'sha256:' + hash.digest('hex'), contentType };
   } finally { closeSync(fd); }

@@ -1,4 +1,6 @@
 import { Player } from '@remotion/player';
+import React from 'react';
+import { createPromptFrameModelReader, PROMPTFRAME_MODEL_READER, readPromptFrameModelResponse, type PromptFrameModelRepresentation } from '@promptframe/contracts';
 import {
   PromptFramePreviewApp,
   resolvePromptFramePreviewLocale,
@@ -12,6 +14,19 @@ import { promptFrameDevPublicResources } from './promptframe-dev-public-resource
 import { propsSchema, type ComponentProps } from './schema';
 import { promptFrameLocalPreview } from 'virtual:promptframe-local-preview';
 
+const hostFetch = globalThis.fetch.bind(globalThis);
+const runtimeEntries = promptFrameDevPublicResources.map(entry => ({ ...entry, url: entry.publicPath }));
+let localModelResources: readonly PromptFrameModelRepresentation[] = [];
+const modelReader = createPromptFrameModelReader({
+  entries: () => [...runtimeEntries.filter(entry => entry.kind === 'model').map(entry => ({ ...entry, reference: entry.publicPath })), ...localModelResources],
+  read: async (entry, signal) => readPromptFrameModelResponse(await hostFetch(entry.url, { signal, redirect: 'error' }), entry.sizeBytes, signal),
+  digest: async bytes => 'sha256:' + Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(bytes))), byte => byte.toString(16).padStart(2, '0')).join(''),
+});
+const hostResources = { contractVersion: 'component-public-resources.v0.1.0', entries: runtimeEntries, [PROMPTFRAME_MODEL_READER]: modelReader.read };
+const ModelBoundComponent = (props: Record<string, unknown>) => React.createElement(Component, { ...props, promptFrameResources: hostResources } as ComponentProps);
+if (import.meta.hot) import.meta.hot.dispose(() => modelReader.dispose());
+window.addEventListener('pagehide', () => modelReader.dispose(), { once: true });
+
 const preview = previewEnvelope as {
   durationFrames: number;
   fps: 30;
@@ -22,6 +37,7 @@ const preview = previewEnvelope as {
 
 async function mountPreview() {
 const localPreview = await promptFrameLocalPreview;
+localModelResources = localPreview.models ?? [];
 const initialPropsParse = propsSchema.safeParse(localPreview.props ?? preview.props ?? {});
 const initialProps: ComponentProps = initialPropsParse.success
   ? initialPropsParse.data
@@ -55,7 +71,7 @@ createRoot(root).render(
       }}
       renderStage={({ props, width, height, fps, durationFrames }) => (
         <Player
-          component={Component}
+          component={ModelBoundComponent}
           inputProps={props}
           durationInFrames={durationFrames}
           compositionWidth={width}

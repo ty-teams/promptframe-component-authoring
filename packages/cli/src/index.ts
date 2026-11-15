@@ -42,6 +42,7 @@ import {
   PROMPTFRAME_PUBLIC_DEPENDENCY_POLICY,
   detectPromptFrameUnknownCustomStyleProps,
   collectPromptFrameResourceReferences,
+  assertSelfContainedGlb,
   authoringUploadTargetSchema,
   parseComponentManifest,
   selectComponentPreviewDurationFrames,
@@ -4461,6 +4462,17 @@ function evaluateDirectoryPublicResources(dir: string): PublicResourceReport {
           continue;
         }
       }
+      if (resourceType.kind === 'model') {
+        try { assertSelfContainedGlb(data, PROMPTFRAME_PUBLIC_RESOURCE_LIMITS.maxFileBytes); }
+        catch (error) {
+          diagnostics.push(publicResourceDiagnostic(
+            'component_resources.public.glb_rejected', 'error',
+            `${normalized.sourcePath}: ${error instanceof Error ? error.message : 'model.invalid_glb'}`,
+            'Export a self-contained GLB 2.0 with buffers and textures in its BIN chunk; external URIs and decoder downloads are unsupported.',
+          ));
+          continue;
+        }
+      }
       totalBytes += sizeBytes;
 
       entries.push({
@@ -4592,6 +4604,8 @@ function classifyPreviewShell(source: string | undefined): PreviewShellStatus {
 
 function renderPromptFrameThinPreviewRoot(localResources = false): string {
   const source = `import { Player } from '@remotion/player';
+import React from 'react';
+import { createPromptFrameModelReader, PROMPTFRAME_MODEL_READER, readPromptFrameModelResponse, type PromptFrameModelRepresentation } from '@promptframe/contracts';
 import {
   PromptFramePreviewApp,
   resolvePromptFramePreviewLocale,
@@ -4603,6 +4617,20 @@ import previewEnvelope from './preview-props.json';
 import manifest from '../manifest.json';
 import { promptFrameDevPublicResources } from './promptframe-dev-public-resources.generated';
 import { propsSchema, type ComponentProps } from './schema';
+
+// This generated development host owns IO; component source has no raw fetch.
+const hostFetch = globalThis.fetch.bind(globalThis);
+const runtimeEntries = promptFrameDevPublicResources.map(entry => ({ ...entry, url: entry.publicPath }));
+let localModelResources: readonly PromptFrameModelRepresentation[] = [];
+const modelReader = createPromptFrameModelReader({
+  entries: () => [...runtimeEntries.filter(entry => entry.kind === 'model').map(entry => ({ ...entry, reference: entry.publicPath })), ...localModelResources],
+  read: async (entry, signal) => readPromptFrameModelResponse(await hostFetch(entry.url, { signal, redirect: 'error' }), entry.sizeBytes, signal),
+  digest: async bytes => 'sha256:' + Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(bytes))), byte => byte.toString(16).padStart(2, '0')).join(''),
+});
+const hostResources = { contractVersion: 'component-public-resources.v0.1.0', entries: runtimeEntries, [PROMPTFRAME_MODEL_READER]: modelReader.read };
+const ModelBoundComponent = (props: Record<string, unknown>) => React.createElement(Component, { ...props, promptFrameResources: hostResources } as ComponentProps);
+if (import.meta.hot) import.meta.hot.dispose(() => modelReader.dispose());
+window.addEventListener('pagehide', () => modelReader.dispose(), { once: true });
 
 const preview = previewEnvelope as {
   durationFrames: number;
@@ -4642,7 +4670,7 @@ createRoot(root).render(
       }}
       renderStage={({ props, width, height, fps, durationFrames }) => (
         <Player
-          component={Component}
+          component={ModelBoundComponent}
           inputProps={props}
           durationInFrames={durationFrames}
           compositionWidth={width}
@@ -4665,7 +4693,7 @@ createRoot(root).render(
   if (!localResources) return source;
   return source
     .replace("import { propsSchema, type ComponentProps } from './schema';", "import { propsSchema, type ComponentProps } from './schema';\nimport { promptFrameLocalPreview } from 'virtual:promptframe-local-preview';")
-    .replace('const initialPropsParse = propsSchema.safeParse(preview.props ?? {});', 'async function mountPreview() {\nconst localPreview = await promptFrameLocalPreview;\nconst initialPropsParse = propsSchema.safeParse(localPreview.props ?? preview.props ?? {});')
+    .replace('const initialPropsParse = propsSchema.safeParse(preview.props ?? {});', 'async function mountPreview() {\nconst localPreview = await promptFrameLocalPreview;\nlocalModelResources = localPreview.models ?? [];\nconst initialPropsParse = propsSchema.safeParse(localPreview.props ?? preview.props ?? {});')
     .replace('  <StrictMode>\n    <PromptFramePreviewApp', '  <StrictMode>\n    {localPreview.issues.length > 0 && <p role="alert" style={{ padding: 12 }}>\n      本地预览素材不可用，当前显示包内示例。请核对所选文件、作品与 CLI 素材读取授权后刷新。\n    </p>}\n    <PromptFramePreviewApp')
     + '\n}\nvoid mountPreview();\n';
 }
@@ -4707,6 +4735,8 @@ function normalizePublicResourcePath(relativePath: string): (
 function classifyPublicResource(relativePath: string): { kind: ComponentPublicResourceKind; contentType: string } | undefined {
   const ext = extname(relativePath).toLowerCase();
   switch (ext) {
+    case '.glb':
+      return { kind: 'model', contentType: 'model/gltf-binary' };
     case '.png':
       return { kind: 'image', contentType: 'image/png' };
     case '.jpg':

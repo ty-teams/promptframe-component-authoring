@@ -3,7 +3,7 @@ import { closeSync, constants, fstatSync, openSync, readFileSync, readSync, real
 import { homedir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { Plugin, ViteDevServer } from 'vite';
-import { collectPromptFrameResourceReferences, type ComponentResourceSlot } from '@promptframe/contracts';
+import { collectPromptFrameResourceReferences, assertSelfContainedGlb, type ComponentResourceSlot, type PromptFrameModelRepresentation } from '@promptframe/contracts';
 import { evaluatePromptFrameSchemaSource } from '@promptframe/contracts/schema-evaluator';
 import { cliBearerToken, readCliConfiguration } from './configuration.js';
 import { capturePreviewResourceFile, previewResourcePropPath, readPreviewResourceDraft,
@@ -14,7 +14,7 @@ const maximumBytes = 16 * 1024 * 1024;
 type Grant = { reference: string; status: string; code?: string; url?: string; contentType?: string; sizeBytes?: number; sha256?: string; expiresAt?: string };
 
 function localFileMatches(slot: ComponentResourceSlot, file: { size: number; contentType: string }): boolean {
-  return slot.kinds.includes('image') && (slot.maxFileBytes === undefined || file.size <= slot.maxFileBytes)
+  return slot.kinds.includes(file.contentType === 'model/gltf-binary' ? 'model' : 'image') && (slot.maxFileBytes === undefined || file.size <= slot.maxFileBytes)
     && (!slot.accept?.length || slot.accept.some(pattern => pattern === '*/*' || pattern === file.contentType
       || pattern.endsWith('/*') && file.contentType.startsWith(pattern.slice(0, -1))));
 }
@@ -152,17 +152,26 @@ export function promptFramePreviewResources(): Plugin {
       if (path === prefix + 'state') {
         const envelope = readJson(join(root, 'src/preview-props.json'));
         const props = structuredClone(envelope.props ?? {}) as Record<string, unknown>, issues: { prop?: string; code: string }[] = [];
+        const models: PromptFrameModelRepresentation[] = [];
         for (const row of draft?.selections ?? []) {
           try {
             const slot = selectionSlot(root, row);
+            let model: Pick<PromptFrameModelRepresentation, 'contentType' | 'sizeBytes' | 'sha256' | 'expiresAt'> | undefined;
             if (row.file) {
               const actual = capturePreviewResourceFile(row.file.path);
               if (JSON.stringify(actual) !== JSON.stringify(row.file) || !localFileMatches(slot, actual)) throw Error('preview.resource.file_changed');
-            } else await resolvePreviewResourceGrant(root, row, slot, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5_000)]) });
-            setProp(props, row.prop, prefix + capability(row));
+              if (actual.contentType === 'model/gltf-binary') model = { contentType: actual.contentType, sizeBytes: actual.size, sha256: actual.sha256 };
+            } else {
+              const grant = await resolvePreviewResourceGrant(root, row, slot, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5_000)]) });
+              if (grant.contentType === 'model/gltf-binary') model = { contentType: grant.contentType, sizeBytes: grant.sizeBytes!, sha256: grant.sha256!, expiresAt: grant.expiresAt };
+            }
+            const url = prefix + capability(row);
+            setProp(props, row.prop, url);
+            if (model) models.push({ ...model, reference: url, url });
           } catch (error) { issues.push({ prop: row.prop, code: safeCode(error) }); }
         }
         return finish(200, { props: issues.length ? envelope.props ?? {} : props, issues,
+          models: issues.length ? [] : models,
           selectedCount: draft?.selections.length ?? 0, usingExample: issues.length > 0 });
       }
       const row = draft?.selections.find(row => prefix + capability(row) === path);
@@ -185,6 +194,7 @@ export function promptFramePreviewResources(): Plugin {
         if (bytes.length !== grant.sizeBytes || 'sha256:' + createHash('sha256').update(bytes).digest('hex') !== grant.sha256) throw Error('preview.resource.bytes_changed');
         contentType = grant.contentType!;
       }
+      if (contentType === 'model/gltf-binary') assertSelfContainedGlb(bytes, maximumBytes);
       response.writeHead(200, { 'content-type': contentType, 'content-length': bytes.length,
         'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }); response.end(bytes);
     } catch (error) { finish(409, { code: safeCode(error) }); }

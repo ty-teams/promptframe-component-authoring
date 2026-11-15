@@ -1,13 +1,13 @@
 import { z } from 'zod';
 
 export const componentPublicResourceKindSchema = z.enum([
-  'image', 'audio', 'video', 'font', 'json', 'text',
+  'image', 'audio', 'video', 'font', 'json', 'text', 'model',
 ]);
 export type ComponentPublicResourceKind = z.infer<typeof componentPublicResourceKindSchema>;
 
 /** Describes input selection; it does not authorize access to an asset. */
 export const componentResourceSlotSchema = z.object({
-  kinds: z.array(componentPublicResourceKindSchema).min(1).max(6),
+  kinds: z.array(componentPublicResourceKindSchema).min(1).max(7),
   sources: z.array(z.enum(['public', 'asset'])).min(1).max(2).default(['public', 'asset']),
   accept: z.array(z.string().min(1).max(120)).max(20).optional(),
   maxFileBytes: z.number().int().positive().max(64 * 1024 * 1024).optional(),

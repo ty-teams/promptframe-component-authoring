@@ -1,6 +1,10 @@
 import {
   COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION,
   componentResourceSlotSchema,
+  PROMPTFRAME_MODEL_READER,
+  PromptFrameModelError,
+  type PromptFrameModelReader,
+  type PromptFrameModelReadOptions,
   type ComponentPublicResourceEntry,
   type ComponentPublicResourceKind,
   type ComponentRuntimeResourceManifest,
@@ -170,7 +174,7 @@ function stringArray(value: unknown): string[] {
 }
 
 function uniqueKinds(values: string[]): ComponentPublicResourceKind[] {
-  const allowed = new Set<ComponentPublicResourceKind>(['image', 'audio', 'video', 'font', 'json', 'text']);
+  const allowed = new Set<ComponentPublicResourceKind>(['image', 'audio', 'video', 'font', 'json', 'text', 'model']);
   const result: ComponentPublicResourceKind[] = [];
   for (const value of values) {
     if (allowed.has(value as ComponentPublicResourceKind) && !result.includes(value as ComponentPublicResourceKind)) {
@@ -182,4 +186,19 @@ function uniqueKinds(values: string[]): ComponentPublicResourceKind[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Reads only a self-contained GLB already bound by the current host. There is
+ * no fetch fallback. Abort the read on unmount and dispose the loaded Three
+ * geometries, materials, textures and image bitmaps when retiring the model. */
+export async function readPromptFrameModel<Props extends object>(
+  resourcesOrProps: Props | undefined,
+  reference: string,
+  options: PromptFrameModelReadOptions = {},
+): Promise<ArrayBuffer> {
+  const resources = extractPromptFrameRuntimeResources(resourcesOrProps as PromptFrameRuntimeResources | PromptFrameRuntimeResourceProps | undefined) as
+    (PromptFrameRuntimeResources & { [PROMPTFRAME_MODEL_READER]?: PromptFrameModelReader }) | undefined;
+  const reader = resources?.[PROMPTFRAME_MODEL_READER];
+  if (typeof reader !== 'function') throw new PromptFrameModelError('model.reader_unavailable');
+  return reader(reference, options);
 }

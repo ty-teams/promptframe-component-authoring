@@ -5,7 +5,7 @@
 <a id="authoring-decisions"></a>
 ## 作者决策表
 
-本节随工具链发行保存；使用固定版本时，从对应的 `authoring-release-*` tag 阅读本节。当前源码对应 contracts `0.1.45`、component-kit `0.1.39`、CLI `0.1.77`、scaffold `0.1.67`；公开版本和平台实际支持以 registry 与 `/components/standard` 为准。
+本节随工具链发行保存；使用固定版本时，从对应的 `authoring-release-*` tag 阅读本节。当前源码对应 contracts `0.1.46`、component-kit `0.1.40`、CLI `0.1.78`、scaffold `0.1.68`；公开版本和平台实际支持以 registry 与 `/components/standard` 为准。
 
 | 需要 | 采用方式 | 边界与当前支持 |
 | --- | --- | --- |
@@ -35,8 +35,8 @@
 组件根须互不嵌套，共享目录须与所有组件根分开。组件可从 `components/part-a/src/Component.tsx` 静态导入 `../../../shared/theme`。A/B 引用主题而 C 不引用时，修改主题只改变 A/B 的新包输入；旧固定源包不变。单组件内部合法的 `../` 引用不会仅因向上一级而拒绝，实际路径仍须在组件根内。
 
 ```bash
-npx -y -p @promptframe/cli@0.1.77 promptframe check . --workspace-component @demo/part-a --json
-npx -y -p @promptframe/cli@0.1.77 promptframe package . --workspace-component @demo/part-a --out ./part-a.zip --json
+npx -y -p @promptframe/cli@0.1.78 promptframe check . --workspace-component @demo/part-a --json
+npx -y -p @promptframe/cli@0.1.78 promptframe package . --workspace-component @demo/part-a --out ./part-a.zip --json
 ```
 
 每个历史 ZIP 解压到独立的新空目录，保留 `promptframe-source-layout.json` 和包内路径，然后在恢复根运行 `promptframe validate . --json`。不要把不同版本的 `shared/` 合并，不自动写回 Git；缺归档或无源码读取权时保留明确失败，不重新上传或生成替代版本。
@@ -132,3 +132,28 @@ CLI 按真实样式上下文检查布局：0、无单位行高和 SVG 坐标不�
 预览按 manifest.designedDurationRange.max 播放，范围单位为帧，按预览 fps 最多播放30秒。缺少范围的兼容读路径使用原预览帧数并保留同样上限；正式作品时长继续由作品决定。自定义旧预览壳需向 PromptFramePreviewApp 传 designedDurationRange，或运行 promptframe sync . --apply。
 
 纯开发依赖不进入运行依赖目录审核。组件、schema 或 index 的运行导入及其本地闭包必须把第三方包声明在 dependencies、peerDependencies 或 optionalDependencies；不能仅放入 devDependencies。类型专用导入使用 import type；锁文件、隔离安装和安全检查继续生效。
+
+## 自包含 GLB 模型槽
+
+模型使用 `model` 槽和 `model/gltf-binary`。包内 `public/*.glb` 沿原资源限制：单文件10MiB、总计50MiB、最多64项。作品模型复用现有素材的上传、权限、保留期与清理流程，模型二进制读取上限16MiB；槽的 `maxFileBytes` 可进一步收窄。无需修改素材引用为公开URL。
+
+```ts
+import { promptFrameResourceSchema } from '@promptframe/contracts';
+import { readPromptFrameModel } from '@promptframe/component-kit';
+
+const modelSlot = promptFrameResourceSchema({
+  kinds: ['model'], sources: ['public', 'asset'],
+  accept: ['model/gltf-binary'], maxFileBytes: 10 * 1024 * 1024,
+});
+
+// public 例子；宿主将它绑定到当前组件包的已核文件。
+const publicBytes = await readPromptFrameModel(props, '/lens-assembly.glb', { signal });
+// 作品例子；沿正常选择器取得同一作品内已授权、就绪的引用。
+const assetBytes = await readPromptFrameModel(props, props.model, { signal });
+```
+
+`readPromptFrameModel` 返回调用者拥有的 `ArrayBuffer`，交给正常审核依赖中的 `GLTFLoader.parseAsync(bytes, '')`。宿主在开发、Studio及worker中核对原绑定、大小、SHA和GLB结构；没有宿主绑定时返回 `model.reader_unavailable`，不会回退到任意fetch。公开组件的preview-props继续使用包内例子，私有素材选择存入原开发草稿。
+
+当前支持glTF 2.0 GLB：缓冲和贴图须放进BIN块，JSON块最多2MiB。URI（含data URI）、独立解码器下载、稀疏accessor及循环节点均明确拒绝；请在导出时嵌入资源并展开相应数据。Three和GLTFLoader继续沿正常依赖声明与锁文件审核，reader不提供额外联网权限。
+
+加载在Effect中配合Remotion的 `delayRender` / `continueRender`，使用 `AbortController` 并在卸载或切版时取消，忽略旧加载结果。模型退场时释放geometry、material、texture和ImageBitmap，避免把GPU资源留给后续镜头。CLI本地选择支持GLB，`resource clear` 仍只清选择记录；已有项目用兼容CLI执行 `sync . --apply` 更新开发壳。
