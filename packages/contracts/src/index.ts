@@ -1258,7 +1258,7 @@ export const PROMPTFRAME_MIN_AUTHORING_PACKAGE_VERSIONS = authoringPackageFloorS
 export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = authoringStandardReleaseSchema.parse({
   releaseVersion: AUTHORING_STANDARD_RELEASE_VERSION,
   releaseId: AUTHORING_STANDARD_RELEASE_ID,
-  releaseDigest: 'sha256:38373fa541351420abd393e250a1dc340db06fb2fe7a10441c49e33637208a3d',
+  releaseDigest: 'sha256:558c8bb880ba2ff59910ea34a5ebd7b4471f704c0aa04359c7e56fead120560f',
   contractsVersion: PROMPTFRAME_CONTRACTS_VERSION,
   manifestSchemaVersion: COMPONENT_MANIFEST_SCHEMA_VERSION,
   componentRefVersion: COMPONENT_REF_VERSION,
@@ -1274,7 +1274,7 @@ export const PROMPTFRAME_AUTHORING_STANDARD_RELEASE: AuthoringStandardRelease = 
   scaffoldTemplates: [
     {
       name: 'react-remotion',
-      digest: 'sha256:602096f7567105805a411789c25f8c3be091161a7ba7765c2cbe14e0e4b34045',
+      digest: 'sha256:f5ca4f30f335483b2dfa81bc8274d4e4e30d127b4005ea958354adf3ce943df4',
     },
   ],
   uploadTargets: [

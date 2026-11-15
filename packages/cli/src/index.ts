@@ -4627,8 +4627,11 @@ const modelReader = createPromptFrameModelReader({
   read: async (entry, signal) => readPromptFrameModelResponse(await hostFetch(entry.url, { signal, redirect: 'error' }), entry.sizeBytes, signal),
   digest: async bytes => 'sha256:' + Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(bytes))), byte => byte.toString(16).padStart(2, '0')).join(''),
 });
-const hostResources = { contractVersion: 'component-public-resources.v0.1.0', entries: runtimeEntries, [PROMPTFRAME_MODEL_READER]: modelReader.read };
-const ModelBoundComponent = (props: Record<string, unknown>) => React.createElement(Component, { ...props, promptFrameResources: hostResources } as ComponentProps);
+const hostResources = { contractVersion: 'component-public-resources.v0.1.0' as const, entries: runtimeEntries, [PROMPTFRAME_MODEL_READER]: modelReader.read };
+const ModelBoundComponent = (props: ComponentProps) => {
+  const runtimeProps = { ...props, promptFrameResources: hostResources };
+  return React.createElement(Component, runtimeProps);
+};
 if (import.meta.hot) import.meta.hot.dispose(() => modelReader.dispose());
 window.addEventListener('pagehide', () => modelReader.dispose(), { once: true });
 
