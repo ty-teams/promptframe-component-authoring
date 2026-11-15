@@ -1,10 +1,10 @@
 import {
   COMPONENT_STANDARD_SOURCE_HASH,
   COMPONENT_STANDARD_VERSION,
-  PROMPTFRAME_AUTHORING_STANDARD_RELEASE,
   type AuthoringStandardFreshnessDecision,
   type AuthoringUploadTarget,
 } from '@promptframe/contracts';
+import {PROMPTFRAME_AUTHORING_STANDARD_RELEASE} from './authoring-release.js';
 
 export type CliDiagnostic = {
   code: string;

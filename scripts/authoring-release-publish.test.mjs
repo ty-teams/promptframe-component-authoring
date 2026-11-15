@@ -5,13 +5,16 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
   computeAuthoringReleaseAuthorizationDigest,
+  computeAuthoringReleaseIntentDigest,
   createAuthoringCandidateManifest,
   expectedArtifactName,
   parseAuthoringReleaseAuthorization,
   readAuthoringReleaseIntent,
+  parseAuthoringReleaseIntent,
 } from './authoring-release-receipt.mjs';
 import {
   createNpmOidcPublisher,
+  createNpmRegistryClient,
   executeAuthoringPackagePublish,
 } from './authoring-release-publish.mjs';
 
@@ -42,7 +45,7 @@ test('package publisher waits for dependencies and publishes the exact tarball t
   assert.equal(result.sanitized, true);
 });
 
-test('package publisher is idempotent only for exact integrity plus latest', async () => {
+test('package publisher reuses exact integrity even after latest has advanced', async () => {
   const fixture = await createFixture();
   const complete = createRegistry(fixture.candidate, ['contracts', 'componentKit', 'cli']);
   let publishes = 0;
@@ -57,15 +60,14 @@ test('package publisher is idempotent only for exact integrity plus latest', asy
 
   const partial = createRegistry(fixture.candidate, ['contracts', 'componentKit']);
   partial.publishedWithoutLatest('cli');
-  await assert.rejects(
-    executeAuthoringPackagePublish({
+  const reused = await executeAuthoringPackagePublish({
       ...fixture,
       packageKey: 'cli',
       registry: partial,
       publisher: { async publish() { publishes += 1; } },
-    }),
-    /existing_version_not_complete/,
-  );
+    });
+  assert.equal(reused.status, 'already_published');
+  assert.equal(publishes, 0);
 });
 
 test('package publisher fails closed when dependencies or readback are incomplete', async () => {
@@ -91,7 +93,7 @@ test('package publisher fails closed when dependencies or readback are incomplet
       maxReadbackAttempts: 1,
       publisher: { async publish() {} },
     }),
-    /publish_readback_mismatch/,
+    error => error.publicationStatus === 'unconfirmed' && error.stage === 'registry_readback',
   );
 });
 
@@ -180,7 +182,84 @@ test('existing Trusted Publisher workflows keep filenames and publish one shared
     assert.doesNotMatch(text, /registry-url:/, filename);
     assert.doesNotMatch(text, /\$\{\{ runner\.temp \}\}/, filename);
     assert.doesNotMatch(text, /npm publish|npm dist-tag|pnpm install|npm install|workflow_dispatch/, filename);
+    assert.match(text, /group: promptframe-authoring-release-[a-z-]+\n/);
+    assert.doesNotMatch(text, /group:.*github\.ref_name/);
   }
+});
+
+test('a kit-only release reuses a published contracts version and leaves other packages unrequested', async () => {
+  const old = await readAuthoringReleaseIntent(undefined, {root, now});
+  const selected = old.packages.find(entry => entry.name === '@promptframe/component-kit');
+  const contracts = {...old.packages.find(entry => entry.name === '@promptframe/contracts'), integrity: 'sha512-' + Buffer.alloc(64, 3).toString('base64')};
+  const source = {...old, schemaVersion: 'promptframe-authoring-release-intent/v2', packages: [selected],
+    dependencies: {componentKit: ['contracts']}, reusedPackages: [contracts], intentDigest: ''};
+  source.intentDigest = computeAuthoringReleaseIntentDigest(source);
+  const intent = parseAuthoringReleaseIntent(source, {now});
+  const candidate = createAuthoringCandidateManifest({intent, sourceCommit: 'b'.repeat(40), now,
+    artifacts: [{...selected, artifactName: expectedArtifactName(selected.name, selected.version), bytes: Buffer.from('new kit')}], createdAt: now.toISOString()});
+  const authorization = {schemaVersion: 'promptframe-authoring-release-authorization/v2', state: 'publish_ready',
+    releaseId: candidate.releaseId, releaseTag: candidate.releaseId, artifactTag: candidate.artifactTag,
+    sourceCommit: candidate.sourceCommit, candidateManifestDigest: candidate.manifestDigest, platformGateDigest: 'sha256:' + 'a'.repeat(64),
+    releaseDigest: candidate.releaseDigest, createdAt: now.toISOString(), expiresAt: candidate.expiresAt,
+    packages: candidate.packages.map(({name, version, integrity}) => ({name, version, integrity})), authorizationDigest: ''};
+  authorization.authorizationDigest = computeAuthoringReleaseAuthorizationDigest(authorization);
+  parseAuthoringReleaseAuthorization(authorization, {now});
+  let writes = 0;
+  const kit = candidate.packages[0];
+  const registry = {async readPackage(name) {
+    if (name === contracts.name) return metadata(contracts, false);
+    return writes ? metadata(kit, false) : null;
+  }};
+  const publisher = {async publish() {writes++;}};
+  assert.equal((await executeAuthoringPackagePublish({authorization, candidate, packageKey: 'componentKit', registry, publisher})).status, 'published');
+  assert.equal((await executeAuthoringPackagePublish({authorization, candidate, packageKey: 'cli', registry, publisher})).status, 'not_requested');
+  assert.equal(writes, 1);
+  const duplicate = structuredClone(source); duplicate.reusedPackages.push(contracts);
+  duplicate.intentDigest = computeAuthoringReleaseIntentDigest(duplicate);
+  assert.throws(() => parseAuthoringReleaseIntent(duplicate, {now}), /reused_packages_invalid/);
+  const cycle = structuredClone(source); cycle.dependencies.componentKit = ['componentKit'];
+  cycle.intentDigest = computeAuthoringReleaseIntentDigest(cycle);
+  assert.throws(() => parseAuthoringReleaseIntent(cycle, {now}), /dependency_cycle/);
+});
+
+test('a lost npm acknowledgement is observed once without another publish', async () => {
+  const fixture = await createFixture();
+  const registry = createRegistry(fixture.candidate, []); let writes = 0;
+  const result = await executeAuthoringPackagePublish({...fixture, packageKey: 'contracts', registry,
+    publisher: {async publish() {writes++; registry.complete('contracts'); throw Error('lost response');}}});
+  assert.equal(result.status, 'published'); assert.equal(result.writeAcknowledged, false); assert.equal(writes, 1);
+});
+
+test('an older release cannot move latest backwards and a different SRI is a conflict', async () => {
+  const fixture = await createFixture(); let writes = 0, tag;
+  const entry = fixture.candidate.packages[0];
+  const registry = {async readPackage() {return {distTags: {latest: '99.0.0'}, versions: writes ? {[entry.version]: {dist: {integrity: entry.integrity}}} : {}};}};
+  const result = await executeAuthoringPackagePublish({...fixture, packageKey: 'contracts', registry,
+    publisher: {async publish(_, input) {writes++; tag = input.tag;}}});
+  assert.equal(result.status, 'published'); assert.equal(tag, 'version-' + entry.version); assert.equal(writes, 1);
+  await assert.rejects(executeAuthoringPackagePublish({...fixture, packageKey: 'contracts',
+    registry: {async readPackage() {return {distTags: {latest: entry.version}, versions: {[entry.version]: {dist: {integrity: 'sha512-other'}}}};}},
+    publisher: {async publish() {writes++;}}}), error => error.publicationStatus === 'conflict');
+  assert.equal(writes, 1);
+});
+
+test('registry request deadlines include stalled bodies and retain an abort signal', async () => {
+  let signal;
+  const client = createNpmRegistryClient({timeoutMs: 15, fetchImpl: async (_, input) => {
+    signal = input.signal; return {ok: true, status: 200, json: () => new Promise(() => {})};
+  }});
+  await assert.rejects(client.readPackage('@promptframe/contracts'), /registry_timeout/);
+  assert.equal(signal.aborted, true);
+});
+
+test('observation expiry after a write stays unconfirmed, preflight failure stays not_started', async () => {
+  const fixture = await createFixture(); let reads = 0, writes = 0;
+  await assert.rejects(executeAuthoringPackagePublish({...fixture, packageKey: 'contracts', observationTimeoutMs: 15,
+    registry: {async readPackage() {reads++; return reads === 1 ? null : new Promise(() => {});}},
+    publisher: {async publish() {writes++;}}}), error => error.publicationStatus === 'unconfirmed');
+  assert.equal(writes, 1);
+  const publisher = createNpmOidcPublisher({artifactRoot: '/tmp/authoring-preflight-control', baseEnv: {}, execFileImpl: async () => {throw Error('version lookup failed');}});
+  await assert.rejects(publisher.publish({artifactName: 'control.tgz'}), error => error.publicationStatus === 'not_started' && error.stage === 'npm_preflight');
 });
 
 async function createFixture() {

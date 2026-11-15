@@ -143,7 +143,7 @@ import { readPromptFrameModel } from '@promptframe/component-kit';
 
 const modelSlot = promptFrameResourceSchema({
   kinds: ['model'], sources: ['public', 'asset'],
-  accept: ['model/gltf-binary'], maxFileBytes: 10 * 1024 * 1024,
+  accept: ['model/gltf-binary'], maxFileBytes: 10485760,
 });
 
 // public 例子；宿主将它绑定到当前组件包的已核文件。
@@ -152,8 +152,37 @@ const publicBytes = await readPromptFrameModel(props, '/lens-assembly.glb', { si
 const assetBytes = await readPromptFrameModel(props, props.model, { signal });
 ```
 
+资源槽选项使用内联静态字面量，便于打包时核对；大小字段使用计算后的整数字节数。
+
 `readPromptFrameModel` 返回调用者拥有的 `ArrayBuffer`，交给正常审核依赖中的 `GLTFLoader.parseAsync(bytes, '')`。宿主在开发、Studio及worker中核对原绑定、大小、SHA和GLB结构；没有宿主绑定时返回 `model.reader_unavailable`，不会回退到任意fetch。公开组件的preview-props继续使用包内例子，私有素材选择存入原开发草稿。
 
 当前支持glTF 2.0 GLB：缓冲和贴图须放进BIN块，JSON块最多2MiB。URI（含data URI）、独立解码器下载、稀疏accessor及循环节点均明确拒绝；请在导出时嵌入资源并展开相应数据。Three和GLTFLoader继续沿正常依赖声明与锁文件审核，reader不提供额外联网权限。
 
-加载在Effect中配合Remotion的 `delayRender` / `continueRender`，使用 `AbortController` 并在卸载或切版时取消，忽略旧加载结果。模型退场时释放geometry、material、texture和ImageBitmap，避免把GPU资源留给后续镜头。CLI本地选择支持GLB，`resource clear` 仍只清选择记录；已有项目用兼容CLI执行 `sync . --apply` 更新开发壳。
+画面中的异步准备使用 `@promptframe/component-kit/model-react` 的 `usePromptFrameModel`。SDK统一持有有限的渲染等待和播放缓冲；组件无需调用渲染延迟API。二进制读取与解析共享15秒预算，失败明确返回安全原因，卸载、切版或切换引用会取消旧准备，晚到的模型只释放、不采用。单独调用低层 `readPromptFrameModel` 只保证字节读取，不表示画面已准备完成。
+
+```tsx
+import { usePromptFrameModel } from '@promptframe/component-kit/model-react';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+// prepare/dispose使用模块函数或useCallback，避免每帧重新创建准备任务。
+async function prepareModel(bytes: ArrayBuffer, signal: AbortSignal) {
+  signal.throwIfAborted();
+  return (await new GLTFLoader().parseAsync(bytes, '')).scene;
+}
+
+function ModelScene(props: Props) {
+  const model = usePromptFrameModel(props, props.model, {
+    prepare: prepareModel, dispose: disposeModel,
+  });
+  // null仅表示仍在准备；准备成功后再把模型装入当前画面。
+  return model ? <PreparedModel model={model} /> : null;
+}
+```
+
+`disposeModel`由组件实现，释放其拥有的geometry、material、texture和ImageBitmap；SDK保证当前准备结果在取消或退场时调用一次。解析器不支持中途取消时，超时后仍不会采用其晚到结果，不能把超时当作解析器物理退出。首帧所需的异步解析和处理都放入 `prepare`，不要在其成功后另起未受控的加载。
+
+CLI本地选择支持GLB，`resource clear` 仍只清选择记录；已有项目用兼容CLI执行 `sync . --apply` 更新开发壳。包内public与已授权作品引用使用同一个读取、准备接口，不开放任意fetch。
+
+## 包版本与发行组合
+
+contracts中已有的发行常量是该包附带的离线基线，不是实时的推荐版本。CLI携带自己的 `authoring-release.json`，平台以其已验证的完整发行组合给出当前推荐。包按实际接口、生成代码和依赖分别升级；未变化且兼容的已公开精确版本可复用。发行只打包和发布本次显式选择的包，继续保留每个版本的唯一字节、OIDC身份与registry核回。发布等待按实际依赖图进行，不能仅因另一个包属于同一仓库就增加等待。

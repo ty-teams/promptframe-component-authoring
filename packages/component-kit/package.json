@@ -1,6 +1,6 @@
 {
   "name": "@promptframe/component-kit",
-  "version": "0.1.40",
+  "version": "0.1.41",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -39,6 +39,10 @@
       "import": "./dist/timing.js",
       "types": "./dist/timing.d.ts"
     },
+    "./model-react": {
+      "import": "./dist/model-react.js",
+      "types": "./dist/model-react.d.ts"
+    },
     "./package.json": {
       "default": "./package.json"
     }
@@ -65,11 +69,11 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@promptframe/contracts": "0.1.46"
+    "@promptframe/contracts": "0.1.47"
   },
   "peerDependencies": {
     "react": "^19.0.0",
-    "remotion": "^4.0.0"
+    "remotion": ">=4.0.374 <5"
   },
   "peerDependenciesMeta": {
     "react": {

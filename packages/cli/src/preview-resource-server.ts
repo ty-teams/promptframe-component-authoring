@@ -1,9 +1,11 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { closeSync, constants, fstatSync, openSync, readFileSync, readSync, realpathSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readFileSync, readSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { Plugin, ViteDevServer } from 'vite';
-import { collectPromptFrameResourceReferences, assertSelfContainedGlb, type ComponentResourceSlot, type PromptFrameModelRepresentation } from '@promptframe/contracts';
+import { collectPromptFrameResourceReferences, assertSelfContainedGlb, PROMPTFRAME_PUBLIC_RESOURCE_LIMITS,
+  type ComponentResourceSlot, type PromptFrameModelRepresentation } from '@promptframe/contracts';
+import { normalizePublicResourcePath } from './public-resource-path.js';
 import { evaluatePromptFrameSchemaSource } from '@promptframe/contracts/schema-evaluator';
 import { cliBearerToken, readCliConfiguration } from './configuration.js';
 import { capturePreviewResourceFile, previewResourcePropPath, readPreviewResourceDraft,
@@ -45,6 +47,40 @@ function readJson(path: string, max = 131_072): Record<string, unknown> {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('preview.resource.input_invalid');
     return value as Record<string, unknown>;
   } finally { closeSync(fd); }
+}
+
+/** Reuse the normal CLI public-resource report, but never trust a URL from it.
+ * Every model is rechecked against its exact ordinary public/ file. */
+function publicModelRows(root: string): {selection: PreviewResourceSelection; reference: string}[] {
+  const reportPath = join(root, '.promptframe/dev-public-resources.json');
+  if (!existsSync(reportPath)) return [];
+  const directory = join(root, '.promptframe');
+  if (!lstatSync(directory).isDirectory() || realpathSync(directory) !== directory) throw Error('preview.resource.public_report_invalid');
+  const report = readJson(reportPath), entries = report.entries;
+  if (!['accepted', 'empty'].includes(String(report.status)) || !Array.isArray(entries)
+    || entries.length > PROMPTFRAME_PUBLIC_RESOURCE_LIMITS.maxFiles) throw Error('preview.resource.public_report_invalid');
+  let total = 0;
+  const rows: {selection: PreviewResourceSelection; reference: string}[] = [];
+  for (const value of entries) {
+    if (!value || typeof value !== 'object' || value.kind !== 'model') continue;
+    const entry = value as Record<string, unknown>;
+    if (typeof entry.sourcePath !== 'string' || !entry.sourcePath.startsWith('public/')
+      || typeof entry.publicPath !== 'string' || !Number.isSafeInteger(entry.sizeBytes)
+      || Number(entry.sizeBytes) < 1 || Number(entry.sizeBytes) > PROMPTFRAME_PUBLIC_RESOURCE_LIMITS.maxFileBytes) throw Error('preview.resource.public_report_invalid');
+    total += Number(entry.sizeBytes);
+    if (total > PROMPTFRAME_PUBLIC_RESOURCE_LIMITS.maxTotalBytes) throw Error('preview.resource.public_report_invalid');
+    const normalized = normalizePublicResourcePath(entry.sourcePath.slice(7));
+    if (!normalized.ok || normalized.sourcePath !== entry.sourcePath || normalized.publicPath !== entry.publicPath
+      || !normalized.relativePath.toLowerCase().endsWith('.glb')) throw Error('preview.resource.public_report_invalid');
+    const path = join(root, normalized.sourcePath);
+    if (realpathSync(path) !== path || lstatSync(path).size !== entry.sizeBytes) throw Error('preview.resource.file_changed');
+    const file = capturePreviewResourceFile(path);
+    if (realpathSync(path) !== path || file.contentType !== 'model/gltf-binary' || file.size !== entry.sizeBytes
+      || file.sha256 !== entry.sha256) throw Error('preview.resource.file_changed');
+    if (rows.some(row => row.reference === normalized.publicPath)) throw Error('preview.resource.public_report_invalid');
+    rows.push({selection: {prop: '/__public_model/' + rows.length, file}, reference: normalized.publicPath});
+  }
+  return rows;
 }
 
 function setProp(props: Record<string, unknown>, pointer: string, value: string): void {
@@ -149,6 +185,7 @@ export function promptFramePreviewResources(): Plugin {
     const timer = setTimeout(() => response.destroy(), 15_000);
     try {
       const draft = readPreviewResourceDraft(root);
+      const publicModels = publicModelRows(root);
       if (path === prefix + 'state') {
         const envelope = readJson(join(root, 'src/preview-props.json'));
         const props = structuredClone(envelope.props ?? {}) as Record<string, unknown>, issues: { prop?: string; code: string }[] = [];
@@ -170,21 +207,28 @@ export function promptFramePreviewResources(): Plugin {
             if (model) models.push({ ...model, reference: url, url });
           } catch (error) { issues.push({ prop: row.prop, code: safeCode(error) }); }
         }
+        const packageModels = publicModels.map(row => ({
+          reference: row.reference, aliases: [row.reference.slice(1)],
+          url: prefix + capability(row.selection), contentType: 'model/gltf-binary',
+          sizeBytes: row.selection.file!.size, sha256: row.selection.file!.sha256,
+        }));
         return finish(200, { props: issues.length ? envelope.props ?? {} : props, issues,
-          models: issues.length ? [] : models,
+          models: [...packageModels, ...(issues.length ? [] : models)],
           selectedCount: draft?.selections.length ?? 0, usingExample: issues.length > 0 });
       }
-      const row = draft?.selections.find(row => prefix + capability(row) === path);
+      const packageRow = publicModels.find(row => prefix + capability(row.selection) === path);
+      const row = packageRow?.selection ?? draft?.selections.find(row => prefix + capability(row) === path);
       if (!row) return finish(404, { code: 'preview.resource.selection_changed' });
-      const slot = selectionSlot(root, row); let bytes: Buffer, contentType: string;
+      const slot = packageRow ? undefined : selectionSlot(root, row); let bytes: Buffer, contentType: string;
       if (row.file) {
         const actual = capturePreviewResourceFile(row.file.path);
-        if (JSON.stringify(actual) !== JSON.stringify(row.file) || !localFileMatches(slot, actual)) throw Error('preview.resource.file_changed');
+        if (JSON.stringify(actual) !== JSON.stringify(row.file) || slot && !localFileMatches(slot, actual)) throw Error('preview.resource.file_changed');
         bytes = readBoundedFile(row.file.path, maximumBytes, actual);
         if ('sha256:' + createHash('sha256').update(bytes).digest('hex') !== actual.sha256) throw Error('preview.resource.file_changed');
         contentType = actual.contentType;
       } else {
         const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(8_000)]);
+        if (!slot) throw Error('preview.resource.slot_missing');
         const grant = await resolvePreviewResourceGrant(root, row, slot, { signal });
         if (grant.sizeBytes! > maximumBytes) throw Error('preview.resource.response_budget');
         const url = new URL(grant.url!); if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw Error('preview.resource.url_invalid');
@@ -207,10 +251,9 @@ export function promptFramePreviewResources(): Plugin {
   };
   return {
     name: 'promptframe-preview-resources', apply: 'serve',
-    configResolved(config) { root = resolve(config.root); },
+    configResolved(config) { root = realpathSync(resolve(config.root)); },
     resolveId(id) { return id === virtual ? resolvedVirtual : undefined; },
-    load(id) { if (id !== resolvedVirtual) return;
-      return `export const promptFrameLocalPreview = fetch(${JSON.stringify(prefix + 'state')}, {cache:'no-store'}).then(r=>r.json()).then(v=>v.props?v:{props:null,issues:[{code:v.code||'preview.resource.unavailable'}],usingExample:true}).catch(()=>({props:null,issues:[{code:'preview.resource.unavailable'}],usingExample:true}));`; },
+    load(id) { if (id !== resolvedVirtual) return; return localPreviewBrowserModule(prefix); },
     configureServer(value) {
       server = value;
       const host = value.config.server.host;
@@ -219,4 +262,34 @@ export function promptFramePreviewResources(): Plugin {
     },
     async closeBundle() { controller.abort(); await Promise.allSettled([...pending]); secret.fill(0); },
   };
+}
+
+function localPreviewBrowserModule(prefix: string): string {
+  return [
+    "import {createPromptFrameModelReader, readPromptFrameModelResponse, PROMPTFRAME_MODEL_READER, PromptFrameModelError} from '@promptframe/contracts';",
+    'const hostFetch = globalThis.fetch.bind(globalThis);',
+    "const digest = globalThis.crypto.subtle.digest.bind(globalThis.crypto.subtle);",
+    'const controller = new AbortController();',
+    'const close = () => {controller.abort(); globalThis.removeEventListener?.("pagehide", close);};',
+    'globalThis.addEventListener?.("pagehide", close, {once:true});',
+    'if (import.meta.hot) import.meta.hot.dispose(close);',
+    `const prefix = ${JSON.stringify(prefix)};`,
+    `export const promptFrameLocalPreview = hostFetch(${JSON.stringify(prefix + 'state')}, {cache:"no-store", credentials:"omit", redirect:"error", signal:controller.signal})`,
+    '.then(response => {if(!response.ok) throw Error("preview.resource.unavailable"); return response.json();})',
+    '.then(value => {',
+    '  if (!value.props) throw Error("preview.resource.unavailable");',
+    '  const models = Object.freeze((value.models ?? []).map(row => {',
+    '    if (typeof row.url !== "string" || !row.url.startsWith(prefix) || !/^[a-f0-9]{64}$/.test(row.url.slice(prefix.length))) throw Error("preview.resource.unavailable");',
+    '    return Object.freeze({reference:row.reference, url:row.url, sha256:row.sha256, contentType:row.contentType, sizeBytes:row.sizeBytes, expiresAt:row.expiresAt, aliases:Object.freeze([...(row.aliases ?? [])])});',
+    '  }));',
+    '  const binding = createPromptFrameModelReader({entries:models, signal:controller.signal,',
+    '    read: async (entry, signal) => {',
+    '      if (!entry.url.startsWith(prefix) || !/^[a-f0-9]{64}$/.test(entry.url.slice(prefix.length))) throw new PromptFrameModelError("model.reference_unavailable");',
+    '      return readPromptFrameModelResponse(await hostFetch(entry.url, {signal, credentials:"omit", redirect:"error"}), entry.sizeBytes, signal);',
+    '    },',
+    '    digest: async bytes => "sha256:" + Array.from(new Uint8Array(await digest("SHA-256", bytes)), byte => byte.toString(16).padStart(2,"0")).join(""),',
+    '  });',
+    '  return {...value, models, modelResources:Object.freeze({contractVersion:"component-public-resources.v0.1.0", entries:[], [PROMPTFRAME_MODEL_READER]:binding.read})};',
+    '}).catch(() => ({props:null, issues:[{code:"preview.resource.unavailable"}], usingExample:true}));',
+  ].join('\n');
 }

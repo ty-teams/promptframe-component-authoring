@@ -154,6 +154,14 @@ import { resolvePromptFrameStyle } from '@promptframe/component-kit/style';
 
 `react` and `remotion` are optional peer dependencies. Component projects should install the versions they build and preview with.
 
+`model-react`子入口使用React及Remotion的受控准备能力，需要Remotion `>=4.0.374 <5`；其它纯函数入口不因导入kit根而加载Remotion。
+
+## GLB画面准备
+
+`@promptframe/component-kit/model-react`导出`usePromptFrameModel(props, reference, {prepare, dispose})`。包内GLB路径与已授权作品素材引用使用同一接口；宿主核当前引用、大小、SHA及自包含GLB结构，SDK为读取与解析提供15秒总预算。准备完成前返回null，成功后交给当前画面；错误会终止该次渲染。卸载或引用变化会取消旧任务并释放结果，晚到结果不会进入新画面。
+
+prepare和dispose使用稳定函数。组件负责释放其geometry、material、texture及ImageBitmap。SDK持有渲染等待和播放缓冲，不向组件开放延迟句柄、任意fetch或额外权限。完整示例见[AUTHORING](../../AUTHORING.md#自包含-glb-模型槽)。
+
 ## Component Workflow
 
 Use this package while authoring components. Use the PromptFrame CLI to validate, package, and upload finished components.

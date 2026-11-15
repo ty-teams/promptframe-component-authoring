@@ -10,7 +10,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: promptframe-authoring-release-create-component-${{ github.ref_name }}
+  group: promptframe-authoring-release-create-component
   cancel-in-progress: false
 
 jobs:
@@ -36,10 +36,12 @@ jobs:
           PROMPTFRAME_AUTHORING_RELEASE_PLAN_ONLY: 'true'
         run: node scripts/authoring-release-publish.mjs
       - name: Download immutable candidate cohort
+        if: steps.release-plan.outputs.package_requested == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release download "${{ steps.release-plan.outputs.artifact_tag }}" --dir "$PROMPTFRAME_AUTHORING_RELEASE_ARTIFACT_ROOT" --pattern candidate-manifest.json --pattern '*.tgz'
       - name: Publish authorized package with OIDC
+        if: steps.release-plan.outputs.package_requested == 'true'
         run: node scripts/authoring-release-publish.mjs
       - name: Remove release artifacts
         if: always()

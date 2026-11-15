@@ -20,13 +20,36 @@ const DEPENDENCY_KEYS = Object.freeze({
   createComponent: ['contracts', 'componentKit', 'cli'],
 });
 
+export class AuthoringPublicationError extends Error {
+  constructor(code, publicationStatus, stage, options) {
+    super(code, options);
+    this.publicationStatus = publicationStatus;
+    this.stage = stage;
+  }
+}
+
+function bounded(operation, milliseconds, code = 'authoring_release.registry_timeout') {
+  let timer;
+  return Promise.race([
+    Promise.resolve().then(operation),
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(code)), milliseconds); }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 export async function executeAuthoringPackagePublish(input) {
   const { authorization, candidate, packageKey } = input;
   validateAuthorizationAgainstCandidate(authorization, candidate);
-  const packageIndex = AUTHORING_RELEASE_PACKAGES.findIndex((entry) => entry.key === packageKey);
-  if (packageIndex < 0) throw new Error('authoring_release.package_key_invalid');
-  const packageEntry = candidate.packages[packageIndex];
-  const registry = input.registry ?? createNpmRegistryClient();
+  const definition = AUTHORING_RELEASE_PACKAGES.find((entry) => entry.key === packageKey);
+  if (!definition) throw new Error('authoring_release.package_key_invalid');
+  const packageEntry = candidate.packages.find(entry => entry.name === definition.name);
+  if (!packageEntry) return {schemaVersion: 'promptframe-authoring-package-publish-result/v1', status: 'not_requested', packageKey, sanitized: true};
+  const transport = input.registry ?? createNpmRegistryClient();
+  const deadline = Date.now() + (input.observationTimeoutMs ?? 300000);
+  const registry = {readPackage(name) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new Error('authoring_release.observation_timeout');
+    return bounded(() => transport.readPackage(name, {timeoutMs: Math.min(15000, remaining)}), Math.min(15000, remaining));
+  }};
   const publisher = input.publisher;
   if (!publisher || typeof publisher.publish !== 'function') {
     throw new Error('authoring_release.publisher_required');
@@ -46,33 +69,51 @@ export async function executeAuthoringPackagePublish(input) {
   if (beforeState === 'complete') {
     return publishResult(authorization, packageKey, packageEntry, 'already_published');
   }
-  if (beforeState !== 'absent') throw new Error('authoring_release.existing_version_not_complete');
+  if (beforeState !== 'absent') throw new AuthoringPublicationError('authoring_release.integrity_conflict', 'conflict', 'before_publish');
 
-  await publisher.publish(packageEntry);
-  const readbackComplete = await waitForPackageComplete({
-    packageEntry,
-    registry,
-    maxAttempts: input.maxReadbackAttempts ?? 60,
-    sleep: input.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))),
-    delayMs: input.readbackDelayMs ?? 5000,
-  });
-  if (!readbackComplete) {
-    throw new Error('authoring_release.publish_readback_mismatch');
+  // A delayed old release may still publish its exact version, but must never
+  // move latest backwards. Per-package Actions concurrency covers all tags.
+  const tag = shouldAdvanceLatest(packageEntry.version, before?.distTags?.latest) ? 'latest' : `version-${packageEntry.version}`;
+  let writeError;
+  try { await publisher.publish(packageEntry, {tag}); }
+  catch (error) {
+    if (error instanceof AuthoringPublicationError && error.publicationStatus === 'not_started') throw error;
+    writeError = error;
   }
-  return publishResult(authorization, packageKey, packageEntry, 'published');
+  let readbackComplete;
+  try {
+    readbackComplete = await waitForPackageComplete({
+      packageEntry, registry,
+      maxAttempts: input.maxReadbackAttempts ?? 60,
+      sleep: input.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))),
+      delayMs: input.readbackDelayMs ?? 5000,
+    });
+  } catch (error) {
+    if (error instanceof AuthoringPublicationError) throw error;
+    throw new AuthoringPublicationError('authoring_release.publication_unconfirmed', 'unconfirmed', 'registry_readback', {cause: error});
+  }
+  if (!readbackComplete) {
+    throw new AuthoringPublicationError('authoring_release.publication_unconfirmed', 'unconfirmed', 'registry_readback');
+  }
+  return {...publishResult(authorization, packageKey, packageEntry, 'published'), writeAcknowledged: !writeError, publishTag: tag};
 }
 
 export function createNpmRegistryClient(options = {}) {
   const fetchImpl = options.fetchImpl ?? fetch;
   return {
-    async readPackage(packageName) {
-      const response = await fetchImpl(`${AUTHORING_RELEASE_REGISTRY}${encodeURIComponent(packageName)}`, {
-        headers: { accept: 'application/json' },
-        cache: 'no-store',
-      });
-      if (response.status === 404) return null;
-      if (!response.ok) throw new Error(`authoring_release.registry_http_${response.status}`);
-      return normalizeRegistryMetadata(await response.json());
+    async readPackage(packageName, input = {}) {
+      const controller = new AbortController();
+      const timeoutMs = Math.min(input.timeoutMs ?? options.timeoutMs ?? 15000, 15000);
+      try {
+        return await bounded(async () => {
+          const response = await fetchImpl(`${AUTHORING_RELEASE_REGISTRY}${encodeURIComponent(packageName)}`, {
+            headers: { accept: 'application/json' }, cache: 'no-store', signal: controller.signal,
+          });
+          if (response.status === 404) return null;
+          if (!response.ok) throw new Error(`authoring_release.registry_http_${response.status}`);
+          return normalizeRegistryMetadata(await response.json());
+        }, timeoutMs);
+      } finally { controller.abort(); }
     },
   };
 }
@@ -82,7 +123,7 @@ export function createNpmOidcPublisher(options = {}) {
   const execImpl = options.execFileImpl ?? execFile;
   const env = publishEnvironment(options.baseEnv ?? process.env);
   return {
-    async publish(packageEntry) {
+    async publish(packageEntry, input = {}) {
       const artifactPath = path.resolve(artifactRoot, packageEntry.artifactName);
       if (path.dirname(artifactPath) !== artifactRoot) throw new Error('authoring_release.artifact_path_invalid');
       try {
@@ -91,13 +132,18 @@ export function createNpmOidcPublisher(options = {}) {
           env,
           encoding: 'utf8',
           maxBuffer: 1024 * 1024,
+          timeout: 15000,
         });
         assertSupportedNpmVersion(versionResult?.stdout ?? versionResult);
+      } catch (error) {
+        throw new AuthoringPublicationError('authoring_release.npm_preflight_failed', 'not_started', 'npm_preflight', {cause: error});
+      }
+      try {
         await execImpl('npm', [
           'publish',
           artifactPath,
           '--tag',
-          'latest',
+          input.tag ?? 'latest',
           '--access',
           'public',
           '--ignore-scripts',
@@ -108,9 +154,10 @@ export function createNpmOidcPublisher(options = {}) {
           env,
           encoding: 'utf8',
           maxBuffer: 4 * 1024 * 1024,
+          timeout: 300000,
         });
       } catch (error) {
-        throw new Error('authoring_release.npm_publish_failed', { cause: error });
+        throw new AuthoringPublicationError('authoring_release.publication_unconfirmed', 'unconfirmed', 'npm_publish', { cause: error });
       }
     },
   };
@@ -126,14 +173,17 @@ function assertSupportedNpmVersion(value) {
 }
 
 async function waitForDependencies(input) {
-  const dependencyKeys = DEPENDENCY_KEYS[input.packageKey];
+  const dependencyKeys = input.candidate.dependencies?.[input.packageKey] ?? DEPENDENCY_KEYS[input.packageKey];
   if (!dependencyKeys) throw new Error('authoring_release.package_key_invalid');
   for (const dependencyKey of dependencyKeys) {
-    const index = AUTHORING_RELEASE_PACKAGES.findIndex((entry) => entry.key === dependencyKey);
-    const dependency = input.candidate.packages[index];
+    const definition = AUTHORING_RELEASE_PACKAGES.find((entry) => entry.key === dependencyKey);
+    const dependency = [...input.candidate.packages, ...(input.candidate.reusedPackages ?? [])].find(entry => entry.name === definition.name);
+    if (!dependency) throw new Error('authoring_release.dependency_missing');
     let complete = false;
     for (let attempt = 0; attempt < input.maxAttempts; attempt += 1) {
-      if (classifyRegistryState(await input.registry.readPackage(dependency.name), dependency) === 'complete') {
+      const state = classifyRegistryState(await input.registry.readPackage(dependency.name), dependency);
+      if (state === 'mismatch') throw new AuthoringPublicationError('authoring_release.integrity_conflict', 'conflict', 'dependency');
+      if (state === 'complete') {
         complete = true;
         break;
       }
@@ -145,7 +195,9 @@ async function waitForDependencies(input) {
 
 async function waitForPackageComplete(input) {
   for (let attempt = 0; attempt < input.maxAttempts; attempt += 1) {
-    if (classifyRegistryState(await input.registry.readPackage(input.packageEntry.name), input.packageEntry) === 'complete') {
+    const state = classifyRegistryState(await input.registry.readPackage(input.packageEntry.name), input.packageEntry);
+    if (state === 'mismatch') throw new AuthoringPublicationError('authoring_release.integrity_conflict', 'conflict', 'registry_readback');
+    if (state === 'complete') {
       return true;
     }
     if (attempt + 1 < input.maxAttempts) await input.sleep(input.delayMs);
@@ -157,7 +209,18 @@ function classifyRegistryState(metadata, packageEntry) {
   if (!metadata || !metadata.versions?.[packageEntry.version]) return 'absent';
   const integrity = metadata.versions[packageEntry.version]?.dist?.integrity;
   if (integrity !== packageEntry.integrity) return 'mismatch';
-  return metadata.distTags.latest === packageEntry.version ? 'complete' : 'published_without_latest';
+  return 'complete';
+}
+
+function shouldAdvanceLatest(version, latest) {
+  if (!/^\d+\.\d+\.\d+$/.test(version)) return false;
+  if (latest === undefined) return true;
+  if (!/^\d+\.\d+\.\d+$/.test(latest)) return false;
+  const left = version.split('.').map(Number), right = latest.split('.').map(Number);
+  for (let index = 0; index < 3; index += 1) {
+    if (left[index] !== right[index]) return left[index] > right[index];
+  }
+  return false;
 }
 
 function normalizeRegistryMetadata(value) {
@@ -220,10 +283,13 @@ async function runCli() {
   if (process.env.PROMPTFRAME_AUTHORING_RELEASE_PLAN_ONLY === 'true') {
     const outputPath = process.env.GITHUB_OUTPUT;
     if (!outputPath) throw new Error('authoring_release.github_output_missing');
-    await appendFile(outputPath, `artifact_tag=${authorization.artifactTag}\n`, 'utf8');
+    const definition = AUTHORING_RELEASE_PACKAGES.find(entry => entry.key === process.env.PROMPTFRAME_AUTHORING_RELEASE_PACKAGE_KEY);
+    if (!definition) throw new Error('authoring_release.package_key_invalid');
+    const requested = authorization.packages.some(entry => entry.name === definition.name);
+    await appendFile(outputPath, `artifact_tag=${authorization.artifactTag}\npackage_requested=${requested}\n`, 'utf8');
     process.stdout.write(`${JSON.stringify({
       schemaVersion: 'promptframe-authoring-release-download-plan/v1',
-      status: 'trusted',
+      status: requested ? 'trusted' : 'not_requested',
       releaseId: authorization.releaseId,
       releaseDigest: authorization.releaseDigest,
       authorizationDigest: authorization.authorizationDigest,
@@ -290,8 +356,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       : 'authoring_release.publish_failed_closed';
     process.stdout.write(`${JSON.stringify({
       schemaVersion: 'promptframe-authoring-package-publish-result/v1',
-      status: 'failed_closed',
-      failure: { code },
+      status: error instanceof AuthoringPublicationError ? error.publicationStatus : 'not_started',
+      failure: { code, stage: error instanceof AuthoringPublicationError ? error.stage : 'before_publish' },
       sanitized: true,
     })}\n`);
     process.exitCode = 1;

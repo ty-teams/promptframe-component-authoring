@@ -7,6 +7,11 @@ export const AUTHORING_RELEASE_REGISTRY = 'https://registry.npmjs.org/';
 export const AUTHORING_RELEASE_INTENT_SCHEMA = 'promptframe-authoring-release-intent/v1';
 export const AUTHORING_CANDIDATE_MANIFEST_SCHEMA = 'promptframe-authoring-candidate-manifest/v1';
 export const AUTHORING_RELEASE_AUTHORIZATION_SCHEMA = 'promptframe-authoring-release-authorization/v1';
+const V2 = Object.freeze({
+  [AUTHORING_RELEASE_INTENT_SCHEMA]: 'promptframe-authoring-release-intent/v2',
+  [AUTHORING_CANDIDATE_MANIFEST_SCHEMA]: 'promptframe-authoring-candidate-manifest/v2',
+  [AUTHORING_RELEASE_AUTHORIZATION_SCHEMA]: 'promptframe-authoring-release-authorization/v2',
+});
 export const AUTHORING_RELEASE_PACKAGES = Object.freeze([
   Object.freeze({
     key: 'contracts',
@@ -81,8 +86,9 @@ const AUTHORIZATION_PACKAGE_KEYS = Object.freeze(['integrity', 'name', 'version'
 
 export function parseAuthoringReleaseIntent(value, options = {}) {
   const intent = requireRecord(value, 'authoring_release.intent_invalid');
-  assertExactKeys(intent, INTENT_KEYS, 'authoring_release.intent_fields_invalid');
-  if (intent.schemaVersion !== AUTHORING_RELEASE_INTENT_SCHEMA) {
+  const partial = intent.schemaVersion === V2[AUTHORING_RELEASE_INTENT_SCHEMA];
+  assertExactKeys(intent, partial ? [...INTENT_KEYS, 'dependencies', 'reusedPackages'] : INTENT_KEYS, 'authoring_release.intent_fields_invalid');
+  if (!partial && intent.schemaVersion !== AUTHORING_RELEASE_INTENT_SCHEMA) {
     throw new Error('authoring_release.intent_schema_unsupported');
   }
   assertBoundedId(intent.releaseId, 'authoring_release.release_id_invalid');
@@ -92,7 +98,8 @@ export function parseAuthoringReleaseIntent(value, options = {}) {
   const packages = parseExactPackages(intent.packages, INTENT_PACKAGE_KEYS, (entry) => {
     assertVersion(entry.version, 'authoring_release.package_version_invalid');
     return { name: entry.name, version: entry.version };
-  });
+  }, partial);
+  if (partial) validatePackageDependencies(packages, intent.dependencies, intent.reusedPackages);
   assertSha256(intent.intentDigest, 'authoring_release.intent_digest_invalid');
   const normalized = { ...intent, packages };
   if (computeAuthoringReleaseIntentDigest(normalized) !== intent.intentDigest) {
@@ -113,20 +120,39 @@ export async function readAuthoringReleaseIntent(filePath, options = {}) {
 export async function validateIntentAgainstRepository(intent, options = {}) {
   const root = path.resolve(options.root ?? defaultRoot());
   const manifests = new Map();
-  for (let index = 0; index < AUTHORING_RELEASE_PACKAGES.length; index += 1) {
-    const definition = AUTHORING_RELEASE_PACKAGES[index];
+  for (const expected of intent.packages) {
+    const definition = AUTHORING_RELEASE_PACKAGES.find(entry => entry.name === expected.name);
     const manifest = JSON.parse(await readFile(path.join(root, definition.manifestPath), 'utf8'));
-    if (manifest.name !== definition.name || manifest.version !== intent.packages[index].version) {
+    if (manifest.name !== definition.name || manifest.version !== expected.version) {
       throw new Error('authoring_release.repository_cohort_mismatch');
     }
     manifests.set(definition.name, manifest);
   }
-  const contractsVersion = intent.packages[0].version;
-  if (manifests.get('@promptframe/component-kit')?.dependencies?.['@promptframe/contracts'] !== contractsVersion) {
+  const contractsVersion = [...intent.packages, ...(intent.reusedPackages ?? [])].find(entry => entry.name === '@promptframe/contracts')?.version;
+  if (manifests.has('@promptframe/component-kit') && manifests.get('@promptframe/component-kit')?.dependencies?.['@promptframe/contracts'] !== contractsVersion) {
     throw new Error('authoring_release.component_kit_dependency_mismatch');
   }
-  if (manifests.get('@promptframe/cli')?.dependencies?.['@promptframe/contracts'] !== contractsVersion) {
+  if (manifests.has('@promptframe/cli') && manifests.get('@promptframe/cli')?.dependencies?.['@promptframe/contracts'] !== contractsVersion) {
     throw new Error('authoring_release.cli_dependency_mismatch');
+  }
+  if (intent.dependencies) {
+    // Node dependencies and the scaffold's generated imports are real consumers.
+    // Recommendations alone do not create a release ordering dependency.
+    for (const definition of AUTHORING_RELEASE_PACKAGES.filter(entry => manifests.has(entry.name))) {
+      const manifest = manifests.get(definition.name);
+      const consumed = {...manifest.dependencies};
+      if (definition.key === 'createComponent') {
+        const template = JSON.parse(await readFile(path.join(root, 'packages/create-component/templates/react-remotion/package.json'), 'utf8'));
+        Object.assign(consumed, template.dependencies, template.devDependencies);
+      }
+      const required = AUTHORING_RELEASE_PACKAGES.filter(entry => consumed[entry.name]).map(entry => entry.key);
+      if (canonicalJson(required) !== canonicalJson(intent.dependencies[definition.key])) throw new Error('authoring_release.dependency_graph_mismatch');
+      for (const key of required) {
+        const name = AUTHORING_RELEASE_PACKAGES.find(entry => entry.key === key).name;
+        const version = [...intent.packages, ...intent.reusedPackages].find(entry => entry.name === name)?.version;
+        if (![version, '^' + version, '~' + version].includes(consumed[name])) throw new Error('authoring_release.dependency_version_mismatch');
+      }
+    }
   }
   return true;
 }
@@ -137,7 +163,7 @@ export function createAuthoringCandidateManifest(input) {
     allowExpired: input.allowExpired,
   });
   assertCommit(input.sourceCommit, 'authoring_release.source_commit_invalid');
-  if (!Array.isArray(input.artifacts) || input.artifacts.length !== AUTHORING_RELEASE_PACKAGES.length) {
+  if (!Array.isArray(input.artifacts) || input.artifacts.length !== intent.packages.length) {
     throw new Error('authoring_release.artifact_count_invalid');
   }
   const packages = input.artifacts.map((artifact, index) => {
@@ -162,7 +188,7 @@ export function createAuthoringCandidateManifest(input) {
   });
   const createdAt = parseTimestamp(input.createdAt ?? new Date().toISOString(), 'authoring_release.created_at_invalid');
   const candidate = {
-    schemaVersion: AUTHORING_CANDIDATE_MANIFEST_SCHEMA,
+    schemaVersion: intent.schemaVersion === V2[AUTHORING_RELEASE_INTENT_SCHEMA] ? V2[AUTHORING_CANDIDATE_MANIFEST_SCHEMA] : AUTHORING_CANDIDATE_MANIFEST_SCHEMA,
     releaseId: intent.releaseId,
     artifactTag: intent.artifactTag,
     sourceCommit: input.sourceCommit,
@@ -171,6 +197,7 @@ export function createAuthoringCandidateManifest(input) {
     registry: intent.registry,
     intentDigest: intent.intentDigest,
     packages,
+    ...(intent.dependencies ? {dependencies: intent.dependencies, reusedPackages: intent.reusedPackages} : {}),
     releaseDigest: '',
     manifestDigest: '',
   };
@@ -181,8 +208,9 @@ export function createAuthoringCandidateManifest(input) {
 
 export function parseAuthoringCandidateManifest(value, options = {}) {
   const candidate = requireRecord(value, 'authoring_release.candidate_invalid');
-  assertExactKeys(candidate, CANDIDATE_KEYS, 'authoring_release.candidate_fields_invalid');
-  if (candidate.schemaVersion !== AUTHORING_CANDIDATE_MANIFEST_SCHEMA) {
+  const partial = candidate.schemaVersion === V2[AUTHORING_CANDIDATE_MANIFEST_SCHEMA];
+  assertExactKeys(candidate, partial ? [...CANDIDATE_KEYS, 'dependencies', 'reusedPackages'] : CANDIDATE_KEYS, 'authoring_release.candidate_fields_invalid');
+  if (!partial && candidate.schemaVersion !== AUTHORING_CANDIDATE_MANIFEST_SCHEMA) {
     throw new Error('authoring_release.candidate_schema_unsupported');
   }
   assertBoundedId(candidate.releaseId, 'authoring_release.release_id_invalid');
@@ -202,7 +230,8 @@ export function parseAuthoringCandidateManifest(value, options = {}) {
     assertSha256(entry.sha256, 'authoring_release.artifact_sha256_invalid');
     assertIntegrity(entry.integrity, 'authoring_release.artifact_integrity_invalid');
     return { ...entry };
-  });
+  }, partial);
+  if (partial) validatePackageDependencies(packages, candidate.dependencies, candidate.reusedPackages);
   assertSha256(candidate.releaseDigest, 'authoring_release.release_digest_invalid');
   assertSha256(candidate.manifestDigest, 'authoring_release.manifest_digest_invalid');
   const normalized = { ...candidate, packages };
@@ -244,7 +273,8 @@ export async function validateCandidateArtifactFiles(candidate, options = {}) {
 export function parseAuthoringReleaseAuthorization(value, options = {}) {
   const authorization = requireRecord(value, 'authoring_release.authorization_invalid');
   assertExactKeys(authorization, AUTHORIZATION_KEYS, 'authoring_release.authorization_fields_invalid');
-  if (authorization.schemaVersion !== AUTHORING_RELEASE_AUTHORIZATION_SCHEMA) {
+  const partial = authorization.schemaVersion === V2[AUTHORING_RELEASE_AUTHORIZATION_SCHEMA];
+  if (!partial && authorization.schemaVersion !== AUTHORING_RELEASE_AUTHORIZATION_SCHEMA) {
     throw new Error('authoring_release.authorization_schema_unsupported');
   }
   if (authorization.state !== 'publish_ready') throw new Error('authoring_release.authorization_state_invalid');
@@ -263,7 +293,7 @@ export function parseAuthoringReleaseAuthorization(value, options = {}) {
     assertVersion(entry.version, 'authoring_release.package_version_invalid');
     assertIntegrity(entry.integrity, 'authoring_release.artifact_integrity_invalid');
     return { ...entry };
-  });
+  }, partial);
   assertSha256(authorization.authorizationDigest, 'authoring_release.authorization_digest_invalid');
   const normalized = { ...authorization, packages };
   if (computeAuthoringReleaseAuthorizationDigest(normalized) !== authorization.authorizationDigest) {
@@ -291,11 +321,11 @@ export function validateAuthorizationAgainstCandidate(authorization, candidate) 
   ) {
     throw new Error('authoring_release.authorization_candidate_mismatch');
   }
-  for (let index = 0; index < candidate.packages.length; index += 1) {
-    const authorized = authorization.packages[index];
-    const artifact = candidate.packages[index];
+  if (authorization.packages.length !== candidate.packages.length) throw new Error('authoring_release.authorization_package_mismatch');
+  for (const artifact of candidate.packages) {
+    const authorized = authorization.packages.find(entry => entry.name === artifact.name);
     if (
-      authorized.name !== artifact.name
+      !authorized || authorized.name !== artifact.name
       || authorized.version !== artifact.version
       || authorized.integrity !== artifact.integrity
     ) {
@@ -315,6 +345,7 @@ export function computeAuthoringCandidateReleaseDigest(candidate) {
     sourceCommit: candidate.sourceCommit,
     intentDigest: candidate.intentDigest,
     packages: candidate.packages.map(({ name, version, integrity }) => ({ name, version, integrity })),
+    ...(candidate.dependencies ? {dependencies: candidate.dependencies, reusedPackages: candidate.reusedPackages} : {}),
   })).digest('hex')}`;
 }
 
@@ -339,18 +370,51 @@ export function expectedArtifactName(packageName, version) {
   return `${stem}-${version}.tgz`;
 }
 
-function parseExactPackages(value, expectedKeys, normalize) {
-  if (!Array.isArray(value) || value.length !== AUTHORING_RELEASE_PACKAGES.length) {
+function parseExactPackages(value, expectedKeys, normalize, partial = false) {
+  if (!Array.isArray(value) || value.length === 0 || value.length > AUTHORING_RELEASE_PACKAGES.length || (!partial && value.length !== AUTHORING_RELEASE_PACKAGES.length)) {
     throw new Error('authoring_release.package_count_invalid');
   }
+  const seen = new Set();
   return value.map((entry, index) => {
     const packageEntry = requireRecord(entry, 'authoring_release.package_invalid');
     assertExactKeys(packageEntry, expectedKeys, 'authoring_release.package_fields_invalid');
-    if (packageEntry.name !== AUTHORING_RELEASE_PACKAGES[index].name) {
+    if ((!partial && packageEntry.name !== AUTHORING_RELEASE_PACKAGES[index].name) || !AUTHORING_RELEASE_PACKAGES.some(item => item.name === packageEntry.name) || seen.has(packageEntry.name)) {
       throw new Error('authoring_release.package_allowlist_invalid');
     }
+    seen.add(packageEntry.name);
     return normalize(packageEntry);
   });
+}
+
+function validatePackageDependencies(packages, dependencies, reused) {
+  requireRecord(dependencies, 'authoring_release.dependencies_invalid');
+  const requested = AUTHORING_RELEASE_PACKAGES.filter(entry => packages.some(item => item.name === entry.name));
+  assertExactKeys(dependencies, requested.map(entry => entry.key), 'authoring_release.dependencies_invalid');
+  if (!Array.isArray(reused) || reused.length > 3) throw new Error('authoring_release.reused_packages_invalid');
+  const all = new Map(packages.map(entry => [entry.name, entry]));
+  for (const entry of reused) {
+    requireRecord(entry, 'authoring_release.reused_packages_invalid');
+    assertExactKeys(entry, AUTHORIZATION_PACKAGE_KEYS, 'authoring_release.reused_packages_invalid');
+    if (!AUTHORING_RELEASE_PACKAGES.some(item => item.name === entry.name) || all.has(entry.name)) throw new Error('authoring_release.reused_packages_invalid');
+    assertVersion(entry.version, 'authoring_release.package_version_invalid');
+    assertIntegrity(entry.integrity, 'authoring_release.artifact_integrity_invalid');
+    all.set(entry.name, entry);
+  }
+  const visiting = new Set(), visited = new Set();
+  const visit = key => {
+    if (visiting.has(key)) throw new Error('authoring_release.dependency_cycle');
+    if (visited.has(key)) return;
+    visiting.add(key);
+    const rows = dependencies[key] ?? [];
+    if (!Array.isArray(rows) || new Set(rows).size !== rows.length || rows.length > 3) throw new Error('authoring_release.dependencies_invalid');
+    for (const target of rows) {
+      const definition = AUTHORING_RELEASE_PACKAGES.find(entry => entry.key === target);
+      if (!definition || !all.has(definition.name)) throw new Error('authoring_release.dependency_missing');
+      visit(target);
+    }
+    visiting.delete(key); visited.add(key);
+  };
+  for (const entry of requested) visit(entry.key);
 }
 
 function validateWindow(value, options, prefix) {

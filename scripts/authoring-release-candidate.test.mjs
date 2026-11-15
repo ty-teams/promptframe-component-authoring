@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
-import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { buildAuthoringCandidateArtifacts } from './authoring-release-candidate.mjs';
-import { expectedArtifactName,readAuthoringReleaseIntent } from './authoring-release-receipt.mjs';
+import { computeAuthoringReleaseIntentDigest,expectedArtifactName,readAuthoringReleaseIntent } from './authoring-release-receipt.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourceCommit = 'c'.repeat(40);
@@ -91,4 +91,31 @@ test('candidate workflow is tag-bound, no-clobber and contains no npm publish pa
   assert.match(workflow, /--verify-tag/);
   assert.doesNotMatch(workflow, /\$\{\{ runner\.temp \}\}/);
   assert.doesNotMatch(workflow, /npm publish|npm dist-tag|workflow_dispatch|pull_request/);
+});
+
+test('candidate builder packs only the explicit changed package and reuses the dependency SRI', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'authoring-candidate-subset-'));
+  const outputDir = path.join(tempRoot, 'output');
+  const kit = activeIntent.packages.find(entry => entry.name === '@promptframe/component-kit');
+  const contracts = activeIntent.packages.find(entry => entry.name === '@promptframe/contracts');
+  const reused = {...contracts, integrity: 'sha512-' + Buffer.alloc(64, 4).toString('base64')};
+  const intent = {...activeIntent, schemaVersion: 'promptframe-authoring-release-intent/v2', packages: [kit],
+    dependencies: {componentKit: ['contracts']}, reusedPackages: [reused], intentDigest: ''};
+  intent.intentDigest = computeAuthoringReleaseIntentDigest(intent);
+  let packs = 0;
+  try {
+    await mkdir(path.join(tempRoot, '.github/authoring-release'), {recursive: true});
+    await mkdir(path.join(tempRoot, 'packages/component-kit'), {recursive: true});
+    await writeFile(path.join(tempRoot, '.github/authoring-release/active-intent.json'), JSON.stringify(intent));
+    await writeFile(path.join(tempRoot, 'packages/component-kit/package.json'), JSON.stringify({...kit, dependencies: {[contracts.name]: contracts.version}}));
+    const manifest = await buildAuthoringCandidateArtifacts({root: tempRoot, outputDir, sourceCommit, headCommit: sourceCommit, repositoryClean: true,
+      artifactTag: intent.artifactTag, now, execFileImpl: async (command, args, options) => {
+        assert.equal(options.cwd, path.join(tempRoot, 'packages/component-kit')); packs++;
+        const filename = expectedArtifactName(kit.name, kit.version);
+        await writeFile(path.join(outputDir, filename), 'only the changed kit');
+        return {stdout: JSON.stringify([{...kit, filename}])};
+      }});
+    assert.equal(packs, 1); assert.equal(manifest.packages.length, 1);
+    assert.deepEqual(manifest.reusedPackages, [reused]);
+  } finally {await rm(tempRoot, {recursive: true, force: true});}
 });

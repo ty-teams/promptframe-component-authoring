@@ -4,7 +4,6 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import {AUTHORING_STANDARD_RELEASE_ID} from '../packages/contracts/dist/index.js';
 import {
   AUTHORING_RELEASE_PACKAGES,
   computeAuthoringCandidateManifestDigest,
@@ -28,7 +27,8 @@ const now = new Date('2026-10-18T12:00:00.000Z');
 test('active release intent binds the exact unpublished source cohort', async () => {
   const intent = await readAuthoringReleaseIntent(undefined, { root, now });
 
-  assert.equal(intent.releaseId, AUTHORING_STANDARD_RELEASE_ID);
+  const metadata = JSON.parse(await readFile(path.join(root, 'packages/cli/authoring-release.json'), 'utf8'));
+  assert.equal(intent.releaseId, metadata.releaseId);
   assert.ok(intent.artifactTag.startsWith(intent.releaseId.replace('authoring-release-','authoring-candidate-')));
   assert.deepEqual(intent.packages.map((entry) => entry.name), AUTHORING_RELEASE_PACKAGES.map((entry) => entry.name));
   assert.equal(await validateIntentAgainstRepository(intent, { root }), true);

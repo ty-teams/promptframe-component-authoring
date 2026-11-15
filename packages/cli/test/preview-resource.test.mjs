@@ -14,6 +14,41 @@ import {capturePreviewResourceFile,writePreviewResourceSelection,readPreviewReso
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j3ioAAAAASUVORK5CYII=','base64');
 const hash=bytes=>'sha256:'+createHash('sha256').update(bytes).digest('hex');
 const exec=promisify(execFile);
+function emptyGlb(){
+ const text=Buffer.from(JSON.stringify({asset:{version:'2.0'}}));
+ const json=Buffer.concat([text,Buffer.alloc((4-text.length%4)%4,32)]),header=Buffer.alloc(20);
+ header.writeUInt32LE(0x46546c67);header.writeUInt32LE(2,4);header.writeUInt32LE(20+json.length,8);
+ header.writeUInt32LE(json.length,12);header.writeUInt32LE(0x4e4f534a,16);return Buffer.concat([header,json]);
+}
+test('the dev host binds package GLB bytes from the checked public report, ignoring a forged URL',async()=>{
+ const root=await fixture();let host;
+ try{
+  const bytes=emptyGlb();await writeFile(join(root,'public/example.glb'),bytes);await mkdir(join(root,'.promptframe'),{recursive:true});
+  const report={status:'accepted',entries:[{kind:'model',sourcePath:'public/example.glb',publicPath:'/example.glb',
+   sizeBytes:bytes.length,sha256:hash(bytes),url:'https://example.invalid/forged.glb'}]};
+  await writeFile(join(root,'.promptframe/dev-public-resources.json'),JSON.stringify(report));host=await server(root);
+  const state=await(await fetch(host.url+'/__promptframe/local-preview/state')).json();
+  assert.equal(state.models.length,1);assert.equal(state.models[0].reference,'/example.glb');
+  assert.match(state.models[0].url,/^\/__promptframe\/local-preview\/[a-f0-9]{64}$/);
+  assert(!JSON.stringify(state).includes(root));assert(!JSON.stringify(state).includes('forged'));
+  assert.deepEqual(Buffer.from(await(await fetch(host.url+state.models[0].url)).arrayBuffer()),bytes);
+  await writeFile(join(root,'public/example.glb'),Buffer.concat([bytes,Buffer.from('changed')]));
+  assert.equal((await fetch(host.url+state.models[0].url)).status,409);
+ }finally{await host?.value.close();await rm(root,{recursive:true,force:true});}
+});
+test('a public model report cannot escape public or read through a symlink',async()=>{
+ const root=await fixture();let host;
+ try{
+  const bytes=emptyGlb();await writeFile(join(root,'private.glb'),bytes);await mkdir(join(root,'.promptframe'),{recursive:true});
+  const row={kind:'model',sourcePath:'public/../private.glb',publicPath:'/../private.glb',sizeBytes:bytes.length,sha256:hash(bytes)};
+  await writeFile(join(root,'.promptframe/dev-public-resources.json'),JSON.stringify({status:'accepted',entries:[row]}));host=await server(root);
+  assert.equal((await fetch(host.url+'/__promptframe/local-preview/state')).status,409);
+  await symlink(join(root,'private.glb'),join(root,'public/example.glb'));
+  await writeFile(join(root,'.promptframe/dev-public-resources.json'),JSON.stringify({status:'accepted',entries:[{...row,sourcePath:'public/example.glb',publicPath:'/example.glb'}]}));
+  const denied=await fetch(host.url+'/__promptframe/local-preview/state');assert.equal(denied.status,409);
+  assert(!(await denied.text()).includes(root));assert.deepEqual(await readFile(join(root,'private.glb')),bytes);
+ }finally{await host?.value.close();await rm(root,{recursive:true,force:true});}
+});
 test('selected self-contained model has path-free reader metadata and original lifecycle controls', async()=>{
  const root=await fixture();let host;
  try{
@@ -54,11 +89,11 @@ async function server(root){
 test('CLI selection changes only ignored draft; clear retains original files',async()=>{
   const root=await fixture();try{
     const source=await readFile(join(root,'src/preview-props.json'));
-    const {stdout}=await exec('node',[resolve('dist/index.js'),'resource','set',root,'--prop','/illustration','--file',join(root,'selected.png'),'--json'],{env:{...process.env,PROMPTFRAME_CONFIG:join(root,'no-config.json')}});
+    const {stdout}=await exec('node',[resolve(import.meta.dirname,'../dist/index.js'),'resource','set',root,'--prop','/illustration','--file',join(root,'selected.png'),'--json'],{env:{...process.env,PROMPTFRAME_CONFIG:join(root,'no-config.json')}});
     assert.equal(JSON.parse(stdout).draftOnly,true);assert.deepEqual(await readFile(join(root,'src/preview-props.json')),source);
     assert.match(await readFile(join(root,'.gitignore'),'utf8'),/\.promptframe\//);
     assert.equal(readPreviewResourceDraft(root).selections[0].file.sha256,hash(png));
-    await exec('node',[resolve('dist/index.js'),'resource','clear',root,'--json']);
+    await exec('node',[resolve(import.meta.dirname,'../dist/index.js'),'resource','clear',root,'--json']);
     assert.equal(readPreviewResourceDraft(root),undefined);assert.deepEqual(await readFile(join(root,'selected.png')),png);
   }finally{await rm(root,{recursive:true,force:true});}
 });
@@ -114,6 +149,6 @@ test('public preview props cannot persist a private asset slot reference',async(
  const root=await fixture();try{
   const path=join(root,'src/preview-props.json'),envelope=JSON.parse(await readFile(path));
   envelope.props.illustration='asset-proxy://asset_private';await writeFile(path,JSON.stringify(envelope));
-  await assert.rejects(exec('node',[resolve('dist/index.js'),'validate',root,'--json']),error=>String(error.stderr).includes('component_standard.preview.private_resource_reference'));
+  await assert.rejects(exec('node',[resolve(import.meta.dirname,'../dist/index.js'),'validate',root,'--json']),error=>String(error.stderr).includes('component_standard.preview.private_resource_reference'));
  }finally{await rm(root,{recursive:true,force:true});}
 });

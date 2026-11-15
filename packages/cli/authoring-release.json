@@ -1,0 +1,79 @@
+{
+  "releaseVersion": "authoring-standard-release.v0.1.0",
+  "releaseId": "authoring-release-2026-11-15.4",
+  "contractsVersion": "promptframe-contracts.v0.1.0",
+  "manifestSchemaVersion": "component-manifest.v0.1.0",
+  "componentRefVersion": "component-ref.v0.1.0",
+  "standardVersion": "component-standard.v0.1.0",
+  "standardSourceHash": "sha256:7ddd4fb8b37786a61c059af5ee41e808d1f3beb118efa1cdaa7dba825dd53e47",
+  "standardPolicyVersion": "component-standard-policy.v0.1.0",
+  "securityPolicyVersion": "component-security-policy.v0.1.0",
+  "styleContractVersion": "promptframe-style.v0.1.0",
+  "supportedComponentTypes": [
+    "scene_template",
+    "contained_widget",
+    "overlay",
+    "transition_effect"
+  ],
+  "activePackageCohort": {
+    "contracts": {
+      "name": "@promptframe/contracts",
+      "version": "0.1.47"
+    },
+    "componentKit": {
+      "name": "@promptframe/component-kit",
+      "version": "0.1.41"
+    },
+    "cli": {
+      "name": "@promptframe/cli",
+      "version": "0.1.79"
+    },
+    "createComponent": {
+      "name": "create-promptframe-component",
+      "version": "0.1.69"
+    }
+  },
+  "minPackageVersions": {
+    "contracts": "0.1.25",
+    "componentKit": "0.1.19",
+    "cli": "0.1.57",
+    "createComponent": "0.1.47"
+  },
+  "recommendedAuthoringPackages": {
+    "contracts": "0.1.47",
+    "componentKit": "0.1.41",
+    "cli": "0.1.79",
+    "createComponent": "0.1.69"
+  },
+  "scaffoldTemplates": [
+    {
+      "name": "react-remotion",
+      "digest": "sha256:77f720750ebae3345c45e0f3e6ae85e5fd38081590cf226a40c6ee85433d9373"
+    }
+  ],
+  "uploadTargets": [
+    {
+      "target": "marketplace_authoring",
+      "description": "External authoring lane for components submitted to the platform marketplace.",
+      "allowedVisibility": [
+        "public",
+        "team"
+      ],
+      "requiresUploadTrustPipeline": true,
+      "requiresHumanPublishApproval": true,
+      "deterministicGateMode": "fail_closed"
+    },
+    {
+      "target": "project_private_generation",
+      "description": "Director Component Author lane for project-scoped private components.",
+      "allowedVisibility": [
+        "project_private",
+        "private"
+      ],
+      "requiresUploadTrustPipeline": true,
+      "requiresHumanPublishApproval": false,
+      "deterministicGateMode": "fail_closed"
+    }
+  ],
+  "releaseDigest": "sha256:cd1d7d869be0607121957956675c339ec9635e201039dabe4ef898508db6a2a6"
+}

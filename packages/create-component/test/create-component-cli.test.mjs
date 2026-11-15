@@ -5,7 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import test from 'node:test';
-import { evaluatePromptFrameDependencyPolicy, PROMPTFRAME_AUTHORING_STANDARD_RELEASE } from '../../contracts/dist/index.js';
+import { evaluatePromptFrameDependencyPolicy } from '../../contracts/dist/index.js';
+const PROMPTFRAME_AUTHORING_STANDARD_RELEASE = JSON.parse(await readFile(new URL('../../cli/authoring-release.json', import.meta.url), 'utf8'));
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(import.meta.dirname, '..');
@@ -24,7 +25,7 @@ test('created component keeps the local Player out of its runtime dependency pol
     assert.equal(policy.status, 'allow', JSON.stringify(policy.diagnostics));
     assert.equal(policy.lane, 'platform_core');
     assert.equal(packageJson.dependencies['@remotion/player'], undefined);
-    assert.equal(devDependencies['@remotion/player'], '^4.0.0');
+    assert.equal(devDependencies['@remotion/player'], '^4.0.374');
     assert.match(await readFile(path.join(target, 'src/PreviewRoot.tsx'), 'utf8'), /PromptFramePreviewApp/);
     assert.doesNotMatch(await readFile(path.join(target, 'src/Component.tsx'), 'utf8'), /@remotion\/player/);
     const unknown = evaluatePromptFrameDependencyPolicy({

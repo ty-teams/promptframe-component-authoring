@@ -1,6 +1,6 @@
+import { promptFrameLocalPreview } from 'virtual:promptframe-local-preview';
 import { Player } from '@remotion/player';
 import React from 'react';
-import { createPromptFrameModelReader, PROMPTFRAME_MODEL_READER, readPromptFrameModelResponse, type PromptFrameModelRepresentation } from '@promptframe/contracts';
 import {
   PromptFramePreviewApp,
   resolvePromptFramePreviewLocale,
@@ -12,23 +12,15 @@ import previewEnvelope from './preview-props.json';
 import manifest from '../manifest.json';
 import { promptFrameDevPublicResources } from './promptframe-dev-public-resources.generated';
 import { propsSchema, type ComponentProps } from './schema';
-import { promptFrameLocalPreview } from 'virtual:promptframe-local-preview';
 
-const hostFetch = globalThis.fetch.bind(globalThis);
 const runtimeEntries = promptFrameDevPublicResources.map(entry => ({ ...entry, url: entry.publicPath }));
-let localModelResources: readonly PromptFrameModelRepresentation[] = [];
-const modelReader = createPromptFrameModelReader({
-  entries: () => [...runtimeEntries.filter(entry => entry.kind === 'model').map(entry => ({ ...entry, reference: entry.publicPath })), ...localModelResources],
-  read: async (entry, signal) => readPromptFrameModelResponse(await hostFetch(entry.url, { signal, redirect: 'error' }), entry.sizeBytes, signal),
-  digest: async bytes => 'sha256:' + Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(bytes))), byte => byte.toString(16).padStart(2, '0')).join(''),
-});
-const hostResources = { contractVersion: 'component-public-resources.v0.1.0' as const, entries: runtimeEntries, [PROMPTFRAME_MODEL_READER]: modelReader.read };
+const localPreview = await promptFrameLocalPreview;
+const modelResources = 'modelResources' in localPreview && localPreview.modelResources && typeof localPreview.modelResources === 'object' ? localPreview.modelResources : undefined;
+const hostResources = { ...modelResources, contractVersion: 'component-public-resources.v0.1.0' as const, entries: runtimeEntries };
 const ModelBoundComponent = (props: ComponentProps) => {
   const runtimeProps = { ...props, promptFrameResources: hostResources };
   return React.createElement(Component, runtimeProps);
 };
-if (import.meta.hot) import.meta.hot.dispose(() => modelReader.dispose());
-window.addEventListener('pagehide', () => modelReader.dispose(), { once: true });
 
 const preview = previewEnvelope as {
   durationFrames: number;
@@ -39,8 +31,6 @@ const preview = previewEnvelope as {
 };
 
 async function mountPreview() {
-const localPreview = await promptFrameLocalPreview;
-localModelResources = localPreview.models ?? [];
 const initialPropsParse = propsSchema.safeParse(localPreview.props ?? preview.props ?? {});
 const initialProps: ComponentProps = initialPropsParse.success
   ? initialPropsParse.data

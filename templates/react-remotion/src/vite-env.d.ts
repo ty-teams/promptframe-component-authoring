@@ -5,5 +5,6 @@ declare module 'virtual:promptframe-local-preview' {
     issues: { prop?: string; code: string }[];
     usingExample?: boolean;
     models?: import('@promptframe/contracts').PromptFrameModelRepresentation[];
+    modelResources?: Pick<import('@promptframe/contracts').ComponentRuntimeResourceManifest, 'contractVersion' | 'entries'>;
   }>;
 }

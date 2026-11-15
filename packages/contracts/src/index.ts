@@ -1174,7 +1174,7 @@ export type ComponentReusabilityScore = z.infer<typeof componentReusabilityScore
 
 export const authoringStandardReleaseSchema = z.object({
   releaseVersion: z.literal(AUTHORING_STANDARD_RELEASE_VERSION),
-  releaseId: z.literal(AUTHORING_STANDARD_RELEASE_ID),
+  releaseId: z.string().regex(/^authoring-release-[A-Za-z0-9][A-Za-z0-9._-]{2,120}$/),
   releaseDigest: sha256Schema,
   contractsVersion: z.literal(PROMPTFRAME_CONTRACTS_VERSION),
   manifestSchemaVersion: z.literal(COMPONENT_MANIFEST_SCHEMA_VERSION),
@@ -1234,6 +1234,8 @@ export const authoringStandardFreshnessDecisionSchema = z.object({
 }).strict();
 export type AuthoringStandardFreshnessDecision = z.infer<typeof authoringStandardFreshnessDecisionSchema>;
 
+/** Published offline baseline. Current recommendations belong to release
+ * metadata/platform discovery; changing another package does not bump contracts. */
 export const PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_COHORT: AuthoringPackageCohort = authoringPackageCohortSchema.parse({
   contracts: { name: '@promptframe/contracts', version: '0.1.46' },
   componentKit: { name: '@promptframe/component-kit', version: '0.1.40' },

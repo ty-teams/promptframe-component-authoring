@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
+import { normalizePublicResourcePath } from './public-resource-path.js';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import {
@@ -31,7 +32,6 @@ import {
   COMPONENT_REF_VERSION,
   COMPONENT_STANDARD_SOURCE_HASH,
   COMPONENT_STANDARD_VERSION,
-  PROMPTFRAME_AUTHORING_STANDARD_RELEASE,
   PROMPTFRAME_PUBLIC_RESOURCE_LIMITS,
   PROMPTFRAME_PUBLIC_RESOURCE_POLICY,
   PROMPTFRAME_PUBLIC_SECURITY_POLICY,
@@ -57,6 +57,7 @@ import {
   type PromptFrameDependencyPolicyReceipt,
 } from '@promptframe/contracts';
 import { evaluatePromptFrameLayoutPolicy } from '@promptframe/contracts/layout-evaluator';
+import {PROMPTFRAME_AUTHORING_STANDARD_RELEASE} from './authoring-release.js';
 import { evaluatePromptFrameDependencyPolicy } from '@promptframe/contracts/dependency-evaluator';
 import {
   evaluatePromptFrameSecurityPolicySource,
@@ -1511,20 +1512,18 @@ function evaluateRemoteStandardFreshness(
     };
   }
 
-  if (floorRelation === 'mixed' || recommendedRelation === 'mixed') {
-    return {
-      kind: 'blocking',
-      uploadBlocking: true,
-      code: 'standard.freshness.release_inconsistent',
-      message: 'PromptFrame platform returned a mixed authoring package cohort that cannot be ordered against the local release. Wait for platform rollout recovery; do not change local packages from this response.',
-      minPackageVersions,
-      recommendedAuthoringPackages,
-      ...releaseMetadata,
-    };
-  }
-
-  if (floorRelation === 'remote_ahead') {
-    const targetPackages = recommendedAuthoringPackages ?? minPackageVersions!;
+  // Independently versioned packages need a per-package minimum comparison.
+  // A higher CLI cannot compensate for a contracts version below its floor;
+  // a mixed recommendation by itself does not make compatible packages invalid.
+  const belowFloor = minPackageVersions && authoringPackageVersionKeys.some(key =>
+    (compareSemverCore(minPackageVersions[key], localCohort[key]) ?? 0) > 0);
+  if (belowFloor) {
+    const targetPackages = {...localCohort};
+    for (const key of authoringPackageVersionKeys) {
+      for (const version of [minPackageVersions![key], recommendedAuthoringPackages?.[key]]) {
+        if ((compareSemverCore(version, targetPackages[key]) ?? 0) > 0) targetPackages[key] = version!;
+      }
+    }
     return {
       kind: 'blocking',
       uploadBlocking: true,
@@ -1541,7 +1540,7 @@ function evaluateRemoteStandardFreshness(
 
   const platformBehind = recommendedRelation === 'remote_behind'
     || (recommendedRelation === 'unknown' && floorRelation === 'remote_behind');
-  if (platformBehind) {
+  if (platformBehind && remoteSourceHash !== COMPONENT_STANDARD_SOURCE_HASH) {
     return {
       kind: 'warning',
       uploadBlocking: true,
@@ -1572,14 +1571,18 @@ function evaluateRemoteStandardFreshness(
     };
   }
 
-  if (recommendedRelation === 'remote_ahead') {
+  if (recommendedRelation === 'remote_ahead' || recommendedRelation === 'mixed') {
+    const compatibleUpdates = {...localCohort};
+    for (const key of authoringPackageVersionKeys) {
+      if ((compareSemverCore(recommendedAuthoringPackages![key], localCohort[key]) ?? 0) > 0) compatibleUpdates[key] = recommendedAuthoringPackages![key];
+    }
     return {
       kind: 'warning',
       uploadBlocking: false,
       code: 'standard.freshness.recommended_update',
       message: [
-        'Local PromptFrame authoring packages satisfy the platform minimum but are behind the recommended cohort; dev/check/upload may continue.',
-        `When convenient, run ${formatRecommendedAuthoringPackageCommand(recommendedAuthoringPackages!)} and then promptframe sync . --apply.`,
+        'Local PromptFrame authoring packages satisfy each platform minimum and use the same standard; dev/check/upload may continue.',
+        `Optional compatible updates: ${formatRecommendedAuthoringPackageCommand(compatibleUpdates)}; then promptframe sync . --apply. Versions already ahead are preserved.`,
       ].join(' '),
       minPackageVersions,
       recommendedAuthoringPackages,
@@ -1603,6 +1606,12 @@ function evaluateRemoteStandardFreshness(
       recommendedAuthoringPackages,
       ...releaseMetadata,
     };
+  }
+
+  if (platformBehind) {
+    return {kind: 'warning', uploadBlocking: false, code: 'standard.freshness.compatible_versions',
+      message: 'Package versions differ from this deployment recommendation, but each minimum and the component standard match. Dev/check/upload may continue; no downgrade is required.',
+      minPackageVersions, recommendedAuthoringPackages, ...releaseMetadata};
   }
 
   return {
@@ -4605,7 +4614,6 @@ function classifyPreviewShell(source: string | undefined): PreviewShellStatus {
 function renderPromptFrameThinPreviewRoot(localResources = false): string {
   const source = `import { Player } from '@remotion/player';
 import React from 'react';
-import { createPromptFrameModelReader, PROMPTFRAME_MODEL_READER, readPromptFrameModelResponse, type PromptFrameModelRepresentation } from '@promptframe/contracts';
 import {
   PromptFramePreviewApp,
   resolvePromptFramePreviewLocale,
@@ -4618,22 +4626,12 @@ import manifest from '../manifest.json';
 import { promptFrameDevPublicResources } from './promptframe-dev-public-resources.generated';
 import { propsSchema, type ComponentProps } from './schema';
 
-// This generated development host owns IO; component source has no raw fetch.
-const hostFetch = globalThis.fetch.bind(globalThis);
 const runtimeEntries = promptFrameDevPublicResources.map(entry => ({ ...entry, url: entry.publicPath }));
-let localModelResources: readonly PromptFrameModelRepresentation[] = [];
-const modelReader = createPromptFrameModelReader({
-  entries: () => [...runtimeEntries.filter(entry => entry.kind === 'model').map(entry => ({ ...entry, reference: entry.publicPath })), ...localModelResources],
-  read: async (entry, signal) => readPromptFrameModelResponse(await hostFetch(entry.url, { signal, redirect: 'error' }), entry.sizeBytes, signal),
-  digest: async bytes => 'sha256:' + Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(bytes))), byte => byte.toString(16).padStart(2, '0')).join(''),
-});
-const hostResources = { contractVersion: 'component-public-resources.v0.1.0' as const, entries: runtimeEntries, [PROMPTFRAME_MODEL_READER]: modelReader.read };
+const hostResources = { contractVersion: 'component-public-resources.v0.1.0' as const, entries: runtimeEntries };
 const ModelBoundComponent = (props: ComponentProps) => {
   const runtimeProps = { ...props, promptFrameResources: hostResources };
   return React.createElement(Component, runtimeProps);
 };
-if (import.meta.hot) import.meta.hot.dispose(() => modelReader.dispose());
-window.addEventListener('pagehide', () => modelReader.dispose(), { once: true });
 
 const preview = previewEnvelope as {
   durationFrames: number;
@@ -4694,9 +4692,9 @@ createRoot(root).render(
 );
 `;
   if (!localResources) return source;
-  return source
-    .replace("import { propsSchema, type ComponentProps } from './schema';", "import { propsSchema, type ComponentProps } from './schema';\nimport { promptFrameLocalPreview } from 'virtual:promptframe-local-preview';")
-    .replace('const initialPropsParse = propsSchema.safeParse(preview.props ?? {});', 'async function mountPreview() {\nconst localPreview = await promptFrameLocalPreview;\nlocalModelResources = localPreview.models ?? [];\nconst initialPropsParse = propsSchema.safeParse(localPreview.props ?? preview.props ?? {});')
+  return ("import { promptFrameLocalPreview } from 'virtual:promptframe-local-preview';\n" + source)
+    .replace("const hostResources = { contractVersion: 'component-public-resources.v0.1.0' as const, entries: runtimeEntries };", "async function mountPreview() {\nconst localPreview = await promptFrameLocalPreview;\nconst modelResources = 'modelResources' in localPreview && localPreview.modelResources && typeof localPreview.modelResources === 'object' ? localPreview.modelResources : undefined;\nconst hostResources = { ...modelResources, contractVersion: 'component-public-resources.v0.1.0' as const, entries: runtimeEntries };")
+    .replace('const initialPropsParse = propsSchema.safeParse(preview.props ?? {});', 'const initialPropsParse = propsSchema.safeParse(localPreview.props ?? preview.props ?? {});')
     .replace('  <StrictMode>\n    <PromptFramePreviewApp', '  <StrictMode>\n    {localPreview.issues.length > 0 && <p role="alert" style={{ padding: 12 }}>\n      本地预览素材不可用，当前显示包内示例。请核对所选文件、作品与 CLI 素材读取授权后刷新。\n    </p>}\n    <PromptFramePreviewApp')
     + '\n}\nvoid mountPreview();\n';
 }
@@ -4712,28 +4710,6 @@ function assertPublicResourcesAccepted(report: PublicResourceReport): void {
   fail(firstError.message, firstError.code);
 }
 
-function normalizePublicResourcePath(relativePath: string): (
-  | { ok: true; relativePath: string; publicPath: `/${string}`; sourcePath: `public/${string}` }
-  | { ok: false; reason: string }
-) {
-  const value = relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
-  if (!value || value.endsWith('/')) return { ok: false, reason: 'empty resource path.' };
-  if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return { ok: false, reason: 'URL-like paths are not allowed.' };
-  if (value.includes('//')) return { ok: false, reason: 'double slashes are not allowed.' };
-  const parts = value.split('/');
-  if (parts.some((part) => part === '.' || part === '..' || part.trim() !== part || part.length === 0)) {
-    return { ok: false, reason: 'dot segments and whitespace-padded path parts are not allowed.' };
-  }
-  if (!/^[A-Za-z0-9._~!$&'()+,;=@/-]+$/.test(value)) {
-    return { ok: false, reason: 'path contains unsupported characters.' };
-  }
-  return {
-    ok: true,
-    relativePath: value,
-    publicPath: `/${value}`,
-    sourcePath: `public/${value}`,
-  };
-}
 
 function classifyPublicResource(relativePath: string): { kind: ComponentPublicResourceKind; contentType: string } | undefined {
   const ext = extname(relativePath).toLowerCase();

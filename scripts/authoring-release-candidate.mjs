@@ -30,9 +30,8 @@ export async function buildAuthoringCandidateArtifacts(options = {}) {
   const execImpl = options.execFileImpl ?? execFile;
   const artifacts = [];
   try {
-    for (let index = 0; index < AUTHORING_RELEASE_PACKAGES.length; index += 1) {
-      const definition = AUTHORING_RELEASE_PACKAGES[index];
-      const expected = intent.packages[index];
+    for (const expected of intent.packages) {
+      const definition = AUTHORING_RELEASE_PACKAGES.find(entry => entry.name === expected.name);
       const result = await execImpl('npm', [
         'pack',
         '--json',

@@ -44,6 +44,13 @@ test('authoring standard release exposes one digest-bound package cohort', async
   assert.deepEqual(release.recommendedAuthoringPackages, {
     contracts: '0.1.46', componentKit: '0.1.40', cli: '0.1.78', createComponent: '0.1.68',
   });
+  const {releaseDigest, ...material} = release;
+  assert.equal(releaseDigest, 'sha256:' + createHash('sha256').update(canonicalizePromptFramePolicy(material)).digest('hex'));
+});
+
+test('separate CLI release metadata binds the current templates and package versions', async () => {
+  const release = authoringStandardReleaseSchema.parse(JSON.parse(await readFile(new URL('../../cli/authoring-release.json', import.meta.url), 'utf8')));
+  assert.notEqual(release.releaseId, AUTHORING_STANDARD_RELEASE_ID);
   const template=new URL('../../create-component/templates/react-remotion/',import.meta.url),entries=[];
   async function files(prefix=''){
     for(const item of await readdir(new URL(prefix,template),{withFileTypes:true})){
