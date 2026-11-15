@@ -66,6 +66,13 @@ test('publish authorization binds platform gate and exact candidate receipt', as
   const authorization = parseAuthoringReleaseAuthorization(source, { now });
   assert.equal(validateAuthorizationAgainstCandidate(authorization, candidate), true);
 
+  const revised = {...source, releaseTag: source.releaseTag + '-r2'};
+  revised.authorizationDigest = computeAuthoringReleaseAuthorizationDigest(revised);
+  assert.equal(validateAuthorizationAgainstCandidate(parseAuthoringReleaseAuthorization(revised, {now}), candidate), true);
+  const wrongRevision = {...source, releaseTag: source.releaseTag + '-r0'};
+  wrongRevision.authorizationDigest = computeAuthoringReleaseAuthorizationDigest(wrongRevision);
+  assert.throws(() => parseAuthoringReleaseAuthorization(wrongRevision, {now}), /release_tag_invalid/);
+
   const mismatch = structuredClone(authorization);
   mismatch.platformGateDigest = `sha256:${'f'.repeat(64)}`;
   assert.throws(() => parseAuthoringReleaseAuthorization(mismatch, { now }), /authorization_digest_mismatch/);

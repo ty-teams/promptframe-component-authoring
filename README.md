@@ -182,7 +182,7 @@ Release configuration:
 
 A candidate tag builds and tests the whole workspace, packs all four final unpublished versions once, and creates a no-clobber prerelease containing the tarballs plus `candidate-manifest.json`. The manifest binds source commit, package versions, artifact names, sizes, SHA-256, SHA-512 integrity, intent digest, release digest, and expiry. Compatibility checks install those exact tarball bytes; npm `next` is not used to identify a candidate.
 
-Candidate tags are never moved or deleted. If a workflow-file defect prevents every job from being created and no candidate prerelease or asset exists, preserve the failed tag and runs, revise the active intent to the next `-rN` artifact tag, and push that new tag. A candidate revision keeps the same unpublished package cohort but produces a new source-bound manifest; after any candidate asset exists, recovery requires a new versioned cohort instead.
+候选与发行tag不移动、不删除。候选尚无资产时，可修复构建脚本并使用下一-rN候选tag，保留失败记录；包字节一旦固定，包本身变更通过新版本向前修复。仅发行控制脚本修复且候选字节未变时，可把新授权绑定同一releaseId的下一-rN发行tag，复用原包及摘要。先核原run、回执和精确registry状态；发布效果未知只观察，不借修复tag盲重写或倒拨latest。
 
 候选通过受影响测试、打包检查和版本验收后，由既有 Trusted Publisher workflow 经OIDC发布本次显式选择的包。v2发行元数据按包名绑定候选、真实依赖图和复用的已公开版本，不要求四包同时升版；v1完整回执仍可读取。每个包的发布跨发行tag串行，进入后重新核精确版本和integrity。已公开且摘要相同的版本直接复用，即使latest已前移；较旧发行不倒拨latest。已发出写入但未确认时只观察原run和精确版本，不自动重发。平台采用值保留完整已验证的四项组合及文档来源，部分发布成功不冒完整可用；所有相关运行时就绪后再切换stable。
 

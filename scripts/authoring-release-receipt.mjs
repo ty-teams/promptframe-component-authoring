@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { lstat, readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import semver from 'semver';
 
 export const AUTHORING_RELEASE_REGISTRY = 'https://registry.npmjs.org/';
 export const AUTHORING_RELEASE_INTENT_SCHEMA = 'promptframe-authoring-release-intent/v1';
@@ -119,6 +118,9 @@ export async function readAuthoringReleaseIntent(filePath, options = {}) {
 }
 
 export async function validateIntentAgainstRepository(intent, options = {}) {
+  // Candidate builds have development dependencies; the OIDC publisher is
+  // intentionally stdlib-only and must be able to load the receipt parser.
+  const {default: semver} = await import('semver');
   const root = path.resolve(options.root ?? defaultRoot());
   const manifests = new Map();
   for (const expected of intent.packages) {
@@ -282,7 +284,9 @@ export function parseAuthoringReleaseAuthorization(value, options = {}) {
   assertBoundedId(authorization.releaseId, 'authoring_release.release_id_invalid');
   const suffix = authorization.releaseId.replace(/^authoring-release-/, '');
   assertArtifactTag(authorization.releaseId, authorization.artifactTag);
-  if (authorization.releaseTag !== `authoring-release-${suffix}`) {
+  const releaseTagBase = `authoring-release-${suffix}`;
+  if (authorization.releaseTag !== releaseTagBase && (!authorization.releaseTag.startsWith(releaseTagBase)
+    || !/^-r[1-9]\d*$/.test(authorization.releaseTag.slice(releaseTagBase.length)))) {
     throw new Error('authoring_release.release_tag_invalid');
   }
   assertCommit(authorization.sourceCommit, 'authoring_release.source_commit_invalid');

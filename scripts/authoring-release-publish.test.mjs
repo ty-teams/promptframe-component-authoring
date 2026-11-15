@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import os from 'node:os';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
 import path from 'node:path';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   computeAuthoringReleaseAuthorizationDigest,
   computeAuthoringReleaseIntentDigest,
@@ -20,6 +23,20 @@ import {
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const now = new Date('2026-10-18T12:00:00.000Z');
+
+test('the OIDC publisher loads from its checkout without installing packages', async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), 'authoring-publish-stdlib-'));
+  try {
+    await mkdir(path.join(temporary, 'scripts'));
+    for (const name of ['authoring-release-publish.mjs', 'authoring-release-receipt.mjs']) {
+      await copyFile(path.join(root, 'scripts', name), path.join(temporary, 'scripts', name));
+    }
+    const result = await promisify(execFile)(process.execPath, ['--input-type=module', '--eval',
+      'const loaded = await import(process.env.PROMPTFRAME_IMPORT_CONTROL); if (typeof loaded.executeAuthoringPackagePublish !== "function") throw Error("missing publisher"); console.log("module loaded");'],
+    {cwd: temporary, env: {PATH: process.env.PATH, PROMPTFRAME_IMPORT_CONTROL: pathToFileURL(path.join(temporary, 'scripts/authoring-release-publish.mjs')).href}});
+    assert.equal(result.stdout.trim(), 'module loaded');
+  } finally {await rm(temporary, {recursive: true, force: true});}
+});
 
 test('package publisher waits for dependencies and publishes the exact tarball through OIDC', async () => {
   const fixture = await createFixture();
