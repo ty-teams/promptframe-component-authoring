@@ -48,7 +48,7 @@
   "scaffoldTemplates": [
     {
       "name": "react-remotion",
-      "digest": "sha256:77f720750ebae3345c45e0f3e6ae85e5fd38081590cf226a40c6ee85433d9373"
+      "digest": "sha256:8f33dd8dd0e57062239bb23eb8f4ddae8bb4776c156500552d9395187f61ce01"
     }
   ],
   "uploadTargets": [
@@ -75,5 +75,5 @@
       "deterministicGateMode": "fail_closed"
     }
   ],
-  "releaseDigest": "sha256:cd1d7d869be0607121957956675c339ec9635e201039dabe4ef898508db6a2a6"
+  "releaseDigest": "sha256:6cb41cddf7a17d7bb6852b283611bf68c9d0f0347d676f6b0979c960237755e2"
 }

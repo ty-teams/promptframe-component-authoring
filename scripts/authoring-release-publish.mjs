@@ -3,6 +3,7 @@ import { appendFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import semver from 'semver';
 import {
   AUTHORING_RELEASE_PACKAGES,
   AUTHORING_RELEASE_REGISTRY,
@@ -213,14 +214,9 @@ function classifyRegistryState(metadata, packageEntry) {
 }
 
 function shouldAdvanceLatest(version, latest) {
-  if (!/^\d+\.\d+\.\d+$/.test(version)) return false;
+  if (!semver.valid(version) || semver.prerelease(version)) return false;
   if (latest === undefined) return true;
-  if (!/^\d+\.\d+\.\d+$/.test(latest)) return false;
-  const left = version.split('.').map(Number), right = latest.split('.').map(Number);
-  for (let index = 0; index < 3; index += 1) {
-    if (left[index] !== right[index]) return left[index] > right[index];
-  }
-  return false;
+  return Boolean(semver.valid(latest) && semver.gt(version, latest));
 }
 
 function normalizeRegistryMetadata(value) {

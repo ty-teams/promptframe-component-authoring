@@ -188,7 +188,7 @@ Candidate tags are never moved or deleted. If a workflow-file defect prevents ev
 
 Candidate-aware platform endpoints expose a deployment `candidate` stage separately from the immutable package release digest. A compatible CLI reports `standard.release.promoting`, exact cohort versions, and platform release responsibility until the stable receipt is complete; it must not present that state as stable/current completion. Historical recovery creates a new versioned cohort and repeats this path instead of rewinding dist-tags.
 
-当前源码包版本为contracts `0.1.47`、component kit `0.1.41`、CLI `0.1.79`与scaffold `0.1.69`。本次补齐按权GLB读取、有限首帧准备和不含任意fetch的开发壳；组件仍沿正常schema、布局、依赖与安全检查打包上传。contracts保留其已发布离线基线，CLI的`authoring-release.json`给出本版本推荐组合，平台给出其实际采用值。后续按真实代码和依赖分别升级，无需为改变推荐组合重发contracts。详细接口与操作见[AUTHORING](AUTHORING.md)、[CLI说明](packages/cli/README.md)和[kit说明](packages/component-kit/README.md)。
+版本与兼容性：运行 `promptframe standard --json` 查看所安装CLI携带的离线发行元数据，运行 `promptframe check .` 核对平台标准和各包最低版本。已生成项目的package.json声明其实际依赖，推荐组合变化不会要求所有包同步升版；保留pnpm workspace root lockfile evidence及正常安全检查。
 
 Before publishing, the platform repo should verify the local authoring source through its `pnpm authoring:link-local` gate. After publishing, it should switch back with `pnpm authoring:use-registry` and verify the real npm packages from `https://registry.npmjs.org/`; npm mirrors can lag new versions.
 

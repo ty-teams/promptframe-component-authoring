@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { lstat, readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import semver from 'semver';
 
 export const AUTHORING_RELEASE_REGISTRY = 'https://registry.npmjs.org/';
 export const AUTHORING_RELEASE_INTENT_SCHEMA = 'promptframe-authoring-release-intent/v1';
@@ -150,7 +151,7 @@ export async function validateIntentAgainstRepository(intent, options = {}) {
       for (const key of required) {
         const name = AUTHORING_RELEASE_PACKAGES.find(entry => entry.key === key).name;
         const version = [...intent.packages, ...intent.reusedPackages].find(entry => entry.name === name)?.version;
-        if (![version, '^' + version, '~' + version].includes(consumed[name])) throw new Error('authoring_release.dependency_version_mismatch');
+        if (!version || !semver.satisfies(version, consumed[name])) throw new Error('authoring_release.dependency_version_mismatch');
       }
     }
   }

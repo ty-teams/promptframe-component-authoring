@@ -2,8 +2,13 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
+import semver from 'semver';
 
 const repoRoot = path.resolve(import.meta.dirname, '../../..');
+const release = JSON.parse(await readFile(path.join(repoRoot, 'packages/cli/authoring-release.json'), 'utf8'));
+function assertCompatibleRange(specifier, current) {
+  assert.ok(semver.satisfies(current, specifier), 'generated dependency must accept the verified published version');
+}
 
 test('public templates use the current PromptFrame authoring package baseline', async () => {
   for (const templatePackagePath of [
@@ -11,12 +16,12 @@ test('public templates use the current PromptFrame authoring package baseline', 
     'packages/create-component/templates/react-remotion/package.json',
   ]) {
     const packageJson = JSON.parse(await readFile(path.join(repoRoot, templatePackagePath), 'utf8'));
-    assert.equal(packageJson.dependencies?.['@promptframe/component-kit'], '^0.1.40', templatePackagePath);
-    assert.equal(packageJson.dependencies?.['@promptframe/contracts'], '^0.1.46', templatePackagePath);
+    assertCompatibleRange(packageJson.dependencies?.['@promptframe/component-kit'], release.recommendedAuthoringPackages.componentKit);
+    assertCompatibleRange(packageJson.dependencies?.['@promptframe/contracts'], release.recommendedAuthoringPackages.contracts);
     assert.equal(packageJson.dependencies?.['@remotion/player'], undefined, templatePackagePath);
-    assert.equal(packageJson.devDependencies?.['@remotion/player'], '^4.0.0', templatePackagePath);
+    assert.equal(packageJson.devDependencies?.['@remotion/player'], '^4.0.374', templatePackagePath);
     assert.equal(packageJson.devDependencies?.['@vitejs/plugin-react'], '^6.0.1', templatePackagePath);
-    assert.equal(packageJson.devDependencies?.['@promptframe/cli'], '^0.1.78', templatePackagePath);
+    assertCompatibleRange(packageJson.devDependencies?.['@promptframe/cli'], release.recommendedAuthoringPackages.cli);
     assert.equal(packageJson.devDependencies?.typescript, '~6.0.2', templatePackagePath);
     assert.equal(packageJson.devDependencies?.vite, '^8.0.10', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@vitejs/plugin-react'], undefined, templatePackagePath);
@@ -25,9 +30,9 @@ test('public templates use the current PromptFrame authoring package baseline', 
   }
 });
 
-test('create package version is bumped for the next template release', async () => {
+test('create package version agrees with its independent release metadata', async () => {
   const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'packages/create-component/package.json'), 'utf8'));
-  assert.equal(packageJson.version, '0.1.68');
+  assert.equal(packageJson.version, release.recommendedAuthoringPackages.createComponent);
 });
 
 test('public authoring docs include a single AUTHORING recovery entrypoint', async () => {
@@ -163,13 +168,7 @@ test('public templates wire local public resource picker through component-kit i
   }
 });
 
-test('public authoring docs document the current source baseline', async () => {
-  const packages = await Promise.all([
-    'packages/contracts/package.json',
-    'packages/component-kit/package.json',
-    'packages/cli/package.json',
-    'packages/create-component/package.json',
-  ].map(async (file) => JSON.parse(await readFile(path.join(repoRoot, file), 'utf8'))));
+test('public authoring docs use observed release metadata without repeating a version quartet', async () => {
   for (const docPath of [
     'README.md',
     'packages/cli/README.md',
@@ -177,10 +176,7 @@ test('public authoring docs document the current source baseline', async () => {
     'packages/create-component/templates/react-remotion/README.md',
   ]) {
     const text = await readFile(path.join(repoRoot, docPath), 'utf8');
-    assert.match(text, /Current source baseline is/, docPath);
-    for (const entry of packages) {
-      assert.ok(text.includes(`${entry.name}@${entry.version}`), `${docPath}: ${entry.name}`);
-    }
+    assert.match(text, /promptframe standard --json/, docPath);
     assert.match(text, /workspace root lockfile|workspace root lockfile evidence|pnpm workspace root lockfile/, docPath);
     assert.doesNotMatch(text, /source candidate|source tree prepares|until Trusted Publishing completes/, docPath);
   }
