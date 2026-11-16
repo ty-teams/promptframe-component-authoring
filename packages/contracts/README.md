@@ -67,3 +67,7 @@ export default function Example(props: {
 Assign existing direct children in a VideoSpec node with `children: ["line1", "line2"]` and `slotByChildId: {"line1":"description","line2":"description"}`. The existing children order, graph, permissions and timing remain authoritative. Unassigned children continue through the normal `children` prop. No assignments or an empty mapping use the component's fallback text. Assigned content that is inactive, missing or unavailable must not silently become fallback text. Place each slot once and provide its local layout box and clipping.
 
 The helper requires no component-kit update and does not change the runtime generation. Existing components without declarations keep their previous children behavior. Local preview reads declarations from the verified captured manifest; source-only drafts retain pending-upload status until a fixed component version is available for formal output.
+
+## 模型读取期间的授权续期
+
+`createPromptFrameModelReader` 在读取和摘要校验结束后重新核对宿主当前提供的同一引用、MIME、大小、SHA 和有效期限。同一表示的合法续期可接续在途读取；撤权、内容变化、真实到期和取消仍拒绝，单次读取的 15 秒预算不续期。返回的 ArrayBuffer 只包含验证过的 GLB 字节。

@@ -54,6 +54,7 @@ test('host model reader binds exact references, bytes and SHA, and closes perman
   await assert.rejects(binding.read('https://example.invalid/other'), error('model.reference_unavailable'));
   assert.equal(reads, 0);
   const result = new Uint8Array(await binding.read('/model.glb'));
+  assert.equal(result.byteLength, bytes.byteLength, 'pooled Buffer storage outside the verified GLB is not returned');
   result[0] = 0; assert.equal(bytes[0], 0x67);
   assert.equal(reads, 1);
   binding.dispose(); await assert.rejects(binding.read('blob:owned'), error('model.read_cancelled'));
@@ -75,3 +76,57 @@ test('wrong SHA, expired grants and late bytes after cancellation never reach lo
   const request = late.read(entry.reference); late.dispose(); finish(bytes);
   await assert.rejects(request, error('model.read_cancelled'));
 });
+
+test('a live exact grant renewal crosses the old deadline without another read', async () => {
+  const bytes=glb(),now=Date.now,at=now();let clock=at,finish,reads=0;
+  let entries=[{reference:'asset-proxy://asset_model',url:'blob:owned',sha256:await digest(bytes),
+    contentType:'model/gltf-binary',sizeBytes:bytes.length,expiresAt:new Date(at+1000).toISOString()}];
+  const binding=createPromptFrameModelReader({entries:()=>entries,read:async()=>{reads++;return new Promise(resolve=>finish=resolve);},digest});
+  try{
+    Date.now=()=>clock;
+    const pending=binding.read(entries[0].reference);
+    entries=[{...entries[0],url:'blob:renewed-same-content',expiresAt:new Date(at+60000).toISOString()}];
+    clock=at+2000;finish(bytes);
+    assert.deepEqual(new Uint8Array(await pending),new Uint8Array(bytes));assert.equal(reads,1);
+  }finally{Date.now=now;binding.dispose();}
+});
+
+test('expiry, revoked or changed authority and an explicit cancellation cannot be disguised as renewal', async () => {
+  for(const mode of ['expired','revoked','changed-sha','changed-size','changed-type','duplicate','missing-expiry','invalid-expiry','cancelled']){
+    const bytes=glb(),now=Date.now,at=now();let clock=at,finish;
+    const entry={reference:'asset-proxy://asset_model',url:'blob:owned',sha256:await digest(bytes),
+      contentType:'model/gltf-binary',sizeBytes:bytes.length,expiresAt:new Date(at+1000).toISOString()};
+    let entries=[entry];const signal=new AbortController();
+    const binding=createPromptFrameModelReader({entries:()=>entries,read:async()=>new Promise(resolve=>finish=resolve),digest});
+    try{
+      Date.now=()=>clock;const pending=binding.read(entry.reference,{signal:signal.signal});clock=at+2000;
+      if(mode!=='expired')entries=[{...entry,expiresAt:new Date(at+60000).toISOString()}];
+      if(mode==='revoked')entries=[];
+      if(mode==='changed-sha')entries[0]={...entries[0],sha256:'sha256:'+'f'.repeat(64)};
+      if(mode==='changed-size')entries[0]={...entries[0],sizeBytes:bytes.length+1};
+      if(mode==='changed-type')entries[0]={...entries[0],contentType:'application/octet-stream'};
+      if(mode==='duplicate')entries.push({...entries[0]});
+      if(mode==='missing-expiry')delete entries[0].expiresAt;
+      if(mode==='invalid-expiry')entries[0].expiresAt='not-a-date';
+      if(mode==='cancelled')signal.abort();
+      finish(bytes);await assert.rejects(pending,error('model.read_cancelled'),mode);
+    }finally{Date.now=now;binding.dispose();}
+  }
+});
+
+test('authority expiring or being revoked during SHA verification still prevents a late result', async () => {
+  for(const revoke of [false,true]){
+    const bytes=glb(),sha=await digest(bytes),now=Date.now,at=now();let clock=at,finishHash;
+    let entries=[{reference:'/model.glb',url:'blob:owned',sha256:sha,contentType:'model/gltf-binary',
+      sizeBytes:bytes.length,expiresAt:new Date(at+1000).toISOString()}];
+    const hashing=new Promise(resolve=>finishHash=resolve);let hashingStarted;
+    const started=new Promise(resolve=>hashingStarted=resolve);
+    const binding=createPromptFrameModelReader({entries:()=>entries,read:async()=>bytes,
+      digest:async()=>{hashingStarted();return hashing;}});
+    try{
+      Date.now=()=>clock;const pending=binding.read('/model.glb');await started;clock=at+2000;if(revoke)entries=[];
+      finishHash(sha);await assert.rejects(pending,error('model.read_cancelled'));
+    }finally{Date.now=now;binding.dispose();}
+  }
+});
+

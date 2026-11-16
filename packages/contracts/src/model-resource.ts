@@ -124,6 +124,18 @@ export function createPromptFrameModelReader(input: {
   let active = 0;
   const snapshot = typeof input.entries === 'function' ? input.entries
     : (() => input.entries as readonly PromptFrameModelRepresentation[]);
+  const stillAuthorized = (entry: Readonly<PromptFrameModelRepresentation>): boolean => {
+    // The host can renew a grant while its original read is in flight. Read
+    // the current authoritative entries; never extend a captured deadline or
+    // treat a changed URL alone as a new content identity.
+    const matches = snapshot().filter(row => row.reference === entry.reference);
+    const current = matches.length === 1 ? matches[0] : undefined;
+    if (!current || current.sha256 !== entry.sha256 || current.sizeBytes !== entry.sizeBytes
+      || current.contentType !== entry.contentType) return false;
+    if (entry.expiresAt !== undefined && current.expiresAt === undefined) return false;
+    return current.expiresAt === undefined
+      || Number.isFinite(Date.parse(current.expiresAt)) && Date.parse(current.expiresAt) > Date.now();
+  };
   const dispose = () => scope.abort();
   input.signal?.addEventListener('abort', dispose, { once: true });
   if (input.signal?.aborted) dispose();
@@ -146,15 +158,17 @@ export function createPromptFrameModelReader(input: {
       active++;
       try {
         const bytes = await input.read(entry, controller.signal);
-        if (controller.signal.aborted || entry.expiresAt !== undefined && Date.parse(entry.expiresAt) <= Date.now()) {
+        if (controller.signal.aborted || !stillAuthorized(entry)) {
           throw new PromptFrameModelError('model.read_cancelled');
         }
         if (bytes.byteLength !== entry.sizeBytes || await input.digest(bytes) !== entry.sha256) {
           throw new PromptFrameModelError('model.identity_mismatch');
         }
-        if (controller.signal.aborted) throw new PromptFrameModelError('model.read_cancelled');
+        if (controller.signal.aborted || !stillAuthorized(entry)) throw new PromptFrameModelError('model.read_cancelled');
         assertSelfContainedGlb(bytes, entry.sizeBytes);
-        return bytes.slice().buffer as ArrayBuffer;
+        // Node Buffer.slice() retains its pooled backing ArrayBuffer. Copy as
+        // a plain typed array so the result exposes exactly the verified GLB.
+        return new Uint8Array(bytes).buffer as ArrayBuffer;
       } finally {
         active--; clearTimeout(timer); scope.signal.removeEventListener('abort', abort);
         options.signal?.removeEventListener('abort', abort);
