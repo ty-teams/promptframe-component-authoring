@@ -27,6 +27,28 @@ async function scaffold(root, moduleId = '@demo/captured-component') {
 const javascript = built => built.artifacts.readFiles().filter(file => file.path.endsWith('.mjs'))
   .map(file => Buffer.from(file.bytes).toString()).join('\n');
 
+test('declared frame actions survive captured validation/build and cannot select text or missing props', async () => {
+  const root=await mkdtemp(join(tmpdir(),'pf-action-slot-build-'));
+  try {
+    const initial=await scaffold(root),paths=initial.readFiles().map(file=>file.path);
+    const manifest=JSON.parse(await readFile(join(root,'manifest.json'),'utf8'));
+    manifest.actionSlots=[{name:'emphasize',description:'开始强调的节点局部帧',propPath:['emphasisFrame'],unit:'frame',timeBase:'node'}];
+    const schema=await readFile(join(root,'src/schema.ts'),'utf8');
+    await writeFile(join(root,'src/schema.ts'),schema.replace('kicker:',"emphasisFrame: z.number().int().min(0).describe('开始强调的节点局部帧').default(0),\n  kicker:"));
+    await writeFile(join(root,'manifest.json'),JSON.stringify(manifest));
+    const captured=captureDevelopmentFiles(root,paths,developmentLimits);
+    await validateDevelopmentContents(captured);
+    const built=await buildDevelopmentContents(captured);
+    assert.deepEqual(JSON.parse(Buffer.from(built.artifacts.readFiles().find(file=>file.path==='manifest.json').bytes).toString()).actionSlots,manifest.actionSlots);
+    for(const propPath of [['title'],['missing']]){
+      manifest.actionSlots[0].propPath=propPath;
+      await writeFile(join(root,'manifest.json'),JSON.stringify(manifest));
+      await assert.rejects(validateDevelopmentContents(captureDevelopmentFiles(root,paths,developmentLimits)),
+        error=>error.diagnosticCode==='component.action_slot.numeric_property_required');
+    }
+  }finally{await rm(root,{recursive:true,force:true});}
+});
+
 test('a checked optional content declaration survives the real development capture and build', async () => {
   const root = await mkdtemp(join(tmpdir(), 'pf-content-slot-build-'));
   try {

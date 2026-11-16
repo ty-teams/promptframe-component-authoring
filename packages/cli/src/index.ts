@@ -44,6 +44,7 @@ import {
   PROMPTFRAME_PUBLIC_DEPENDENCY_POLICY,
   detectPromptFrameUnknownCustomStyleProps,
   collectPromptFrameResourceReferences,
+  validateComponentActionSlotSchemas,
   assertSelfContainedGlb,
   authoringUploadTargetSchema,
   parseComponentManifest,
@@ -4088,6 +4089,7 @@ function validatePreviewProps(dir: string, manifest: ComponentManifest): void {
     readIfExists(join(dir, manifest.entry.propsSchemaPath)),
   );
   assertStaticSchemaResolved(schemaFacts, manifest.entry.propsSchemaPath);
+  assertActionSlotsMatchSchema(manifest, schemaFacts);
   assertPreviewPropsMatchStaticSchema(manifest, preview, schemaFacts);
   assertStaticPropsHaveDescriptions(schemaFacts, manifest.entry.propsSchemaPath);
   let references;
@@ -4097,6 +4099,12 @@ function validatePreviewProps(dir: string, manifest: ComponentManifest): void {
     'Private resource selections belong in resource set drafts; public preview props must use package examples.',
     'component_standard.preview.private_resource_reference');
 
+}
+
+function assertActionSlotsMatchSchema(manifest: ComponentManifest, facts: PromptFrameSchemaFacts): void {
+  const invalid = validateComponentActionSlotSchemas({type:'object',properties:facts.properties},manifest.actionSlots ?? []);
+  if(invalid.length)fail(`Action slot ${invalid[0]!.name} must select a declared numeric prop.`,
+    'component.action_slot.numeric_property_required');
 }
 
 function assertPreviewDurationMatchesManifest(preview: Record<string, unknown>, manifest: ComponentManifest): void {
@@ -4421,6 +4429,7 @@ function assertZipPropsHaveDescriptions(path: string): void {
   if (!schemaEntry) return;
   const facts = evaluatePromptFrameSchemaSource(schemaEntry.toString('utf8'));
   assertStaticSchemaResolved(facts, manifest.entry.propsSchemaPath);
+  assertActionSlotsMatchSchema(manifest, facts);
   assertStaticPropsHaveDescriptions(facts, manifest.entry.propsSchemaPath);
 }
 

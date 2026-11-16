@@ -1,18 +1,23 @@
 {
   "schemaVersion": "promptframe-authoring-release-intent/v2",
-  "releaseId": "authoring-release-2026-11-17.1",
-  "artifactTag": "authoring-candidate-2026-11-17.1",
+  "releaseId": "authoring-release-2026-11-17.2",
+  "artifactTag": "authoring-candidate-2026-11-17.2",
   "registry": "https://registry.npmjs.org/",
-  "createdAt": "2026-11-16T16:02:23.729Z",
-  "expiresAt": "2026-11-21T16:02:23.729Z",
+  "createdAt": "2026-11-16T18:47:28.165Z",
+  "expiresAt": "2026-11-21T18:47:28.165Z",
   "packages": [
     {
-      "name": "@promptframe/component-kit",
-      "version": "0.1.42"
+      "name": "@promptframe/contracts",
+      "version": "0.1.51"
+    },
+    {
+      "name": "@promptframe/cli",
+      "version": "0.1.87"
     }
   ],
   "dependencies": {
-    "componentKit": [
+    "contracts": [],
+    "cli": [
       "contracts"
     ]
   },
@@ -23,15 +28,10 @@
       "integrity": "sha512-J/AbuPhmN2g/jqlaWZ8FZHRd5E4SZEAKLs/zuolEaLNMzX7m7z05REXKGCPCdb/VnSwQky8r8URmllw2d6C4dQ=="
     },
     {
-      "name": "@promptframe/cli",
-      "version": "0.1.86",
-      "integrity": "sha512-HWcnKqRhvOffuKkJ9o8Tw4HRQrdslk+VIQ3OSi3gudLhH56cido5qzWEOyOCS8Q+O/YyAj6bdQuk/X/vg9Atlg=="
-    },
-    {
-      "name": "@promptframe/contracts",
-      "version": "0.1.50",
-      "integrity": "sha512-/OSKxME+rtfJDB048nyuSf0apk9wP5B+B/X5i2PdiwKsFB+RIkLAEwum5UfFOX8wALH77owqM//ziEPPW1cXfQ=="
+      "name": "@promptframe/component-kit",
+      "version": "0.1.42",
+      "integrity": "sha512-Dvm2kf9cUvwDPxURzEef4vgRe9Wn4pzLvnqPnRiO8crq4fKirQjEWxP4VfNjtYs+7PrPlTdUB7KrpjrKbjR84A=="
     }
   ],
-  "intentDigest": "sha256:fa7bdd2fbb2601972dcf652eea457e7ab9760d6ed98353bd7e09845cccb9587a"
+  "intentDigest": "sha256:8e3f5e58b89df42cc4a3e4fe2a43f0c0ac2414986a076e065937d722a69ae67a"
 }
