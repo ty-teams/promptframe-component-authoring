@@ -1,31 +1,26 @@
 {
   "schemaVersion": "promptframe-authoring-release-authorization/v2",
   "state": "publish_ready",
-  "releaseId": "authoring-release-2026-11-16.5",
-  "releaseTag": "authoring-release-2026-11-16.5",
-  "artifactTag": "authoring-candidate-2026-11-16.5",
-  "sourceCommit": "a364aa432b03f49a1448321f4b6753628c2bb9c5",
-  "candidateManifestDigest": "sha256:f8244bb6fdf17152d901de3781e697e11455bcfa96e0349e4f048483d82bc12f",
-  "platformGateDigest": "sha256:29ba51d0efdcabdd6b02300fd797d78242d85870c18d2ebccf9c13a7988431d2",
-  "releaseDigest": "sha256:706ad4878831d5f75641000b7a9726bbaa01943a16636ca12cd0fe9c9b9b4d13",
-  "createdAt": "2026-11-16T11:19:18.398Z",
-  "expiresAt": "2026-11-21T11:19:18.398Z",
+  "releaseId": "authoring-release-2026-11-16.6",
+  "releaseTag": "authoring-release-2026-11-16.6",
+  "artifactTag": "authoring-candidate-2026-11-16.6-r2",
+  "sourceCommit": "a696b621baf711b7f9b5b58acf7544bbf64ed757",
+  "candidateManifestDigest": "sha256:231b19e1674405cecc42609c67d8bb4252d83fef4a1d52a1456cfb9b64648906",
+  "platformGateDigest": "sha256:9f2126e9b5fa90a34cde7820d895aa4f37dd4cab4d7e86f7c7f39c10deeef707",
+  "releaseDigest": "sha256:b03f641c4538857adbe767946e934344ff49750f602f4fe1aa5a64504e82f099",
+  "createdAt": "2026-11-16T13:29:09.427Z",
+  "expiresAt": "2026-11-21T13:29:09.427Z",
   "packages": [
     {
       "name": "@promptframe/contracts",
-      "version": "0.1.48",
-      "integrity": "sha512-74A1sDPZYvlLyn0nBQHDg3gOt6Y84I1JNaKjBR2A5xNGcH9FUbu/gb2QQHfWv8EBTTPqqPGi7a+CtEBH/gkqJw=="
+      "version": "0.1.49",
+      "integrity": "sha512-UMzRBvbIaa3RK/8WWNNtEmY7UgUjmh9pV7f3CdArYOIPIaCJj2d0gItD+BJs1nxR2pvg8lGdeJzWbAwxlCsTNw=="
     },
     {
       "name": "@promptframe/cli",
-      "version": "0.1.85",
-      "integrity": "sha512-ZFfeDiTa5+Fq2X9XjWzz2baBAItkqwpAPi0v+3XbHv+Y3mllNl3ylt0320zslX2iiCW2b7Ozlxhjd4XZRRKTOw=="
-    },
-    {
-      "name": "create-promptframe-component",
-      "version": "0.1.71",
-      "integrity": "sha512-J/AbuPhmN2g/jqlaWZ8FZHRd5E4SZEAKLs/zuolEaLNMzX7m7z05REXKGCPCdb/VnSwQky8r8URmllw2d6C4dQ=="
+      "version": "0.1.86",
+      "integrity": "sha512-HWcnKqRhvOffuKkJ9o8Tw4HRQrdslk+VIQ3OSi3gudLhH56cido5qzWEOyOCS8Q+O/YyAj6bdQuk/X/vg9Atlg=="
     }
   ],
-  "authorizationDigest": "sha256:832eb2d89fd6fdb5fedb3e48781101abe3ce50f599f501c1670c37a016d9f1d0"
+  "authorizationDigest": "sha256:68ce97a7b6ab0cc717e2e5075f2bfda3591ee4c79c4bfa76eb3d68167de1cbaa"
 }
