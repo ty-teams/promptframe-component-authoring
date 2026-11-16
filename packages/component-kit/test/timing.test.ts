@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import test from 'node:test';
 import {
   COMPONENT_STANDARD_SOURCE_HASH,
@@ -24,9 +25,7 @@ test('component-kit standard stamp is sourced from public contracts', async () =
   const packageJson = JSON.parse(
     await readFile(new URL('../package.json', import.meta.url), 'utf-8'),
   ) as { dependencies?: Record<string, string> };
-  const contractsPackage = JSON.parse(
-    await readFile(new URL('../../contracts/package.json', import.meta.url), 'utf-8'),
-  ) as { version: string };
+  const contractsPackage = createRequire(import.meta.url)('@promptframe/contracts/package.json') as { version: string };
 
   assert.match(source, /from '@promptframe\/contracts'/);
   assert.equal(packageJson.dependencies?.['@promptframe/contracts'], contractsPackage.version);

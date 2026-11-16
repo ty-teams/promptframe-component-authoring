@@ -1,6 +1,6 @@
 {
   "releaseVersion": "authoring-standard-release.v0.1.0",
-  "releaseId": "authoring-release-2026-11-16.4",
+  "releaseId": "authoring-release-2026-11-16.5",
   "contractsVersion": "promptframe-contracts.v0.1.0",
   "manifestSchemaVersion": "component-manifest.v0.1.0",
   "componentRefVersion": "component-ref.v0.1.0",
@@ -75,5 +75,5 @@
       "deterministicGateMode": "fail_closed"
     }
   ],
-  "releaseDigest": "sha256:bf7bc2bc908ee2568e0aeda5550685040e3b19da9a28f0bebf48c1e3dfa2288f"
+  "releaseDigest": "sha256:ccb0f91c747d58e0aed65b17cef0e30355c27875db4fad77cfd07970e1875e38"
 }
