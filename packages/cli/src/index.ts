@@ -91,7 +91,7 @@ import {
   assertPreviewEnvelope,
   writeLocalPreviewReport,
 } from './preview-report.js';
-import { capturePreviewResourceFile, clearPreviewResourceDraft, previewResourcePropPath,
+import { capturePreviewResourceFile, clearPreviewResourceDraft, previewResourcePropPath,previewResourceFileMatchesSlot,
   readPreviewResourceDraft, writePreviewResourceSelection } from './preview-resource-draft.js';
 
 const command = process.argv[2] ?? 'help';
@@ -264,7 +264,7 @@ async function run(name: string, argv: string[]): Promise<void> {
     '--user-id', '--version-notes', '--workspace-component', '--workspace-config',
   ]);
   const flagOptions = new Set([
-    '--apply', '--check-latest', '--dry-run', '--fail-on-build-failed', '--force',
+    '--apply', '--check-latest', '--dry-run', '--fail-on-build-failed', '--force', '--watch',
     '--help', '-h', '--json', '--replace', '--show', '--strict', '--upgrade',
     '--wait', '--with-assets', '--workspace', '--write-local-report',
   ]);
@@ -828,20 +828,21 @@ function resourceCommand(argv: string[]): void {
     .find(row => JSON.stringify(row.path) === JSON.stringify(keys));
   if (facts.status !== 'resolved' || !slot) fail('Use promptFrameResourceSchema for this field.', 'preview.resource.slot_missing');
   const selectedFile = file ? capturePreviewResourceFile(file) : undefined;
-  if (selectedFile && (!slot.slot.sources.includes('public') || !slot.slot.kinds.includes('image')
-    || slot.slot.maxFileBytes !== undefined && selectedFile.size > slot.slot.maxFileBytes
-    || slot.slot.accept?.length && !slot.slot.accept.some(type => type === '*/*' || type === selectedFile.contentType
-      || type.endsWith('/*') && selectedFile.contentType.startsWith(type.slice(0, -1)))))
+  const watch = argv.includes('--watch');
+  if (watch && selectedFile?.contentType !== 'model/gltf-binary')
+    fail('--watch requires a selected self-contained GLB file.', 'preview.resource.watch_model_required', 2);
+  if (selectedFile && (!slot.slot.sources.includes('public') || !previewResourceFileMatchesSlot(slot.slot,selectedFile)))
     fail('Selected file does not match the declared slot.', 'preview.resource.file_rejected');
   const sessionId = valueAfter(argv, '--session-id');
   if (reference && !sessionId) fail('A platform asset needs its original --session-id.', 'preview.resource.scope_required', 2);
   const ignored = join(root, '.gitignore'), oldIgnore = existsSync(ignored) ? readFileSync(ignored, 'utf8') : '';
   if (!ignore().add(oldIgnore).ignores('.promptframe/local-previews/resources.json'))
     writeFileSync(ignored, oldIgnore.replace(/\n?$/, '\n') + '.promptframe/\n');
-  writePreviewResourceSelection(root, { prop, ...(selectedFile ? { file: selectedFile } : { reference, sessionId }) });
+  writePreviewResourceSelection(root, { prop, ...(selectedFile ? { file: selectedFile } : { reference, sessionId }), ...(watch ? {watch:true as const} : {}) });
   const config = existsSync(join(root, 'vite.config.ts')) ? readFileSync(join(root, 'vite.config.ts'), 'utf8') : '';
   printJson({ command: 'resource.set', status: 'selected', prop, source: selectedFile ? 'local_file' : 'platform_asset',
     draftOnly: true, sourcePreviewPropsChanged: false, platformWrites: 0,
+    watch: watch ? 'studio_development_connection' : 'disabled',
     previewAdapter: config.includes('@promptframe/cli/preview') ? 'configured' : 'setup_required',
     nextAction: 'Refresh the local preview. Existing custom Vite shells need promptFramePreviewResources().' });
 }
@@ -5352,7 +5353,7 @@ Commands:
   sync <dir>                       Refresh PromptFrame-generated authoring shell files (--dry-run by default; use --apply)
   preview <dir>                    Validate and print local Remotion preview envelope
     --write-local-report           Write .promptframe/local-previews/preview-report.json
-  resource set <dir>               Select a private local preview resource (--prop /field, --file path OR --asset-ref ref --session-id id)
+  resource set <dir>               Select a private local preview resource (--prop /field, --file path [--watch for GLB] OR --asset-ref ref --session-id id)
   resource status|clear <dir>      Inspect or clear private preview selections; original files are retained
   dev <dir>                        Start a local preview or workspace checked-module connection
     --studio-origin <origin>        Required for a multi-component workspace

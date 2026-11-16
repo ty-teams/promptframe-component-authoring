@@ -8,18 +8,12 @@ import { collectPromptFrameResourceReferences, assertSelfContainedGlb, PROMPTFRA
 import { normalizePublicResourcePath } from './public-resource-path.js';
 import { evaluatePromptFrameSchemaSource } from '@promptframe/contracts/schema-evaluator';
 import { cliBearerToken, readCliConfiguration } from './configuration.js';
-import { capturePreviewResourceFile, previewResourcePropPath, readPreviewResourceDraft,
-  type PreviewResourceSelection } from './preview-resource-draft.js';
+import { capturePreviewResourceFile, previewResourcePropPath, readPreviewResourceDraft,previewResourceFileMatchesSlot as localFileMatches,
+  samePreviewResourceFile,type PreviewResourceSelection } from './preview-resource-draft.js';
 
 const virtual = 'virtual:promptframe-local-preview', resolvedVirtual = '\0' + virtual;
 const maximumBytes = 16 * 1024 * 1024;
 type Grant = { reference: string; status: string; code?: string; url?: string; contentType?: string; sizeBytes?: number; sha256?: string; expiresAt?: string };
-
-function localFileMatches(slot: ComponentResourceSlot, file: { size: number; contentType: string }): boolean {
-  return slot.kinds.includes(file.contentType === 'model/gltf-binary' ? 'model' : 'image') && (slot.maxFileBytes === undefined || file.size <= slot.maxFileBytes)
-    && (!slot.accept?.length || slot.accept.some(pattern => pattern === '*/*' || pattern === file.contentType
-      || pattern.endsWith('/*') && file.contentType.startsWith(pattern.slice(0, -1))));
-}
 
 function safeCode(error: unknown): string {
   const code = error instanceof Error ? error.message : '';
@@ -98,7 +92,7 @@ function relativePath(root: string, path: string): boolean {
   return !!within && !isAbsolute(within) && within !== '..' && !within.startsWith('..' + (process.platform === 'win32' ? '\\' : '/'));
 }
 
-function selectionSlot(root: string, selection: PreviewResourceSelection): ComponentResourceSlot {
+export function selectionSlot(root: string, selection: PreviewResourceSelection): ComponentResourceSlot {
   const manifest = readJson(join(root, 'manifest.json'));
   const entry = manifest.entry as { propsSchemaPath?: unknown } | undefined;
   const schemaPath = typeof entry?.propsSchemaPath === 'string' ? entry.propsSchemaPath : 'src/schema.ts';
@@ -196,7 +190,7 @@ export function promptFramePreviewResources(): Plugin {
             let model: Pick<PromptFrameModelRepresentation, 'contentType' | 'sizeBytes' | 'sha256' | 'expiresAt'> | undefined;
             if (row.file) {
               const actual = capturePreviewResourceFile(row.file.path);
-              if (JSON.stringify(actual) !== JSON.stringify(row.file) || !localFileMatches(slot, actual)) throw Error('preview.resource.file_changed');
+              if (!samePreviewResourceFile(row.file,actual) || !localFileMatches(slot, actual)) throw Error('preview.resource.file_changed');
               if (actual.contentType === 'model/gltf-binary') model = { contentType: actual.contentType, sizeBytes: actual.size, sha256: actual.sha256 };
             } else {
               const grant = await resolvePreviewResourceGrant(root, row, slot, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5_000)]) });
@@ -222,7 +216,7 @@ export function promptFramePreviewResources(): Plugin {
       const slot = packageRow ? undefined : selectionSlot(root, row); let bytes: Buffer, contentType: string;
       if (row.file) {
         const actual = capturePreviewResourceFile(row.file.path);
-        if (JSON.stringify(actual) !== JSON.stringify(row.file) || slot && !localFileMatches(slot, actual)) throw Error('preview.resource.file_changed');
+        if (!samePreviewResourceFile(row.file,actual) || slot && !localFileMatches(slot, actual)) throw Error('preview.resource.file_changed');
         bytes = readBoundedFile(row.file.path, maximumBytes, actual);
         if ('sha256:' + createHash('sha256').update(bytes).digest('hex') !== actual.sha256) throw Error('preview.resource.file_changed');
         contentType = actual.contentType;

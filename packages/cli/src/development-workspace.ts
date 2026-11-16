@@ -1,7 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { createServer as createHttpServer, type ServerResponse } from 'node:http';
-import { dirname, join, posix, relative, resolve, sep } from 'node:path';
+import { dirname, join, posix, relative, resolve, sep, isAbsolute } from 'node:path';
 import { createServer as createViteServer } from 'vite';
 import { buildDevelopmentContents } from './development-build.js';
 import { DevelopmentModuleCoordinator } from './development-coordinator.js';
@@ -11,6 +11,7 @@ import { PROMPTFRAME_PUBLIC_STANDARD_POLICY } from '@promptframe/contracts';
 import { isComponentSourcePathIgnored, selectComponentSourceFiles } from './component-file-selection.js';
 import {captureComponentWorkspaceSource,readSharedSourceWorkspace} from './workspace-source.js';
 import {capturePnpmWorkspaceLock} from './workspace-lockfile.js';
+import {DevelopmentPreviewResources} from './development-preview-resources.js';
 
 const limits = { maximumFiles: 2048, maximumBytes: 16 * 1024 * 1024 };
 const lockfiles = ['package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'bun.lockb'];
@@ -111,6 +112,13 @@ export async function startDevelopmentWorkspace(options: {
   const pending = new Set<string>(), resident = new Map<string, number>();
   let pumping: Promise<void> | undefined, checkingId: string | undefined;
   let closed = false, expectedHost = '', responseBytes = 0, watcherDiagnostic: string | undefined;
+  const selectedPaths=new Set<string>();
+  const localResources=new DevelopmentPreviewResources(root,[...modules.values()],paths=>{
+    const external=paths.filter(path=>{const name=relative(root,path);return name==='..'||name.startsWith('..'+sep)||isAbsolute(name);});
+    const current=new Set(external);
+    for(const path of selectedPaths)if(!current.has(path)){selectedPaths.delete(path);void vite.watcher.unwatch(path);}
+    for(const path of external)if(!selectedPaths.has(path)){selectedPaths.add(path);vite.watcher.add(path);}
+  });
   const coordinator = new DevelopmentModuleCoordinator({ maximumModules: 32,
     capture(id) {
       const module = modules.get(id);
@@ -127,7 +135,7 @@ export async function startDevelopmentWorkspace(options: {
     },
   });
   const registry = () => ({ contractVersion: 'promptframe-development.v2', connectionId,
-    lifecycle, watcherDiagnostic, modules: [...modules.keys()].map(id => {
+    lifecycle, watcherDiagnostic, localResources:localResources.snapshot(), modules: [...modules.keys()].map(id => {
       const state = coordinator.state(id), receipt = coordinator.buildReceipt(id);
       const checking = pending.has(id) || checkingId === id;
       return { moduleId: id, status: checking ? 'checking' : state?.status ?? 'checking',
@@ -162,6 +170,7 @@ export async function startDevelopmentWorkspace(options: {
   };
   // Explicit reads recapture too. Watch delivery/debounce is never authority.
   const observe = (onlyId?: string) => {
+    if(localResources.observe())notify();
     const revisions = new Map<string, string>();
     for (const [id, module] of modules) {
       if (onlyId && onlyId !== id) continue;
@@ -217,6 +226,15 @@ export async function startDevelopmentWorkspace(options: {
       response.on('error', () => response.destroy());
       response.write(`event: registry\ndata: ${JSON.stringify(registry())}\n\n`); return;
     }
+    const resourceMatch=/^\/__promptframe\/local-resources\/([a-f0-9]{64})\/([a-f0-9]{64})$/u.exec(request.url);
+    if(resourceMatch){
+      localResources.observe();
+      const resource=localResources.read(resourceMatch[1]!,'sha256:'+resourceMatch[2]!);
+      if(!resource)return reject(409,'preview.resource.selection_changed');
+      response.writeHead(200,{'Content-Type':resource.row.contentType,'Content-Length':resource.bytes.length,
+        'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
+      response.end(resource.bytes);return;
+    }
     const match = /^\/__promptframe\/modules\/([^/]+)\/bundle\/([a-f0-9]{64})$/u.exec(request.url);
     if (!match) return reject(404, 'development.connection.route_missing');
     let id: string;
@@ -261,6 +279,7 @@ export async function startDevelopmentWorkspace(options: {
   }
   if (inheritedControls.size) vite.watcher.add([...inheritedControls.keys()]);
   const changed = (_event: string, path: string) => {
+    if(localResources.observe())notify();
     const affected = inheritedControls.get(resolve(path));
     if (affected) {for (const id of affected) enqueue(id); return;}
     const local = relative(root, resolve(path)).split(sep).join('/');
@@ -303,8 +322,9 @@ export async function startDevelopmentWorkspace(options: {
   const closedResult=new Promise<{reason:string;failed:boolean}>(resolve=>{resolveClosed=resolve;});
   function close(reason='manual'){
     return closePromise??=(async()=>{
-      closed=true;clearInterval(heartbeat);clearInterval(idle);
+      closed=true;clearInterval(heartbeat);clearInterval(idle);clearInterval(resourceObserver);
       controller.abort(new Error('development.workspace.closed'));pending.clear();
+      localResources.close();
       for(const response of listeners)response.end();listeners.clear();
       const httpClosed=new Promise<void>((resolve,reject)=>http.close(error=>error?reject(error):resolve()));
       http.closeAllConnections();let firstError:unknown;
@@ -317,6 +337,13 @@ export async function startDevelopmentWorkspace(options: {
   const heartbeat=setInterval(()=>{
     for(const response of listeners){try{if(!response.write(': heartbeat\n\n'))response.destroy();}catch{response.destroy();}}
   },heartbeatMs);heartbeat.unref();
+  // Filesystem events may merge consecutive writes. While an existing Studio
+  // observes this connection, bounded stat checks also discover missed changes
+  // and ignored draft edits. Full validation precedes each replacement.
+  const resourceObserver=setInterval(()=>{
+    if(localResources.expire())notify();
+    if(listeners.size&&localResources.observe(Date.now(),true))notify();
+  },500);resourceObserver.unref();
   const idle=setInterval(()=>{
     if(idleTimeoutMs&&!listeners.size&&!activeRequests&&performance.now()-lastActivity>=idleTimeoutMs)void close('idle').catch(()=>undefined);
   },Math.max(10,Math.min(1000,idleTimeoutMs||1000)));idle.unref();

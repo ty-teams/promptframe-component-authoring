@@ -98,6 +98,31 @@ test('CLI selection changes only ignored draft; clear retains original files',as
   }finally{await rm(root,{recursive:true,force:true});}
 });
 
+test('CLI matches selected GLB and image bytes to the declared resource kind without replacing a rejected draft',async()=>{
+ const root=await fixture();try{
+  const file=join(root,'selected.glb'),bytes=emptyGlb();await writeFile(file,bytes);await writeFile(join(root,'public/example.glb'),bytes);
+  const schema=kinds=>"import {z} from 'zod'; import {promptFrameResourceSchema} from '@promptframe/contracts'; export const propsSchema=z.object({illustration:promptFrameResourceSchema({kinds:"+JSON.stringify(kinds)+",sources:['public','asset'],maxFileBytes:1024}).describe('Selected resource').default('"+(kinds.includes('model')?'/example.glb':'/example.png')+"')});";
+  const preview=JSON.parse(await readFile(join(root,'src/preview-props.json'),'utf8'));preview.props.illustration='/example.glb';
+  await writeFile(join(root,'src/preview-props.json'),JSON.stringify(preview));
+  await writeFile(join(root,'src/schema.ts'),schema(['model']));
+  const command=(file,watch=false)=>exec('node',[resolve(import.meta.dirname,'../dist/index.js'),'resource','set',root,'--prop','/illustration','--file',file,...(watch?['--watch']:[]),'--json'],
+    {env:{...process.env,PROMPTFRAME_CONFIG:join(root,'no-config.json')}});
+  const accepted=await command(file);assert.equal(JSON.parse(accepted.stdout).draftOnly,true);
+  const watched=await command(file,true);assert.equal(JSON.parse(watched.stdout).watch,'studio_development_connection');
+  assert.equal(readPreviewResourceDraft(root).selections[0].watch,true);
+  const first=await readFile(previewResourceDraftPath(root));
+  assert.equal(readPreviewResourceDraft(root).selections[0].file.contentType,'model/gltf-binary');
+  await assert.rejects(command(join(root,'selected.png')),error=>String(error.stderr).includes('preview.resource.file_rejected'));
+  await assert.rejects(command(join(root,'selected.png'),true),error=>String(error.stderr).includes('preview.resource.watch_model_required'));
+  assert.deepEqual(await readFile(previewResourceDraftPath(root)),first);
+  await writeFile(join(root,'src/schema.ts'),schema(['image']));
+  preview.props.illustration='/example.png';await writeFile(join(root,'src/preview-props.json'),JSON.stringify(preview));
+  await assert.rejects(command(file),error=>String(error.stderr).includes('preview.resource.file_rejected'));
+  assert.deepEqual(await readFile(previewResourceDraftPath(root)),first);
+  assert.deepEqual(await readFile(file),bytes);
+ }finally{await rm(root,{recursive:true,force:true});}
+});
+
 test('real loopback Vite serves selected bytes and rejects changed files, foreign Origin and replaced capability',async()=>{
   const root=await fixture();let host;try{
     writePreviewResourceSelection(root,{prop:'/illustration',file:capturePreviewResourceFile(join(root,'selected.png'))});host=await server(root);

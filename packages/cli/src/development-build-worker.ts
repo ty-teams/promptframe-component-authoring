@@ -5,6 +5,7 @@ import { DevelopmentContents } from './development-revisions.js';
 import { compileDevelopmentCssModule } from './development-css.js';
 import {componentSourceEntryPath,componentSourceLocalName} from '@promptframe/contracts/source-layout';
 import {componentSourceRequestCandidates,validateComponentSourceLayoutFiles} from '@promptframe/contracts/source-layout-evaluator';
+import {evaluatePromptFrameSchemaSource} from '@promptframe/contracts/schema-evaluator';
 
 const prefix = '\0promptframe-captured:';
 const entryPrefix = '\0promptframe-entry:';
@@ -148,6 +149,11 @@ async function main() {
   });
   if (replacements !== 1) fail('development.build.invalid_output');
   output.push({ path: 'manifest.json', bytes: Buffer.from(manifestBytes) });
+  const schemaFacts=evaluatePromptFrameSchemaSource(source(entries.schema));
+  const slots=schemaFacts.status==='resolved'?Object.entries(schemaFacts.properties)
+    .filter(([,value])=>value.promptFrameResource?.kinds.includes('model'))
+    .map(([propKey,value])=>({propKey,slot:value.promptFrameResource})):[];
+  output.push({path:'preview-resource-slots.json',bytes:Buffer.from(JSON.stringify({contractVersion:'promptframe-local-model-slots/v1',slots}))});
   for (const [path, bytes] of files) {
     const local=componentSourceLocalName(layout,path);
     if (local?.startsWith('public/')) output.push({ path: 'resources/public/' + local.slice(7), bytes: Buffer.from(bytes) });

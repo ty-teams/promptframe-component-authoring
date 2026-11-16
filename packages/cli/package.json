@@ -1,6 +1,6 @@
 {
   "name": "@promptframe/cli",
-  "version": "0.1.87",
+  "version": "0.1.88",
   "license": "MIT",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

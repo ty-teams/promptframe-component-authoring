@@ -1,14 +1,31 @@
 import { createHash } from 'node:crypto';
-import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync,
+import { closeSync, constants, fstatSync, fsyncSync, lstatSync, realpathSync, mkdirSync, openSync, readFileSync,
   readSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, extname, isAbsolute, join, resolve } from 'node:path';
-import { parsePromptFrameAssetReference, assertSelfContainedGlb } from '@promptframe/contracts';
+import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path';
+import { parsePromptFrameAssetReference, assertSelfContainedGlb,type ComponentResourceSlot } from '@promptframe/contracts';
 
 export const PREVIEW_RESOURCE_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 export const PREVIEW_RESOURCE_FILE_BYTES = 16 * 1024 * 1024;
-export interface PreviewResourceFile { path: string; dev: number; ino: number; size: number; mtimeMs: number; sha256: string; contentType: string }
-export interface PreviewResourceSelection { prop: string; reference?: string; sessionId?: string; file?: PreviewResourceFile }
+export interface PreviewResourceFile { path: string; dev: number; ino: number; size: number; mtimeMs: number; sha256: string; contentType: string;
+  parent?:{path:string;dev:number;ino:number} }
+export interface PreviewResourceSelection { prop: string; reference?: string; sessionId?: string; file?: PreviewResourceFile; watch?: true }
 export interface PreviewResourceDraft { contractVersion: 'promptframe-local-resource-draft/v1'; updatedAt: string; selections: PreviewResourceSelection[] }
+
+/** The selector and reader share the same declared-kind check. A GLB is not
+ * an image merely because its bytes passed the local file capture. */
+export function previewResourceFileMatchesSlot(slot:ComponentResourceSlot,file:{size:number;contentType:string}):boolean{
+  const kind=file.contentType==='model/gltf-binary'?'model'
+    :['image/png','image/jpeg','image/webp'].includes(file.contentType)?'image':undefined;
+  return Boolean(kind&&slot.kinds.includes(kind)&&Number.isSafeInteger(file.size)&&file.size>0
+    &&file.size<=PREVIEW_RESOURCE_FILE_BYTES&&(slot.maxFileBytes===undefined||file.size<=slot.maxFileBytes)
+    &&(!slot.accept?.length||slot.accept.some(type=>type==='*/*'||type===file.contentType
+      ||type.endsWith('/*')&&file.contentType.startsWith(type.slice(0,-1)))));
+}
+export function samePreviewResourceFile(expected:PreviewResourceFile,actual:PreviewResourceFile):boolean{
+  return expected.path===actual.path&&expected.dev===actual.dev&&expected.ino===actual.ino&&expected.size===actual.size
+    &&expected.mtimeMs===actual.mtimeMs&&expected.sha256===actual.sha256&&expected.contentType===actual.contentType
+    &&(!expected.parent||expected.parent.path===actual.parent?.path&&expected.parent.dev===actual.parent.dev&&expected.parent.ino===actual.parent.ino);
+}
 
 export function previewResourceDraftPath(root: string): string { return join(root, '.promptframe', 'local-previews', 'resources.json'); }
 
@@ -51,6 +68,10 @@ export function readPreviewResourceDraft(root: string, now = Date.now()): Previe
     for (const row of draft.selections) {
       previewResourcePropPath(row.prop);
       if (!!row.reference === !!row.file) throw Error();
+      if (row.watch !== undefined && (row.watch !== true || row.file?.contentType !== 'model/gltf-binary')) throw Error();
+      if(row.watch&&!row.file?.parent)throw Error();
+      if(row.file?.parent&&(typeof row.file.parent.path!=='string'||!isAbsolute(row.file.parent.path)
+        ||!Number.isSafeInteger(row.file.parent.dev)||!Number.isSafeInteger(row.file.parent.ino)))throw Error();
       if (row.reference && (!parsePromptFrameAssetReference(row.reference) || !row.sessionId || row.sessionId.length > 160)) throw Error();
       if (row.file && (typeof row.file.path !== 'string' || !isAbsolute(row.file.path) || !/^sha256:[a-f0-9]{64}$/u.test(row.file.sha256)
         || !['image/png', 'image/jpeg', 'image/webp', 'model/gltf-binary'].includes(row.file.contentType)
@@ -71,7 +92,10 @@ export function previewResourcePropPath(pointer: string): (string | number)[] {
 }
 
 export function capturePreviewResourceFile(file: string): PreviewResourceFile {
-  const path = resolve(file), fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  const path = resolve(file),parentPath=realpathSync(dirname(path)),parentStat=lstatSync(parentPath);
+  if(!parentStat.isDirectory())throw Error('preview.resource.file_changed');
+  const parent={path:parentPath,dev:parentStat.dev,ino:parentStat.ino};
+  const fd = openSync(join(parentPath,basename(path)), constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const stat = fstatSync(fd); if (!stat.isFile() || stat.size < 1 || stat.size > PREVIEW_RESOURCE_FILE_BYTES) throw Error('preview.resource.file_budget');
     const contentType = new Map([['.png', 'image/png'], ['.jpg', 'image/jpeg'], ['.jpeg', 'image/jpeg'], ['.webp', 'image/webp'], ['.glb', 'model/gltf-binary']]).get(extname(path).toLowerCase());
@@ -92,15 +116,26 @@ export function capturePreviewResourceFile(file: string): PreviewResourceFile {
     const after = fstatSync(fd);
     if (total !== stat.size || after.size !== stat.size || after.mtimeMs !== stat.mtimeMs || after.ino !== stat.ino || after.dev !== stat.dev) throw Error('preview.resource.file_changed');
     if (contentType === 'model/gltf-binary') assertSelfContainedGlb(Buffer.concat(modelChunks, total), PREVIEW_RESOURCE_FILE_BYTES);
-    return { path, dev: stat.dev, ino: stat.ino, size: stat.size, mtimeMs: stat.mtimeMs,
+    assertPreviewResourceParent({path,parent});
+    return { path,parent, dev: stat.dev, ino: stat.ino, size: stat.size, mtimeMs: stat.mtimeMs,
       sha256: 'sha256:' + hash.digest('hex'), contentType };
   } finally { closeSync(fd); }
+}
+
+export function assertPreviewResourceParent(file:Pick<PreviewResourceFile,'path'|'parent'>):void{
+  const expected=file.parent;
+  if(!expected||realpathSync(dirname(file.path))!==expected.path)throw Error('preview.resource.file_parent_changed');
+  const actual=lstatSync(expected.path);
+  if(!actual.isDirectory()||actual.dev!==expected.dev||actual.ino!==expected.ino)throw Error('preview.resource.file_parent_changed');
 }
 
 export function writePreviewResourceSelection(root: string, selection: PreviewResourceSelection): void {
   previewResourcePropPath(selection.prop);
   if (selection.reference && (!parsePromptFrameAssetReference(selection.reference) || !selection.sessionId)) throw Error('preview.resource.reference_invalid');
   if (!!selection.reference === !!selection.file) throw Error('preview.resource.selection_invalid');
+  if (selection.watch !== undefined && (selection.watch !== true || selection.file?.contentType !== 'model/gltf-binary'))
+    throw Error('preview.resource.watch_model_required');
+  if(selection.watch)assertPreviewResourceParent(selection.file!);
   const path = previewResourceDraftPath(root), directory = dirname(path);
   for (const part of [join(root, '.promptframe'), directory]) {
     mkdirSync(part, { recursive: true, mode: 0o700 }); if (lstatSync(part).isSymbolicLink()) throw Error('preview.resource.draft_invalid');
