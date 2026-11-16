@@ -30,3 +30,9 @@ test('the host getter preserves an assigned empty representation and ordinary fa
   assert.equal(promptFrameContentSlot({ promptFrameContentSlots: { get: () => '' } }, 'description', 'default'), '');
   assert.equal(promptFrameContentSlot({ promptFrameContentSlots: { get: () => 'child' } }, 'description', 'default'), 'child');
 });
+
+test('an older host cannot silently turn actual content assignments into fallback text', () => {
+  assert.throws(() => promptFrameContentSlot({ spec: { nodes: {
+    parent: { slotByChildId: { note: 'description' } },
+  } } }, 'description', 'default'), error => error.code === 'host_unavailable');
+});

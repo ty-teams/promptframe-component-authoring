@@ -23,13 +23,18 @@ export interface PromptFrameContentSlots<T = unknown> {
 }
 
 export function promptFrameContentSlot<T>(
-  props: { promptFrameContentSlots?: PromptFrameContentSlots<T> }, name: string, fallback: T,
+  props: { promptFrameContentSlots?: PromptFrameContentSlots<T>;
+    spec?: { nodes: Record<string, { slotByChildId?: Record<string, string> }> } }, name: string, fallback: T,
 ): T {
+  if (!props.promptFrameContentSlots && Object.values(props.spec?.nodes ?? {})
+    .some(node => Object.keys(node.slotByChildId ?? {}).length > 0)) {
+    throw new ComponentContentSlotError('host_unavailable', '', name);
+  }
   return props.promptFrameContentSlots?.get(name) ?? fallback;
 }
 
 export class ComponentContentSlotError extends Error {
-  constructor(readonly code: 'unknown_slot' | 'not_direct_child' | 'missing_child' | 'too_many_children',
+  constructor(readonly code: 'unknown_slot' | 'not_direct_child' | 'missing_child' | 'too_many_children' | 'host_unavailable',
     readonly childId: string, readonly slot: string) {
     super(`component.content_slot.${code}`);
     this.name = 'ComponentContentSlotError';
