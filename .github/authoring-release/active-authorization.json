@@ -1,26 +1,21 @@
 {
   "schemaVersion": "promptframe-authoring-release-authorization/v2",
   "state": "publish_ready",
-  "releaseId": "authoring-release-2026-11-16.6",
-  "releaseTag": "authoring-release-2026-11-16.6",
-  "artifactTag": "authoring-candidate-2026-11-16.6-r2",
-  "sourceCommit": "a696b621baf711b7f9b5b58acf7544bbf64ed757",
-  "candidateManifestDigest": "sha256:231b19e1674405cecc42609c67d8bb4252d83fef4a1d52a1456cfb9b64648906",
-  "platformGateDigest": "sha256:9f2126e9b5fa90a34cde7820d895aa4f37dd4cab4d7e86f7c7f39c10deeef707",
-  "releaseDigest": "sha256:b03f641c4538857adbe767946e934344ff49750f602f4fe1aa5a64504e82f099",
-  "createdAt": "2026-11-16T13:29:09.427Z",
-  "expiresAt": "2026-11-21T13:29:09.427Z",
+  "releaseId": "authoring-release-2026-11-16.7",
+  "artifactTag": "authoring-candidate-2026-11-16.7",
+  "releaseTag": "authoring-release-2026-11-16.7",
+  "sourceCommit": "48db77ee0507ccf307600f38f6424ba8a41c8847",
+  "candidateManifestDigest": "sha256:31055ba0a0c9ebabce17bdb745baa77604fc4ef5680d200cf9bf715a542aa2f9",
+  "platformGateDigest": "sha256:38dfad0a579b78446631736e5e423aaa3899929c4675111b621a9d554bdf73be",
+  "releaseDigest": "sha256:70714041c8c1f0c0065b58b3e53160077cd2207623a90a9e1ad5a891c20673ec",
+  "createdAt": "2026-11-16T15:21:00.856Z",
+  "expiresAt": "2026-11-21T15:08:47.076Z",
   "packages": [
     {
       "name": "@promptframe/contracts",
-      "version": "0.1.49",
-      "integrity": "sha512-UMzRBvbIaa3RK/8WWNNtEmY7UgUjmh9pV7f3CdArYOIPIaCJj2d0gItD+BJs1nxR2pvg8lGdeJzWbAwxlCsTNw=="
-    },
-    {
-      "name": "@promptframe/cli",
-      "version": "0.1.86",
-      "integrity": "sha512-HWcnKqRhvOffuKkJ9o8Tw4HRQrdslk+VIQ3OSi3gudLhH56cido5qzWEOyOCS8Q+O/YyAj6bdQuk/X/vg9Atlg=="
+      "version": "0.1.50",
+      "integrity": "sha512-/OSKxME+rtfJDB048nyuSf0apk9wP5B+B/X5i2PdiwKsFB+RIkLAEwum5UfFOX8wALH77owqM//ziEPPW1cXfQ=="
     }
   ],
-  "authorizationDigest": "sha256:68ce97a7b6ab0cc717e2e5075f2bfda3591ee4c79c4bfa76eb3d68167de1cbaa"
+  "authorizationDigest": "sha256:e6dec9ca9d1a61157b5bb65e6f51f67b2e310c2957872a0480940c273b423b36"
 }
