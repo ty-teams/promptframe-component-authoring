@@ -1,21 +1,31 @@
 {
   "schemaVersion": "promptframe-authoring-release-authorization/v2",
   "state": "publish_ready",
-  "releaseId": "authoring-release-2026-11-16.3",
-  "releaseTag": "authoring-release-2026-11-16.3",
-  "artifactTag": "authoring-candidate-2026-11-16.3",
-  "sourceCommit": "4fc54c23a9e350e776a5dc530b8a6956e22d5cdc",
-  "candidateManifestDigest": "sha256:64ecb79576e6f066b8253ce57b0fce82beb0255a61c14e7a3104dbae775c3581",
-  "platformGateDigest": "sha256:7ca5ff0a46eaba0d5751afd2c7dc407ad472ab8efe051ac9d93a09018fa66460",
-  "releaseDigest": "sha256:519be652f1adb5b7aba89d887b90559d89c8e726f1fe36b04df2d2b47b54eba9",
-  "createdAt": "2026-11-16T06:07:38.102Z",
-  "expiresAt": "2026-11-21T06:07:38.102Z",
+  "releaseId": "authoring-release-2026-11-16.5",
+  "releaseTag": "authoring-release-2026-11-16.5",
+  "artifactTag": "authoring-candidate-2026-11-16.5",
+  "sourceCommit": "a364aa432b03f49a1448321f4b6753628c2bb9c5",
+  "candidateManifestDigest": "sha256:f8244bb6fdf17152d901de3781e697e11455bcfa96e0349e4f048483d82bc12f",
+  "platformGateDigest": "sha256:29ba51d0efdcabdd6b02300fd797d78242d85870c18d2ebccf9c13a7988431d2",
+  "releaseDigest": "sha256:706ad4878831d5f75641000b7a9726bbaa01943a16636ca12cd0fe9c9b9b4d13",
+  "createdAt": "2026-11-16T11:19:18.398Z",
+  "expiresAt": "2026-11-21T11:19:18.398Z",
   "packages": [
     {
+      "name": "@promptframe/contracts",
+      "version": "0.1.48",
+      "integrity": "sha512-74A1sDPZYvlLyn0nBQHDg3gOt6Y84I1JNaKjBR2A5xNGcH9FUbu/gb2QQHfWv8EBTTPqqPGi7a+CtEBH/gkqJw=="
+    },
+    {
       "name": "@promptframe/cli",
-      "version": "0.1.84",
-      "integrity": "sha512-SB0bl/otPTSayUW9WfJC9KxbNRycYaOwA2787GPRyTN8H2TQ2oUGVLkflnZJy6ls0hqhkGKYLk6ZC2XWuMZ9sg=="
+      "version": "0.1.85",
+      "integrity": "sha512-ZFfeDiTa5+Fq2X9XjWzz2baBAItkqwpAPi0v+3XbHv+Y3mllNl3ylt0320zslX2iiCW2b7Ozlxhjd4XZRRKTOw=="
+    },
+    {
+      "name": "create-promptframe-component",
+      "version": "0.1.71",
+      "integrity": "sha512-J/AbuPhmN2g/jqlaWZ8FZHRd5E4SZEAKLs/zuolEaLNMzX7m7z05REXKGCPCdb/VnSwQky8r8URmllw2d6C4dQ=="
     }
   ],
-  "authorizationDigest": "sha256:181d8902675a0d7c5f933c7a6db47a4546e37708afb8ae5ec02a54e00357988e"
+  "authorizationDigest": "sha256:832eb2d89fd6fdb5fedb3e48781101abe3ce50f599f501c1670c37a016d9f1d0"
 }
