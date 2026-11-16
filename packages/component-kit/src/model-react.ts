@@ -54,7 +54,15 @@ export function usePromptFrameModel<T, Props extends object>(
     };
   }, [scope, delayRender, continueRender, cancelRender, delayPlayback]);
   useLayoutEffect(() => {
-    if (result?.scope === scope) lifetime.current?.release();
+    if (result?.scope !== scope) return;
+    let current = true;
+    // The author mounts and draws this value in the rest of the same commit's
+    // layout effects. Publish readiness only after that commit has completed;
+    // a prepared parser result alone does not witness the first canvas draw.
+    queueMicrotask(() => {
+      if (current && lifetime.current?.scope === scope) lifetime.current.release();
+    });
+    return () => { current = false; };
   }, [result, scope]);
   if (failure?.scope === scope) throw failure.error;
   return result?.scope === scope ? result.value : null;
