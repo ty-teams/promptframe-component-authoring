@@ -18,7 +18,7 @@ importers:
   packages/cli:
     dependencies:
       '@promptframe/contracts':
-        specifier: 0.1.47
+        specifier: 0.1.48
         version: link:../contracts
       ignore:
         specifier: 7.0.14
@@ -50,7 +50,7 @@ importers:
     dependencies:
       '@promptframe/contracts':
         specifier: 0.1.47
-        version: link:../contracts
+        version: 0.1.47
       react:
         specifier: ^19.0.0
         version: 19.2.6
@@ -86,7 +86,7 @@ importers:
   packages/create-component:
     dependencies:
       '@promptframe/contracts':
-        specifier: 0.1.47
+        specifier: 0.1.48
         version: link:../contracts
     devDependencies:
       '@types/node':
@@ -277,6 +277,9 @@ packages:
     resolution: {integrity: sha512-8nKv6+0RJSL9FE4jYOEGXnPeM/Hg12qZpmqzZjRh3qM0Y7c3z1mrOTfFLids72RDQYVh9WpLEfR5WdpNX4fkig==}
     engines: {node: '>=18'}
     hasBin: true
+
+  '@promptframe/contracts@0.1.47':
+    resolution: {integrity: sha512-P+zgllv+wrI1whE9aGO7732WoOrBd0PrvdKXHw5ljAUY/HJQ2JLnxR3byC6zSpPwa1t43BhvsyY3/2JvH+B5Ig==}
 
   '@rolldown/binding-android-arm64@1.0.0-rc.17':
     resolution: {integrity: sha512-s70pVGhw4zqGeFnXWvAzJDlvxhlRollagdCCKRgOsgUOH3N1l0LIxf83AtGzmb5SiVM4Hjl5HyarMRfdfj3DaQ==}
@@ -748,6 +751,11 @@ snapshots:
   '@playwright/test@1.61.1':
     dependencies:
       playwright: 1.61.1
+
+  '@promptframe/contracts@0.1.47':
+    dependencies:
+      typescript: 5.7.3
+      zod: 3.25.76
 
   '@rolldown/binding-android-arm64@1.0.0-rc.17':
     optional: true

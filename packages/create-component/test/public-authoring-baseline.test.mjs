@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import semver from 'semver';
+import {PROMPTFRAME_COMPONENT_RUNTIME_GENERATION} from '../../contracts/dist/index.js';
 
 const repoRoot = path.resolve(import.meta.dirname, '../../..');
 const release = JSON.parse(await readFile(path.join(repoRoot, 'authoring-release.json'), 'utf8'));
@@ -19,7 +20,7 @@ test('public templates use the current PromptFrame authoring package baseline', 
     assertCompatibleRange(packageJson.dependencies?.['@promptframe/component-kit'], release.recommendedAuthoringPackages.componentKit);
     assertCompatibleRange(packageJson.dependencies?.['@promptframe/contracts'], release.recommendedAuthoringPackages.contracts);
     assert.equal(packageJson.dependencies?.['@remotion/player'], undefined, templatePackagePath);
-    assert.equal(packageJson.devDependencies?.['@remotion/player'], '^4.0.374', templatePackagePath);
+    assert.equal(packageJson.devDependencies?.['@remotion/player'], PROMPTFRAME_COMPONENT_RUNTIME_GENERATION.remotion, templatePackagePath);
     assert.equal(packageJson.devDependencies?.['@vitejs/plugin-react'], '^6.0.1', templatePackagePath);
     assertCompatibleRange(packageJson.devDependencies?.['@promptframe/cli'], release.recommendedAuthoringPackages.cli);
     assert.equal(packageJson.devDependencies?.typescript, '~6.0.2', templatePackagePath);

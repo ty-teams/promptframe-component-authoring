@@ -127,6 +127,8 @@ promptframe resource clear .
 
 ## 布局、预览时长与运行依赖
 
+平台当前组件运行代次为 `runtime-2026.11`，构建、Studio 与正式渲染共用 React 19.2.5、Remotion 4.0.487 和 component-kit 0.1.41；服务端使用 Node 20.20.2、Linux x64。全部 `@remotion/*` 使用同一 Remotion 版本。新模板在 manifest 的 `runtimeGeneration` 声明此代次；历史 manifest 省略此字段仍可读取，不会自动改写旧版本。组件通过平台提供的依赖运行，不自行替换宿主 React 或 Remotion。完整版本合同可从 contracts 的 `PROMPTFRAME_COMPONENT_RUNTIME_GENERATION` 读取。
+
 CLI 按真实样式上下文检查布局：0、无单位行高和 SVG 坐标不属于固定像素布局。真实像素长度仍需通过 layout helper 缩放，诊断包含文件、行和列。
 
 预览按 manifest.designedDurationRange.max 播放，范围单位为帧，按预览 fps 最多播放30秒。缺少范围的兼容读路径使用原预览帧数并保留同样上限；正式作品时长继续由作品决定。自定义旧预览壳需向 PromptFramePreviewApp 传 designedDurationRange，或运行 promptframe sync . --apply。
