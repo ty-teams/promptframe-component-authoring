@@ -1,21 +1,26 @@
 {
   "schemaVersion": "promptframe-authoring-release-authorization/v2",
   "state": "publish_ready",
-  "releaseId": "authoring-release-2026-11-17.1",
-  "artifactTag": "authoring-candidate-2026-11-17.1",
-  "releaseTag": "authoring-release-2026-11-17.1",
-  "sourceCommit": "dcf85b308e074e5c822d48cde2ca1d896eb1ffe2",
-  "candidateManifestDigest": "sha256:bf6814f2e8b52b9f1fa95f630acfecefc9e500c3332feeb50e7b0e28a45eec12",
-  "platformGateDigest": "sha256:d1a89a92e3c2e124eed17b3bf9c43098b3ca6b3095166ff37a890b8f004ddc45",
-  "releaseDigest": "sha256:0c52113e024763fbea83a077507cae66d7207dcfb300e84bdfd1330366503090",
-  "createdAt": "2026-11-16T16:10:22.957Z",
-  "expiresAt": "2026-11-21T16:02:23.729Z",
+  "releaseId": "authoring-release-2026-11-17.2",
+  "artifactTag": "authoring-candidate-2026-11-17.2",
+  "releaseTag": "authoring-release-2026-11-17.2",
+  "sourceCommit": "b7fc36f1ac1390b92487fe28e5048781334016cb",
+  "candidateManifestDigest": "sha256:62fad74224b90f7d68f29b605f7d6fb10e98b82d347c7315f2e5c0e1f3644b4f",
+  "platformGateDigest": "sha256:08fe74db9f797930a788bd488477e7a345e3704853dde7f23a3c720cbe9f5d6d",
+  "releaseDigest": "sha256:8295f3576f160e5147228d9459c7d708d32166bf4244726702e06f37d534d133",
+  "createdAt": "2026-11-16T18:58:17.603Z",
+  "expiresAt": "2026-11-21T18:47:28.165Z",
   "packages": [
     {
-      "name": "@promptframe/component-kit",
-      "version": "0.1.42",
-      "integrity": "sha512-Dvm2kf9cUvwDPxURzEef4vgRe9Wn4pzLvnqPnRiO8crq4fKirQjEWxP4VfNjtYs+7PrPlTdUB7KrpjrKbjR84A=="
+      "name": "@promptframe/contracts",
+      "version": "0.1.51",
+      "integrity": "sha512-lNkLvzJ9KDO5Xv1rdWxEuBynKWV9pyVazhD3+tbSyZH8tiE+aVF7yAMyMJ2U3dwN/GjFWLo+cJgWC3jUnZpOcw=="
+    },
+    {
+      "name": "@promptframe/cli",
+      "version": "0.1.87",
+      "integrity": "sha512-9VGTVzYjiYieusDz5I3l9VV/u6ug6J9yt/gEJVhC2sfELX3m9L40GSpH2ZNd66LqSJvooTiKcbOnD+ajx86z0Q=="
     }
   ],
-  "authorizationDigest": "sha256:651c602a728f8104ad622a487519b4f5ae05963bccda3f3d9d587d96067267f7"
+  "authorizationDigest": "sha256:7a860041a4606b62b92050f25167235db8eae745696f5610144449014743923d"
 }
