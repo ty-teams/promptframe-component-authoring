@@ -1,26 +1,21 @@
 {
   "schemaVersion": "promptframe-authoring-release-authorization/v2",
   "state": "publish_ready",
-  "releaseId": "authoring-release-2026-11-16.2",
-  "releaseTag": "authoring-release-2026-11-16.2",
-  "artifactTag": "authoring-candidate-2026-11-16.2",
-  "sourceCommit": "874f26b3c13e233864fa41034b5c65dd4f7904c2",
-  "candidateManifestDigest": "sha256:52a49d2603748052b528bc6022f48f9a43b02d1303c0d4cd82f90b2df05dac1f",
-  "platformGateDigest": "sha256:1d933f00b75f03e347150c58f6e5e0c0aac14ca376c3dbafa057b247e03460ce",
-  "releaseDigest": "sha256:d5797df7437da2b2834396cf5d35324a30b81838cfac25b6d50fda6db47ad212",
-  "createdAt": "2026-11-16T05:33:53.859Z",
-  "expiresAt": "2026-11-21T05:33:53.859Z",
+  "releaseId": "authoring-release-2026-11-16.3",
+  "releaseTag": "authoring-release-2026-11-16.3",
+  "artifactTag": "authoring-candidate-2026-11-16.3",
+  "sourceCommit": "4fc54c23a9e350e776a5dc530b8a6956e22d5cdc",
+  "candidateManifestDigest": "sha256:64ecb79576e6f066b8253ce57b0fce82beb0255a61c14e7a3104dbae775c3581",
+  "platformGateDigest": "sha256:7ca5ff0a46eaba0d5751afd2c7dc407ad472ab8efe051ac9d93a09018fa66460",
+  "releaseDigest": "sha256:519be652f1adb5b7aba89d887b90559d89c8e726f1fe36b04df2d2b47b54eba9",
+  "createdAt": "2026-11-16T06:07:38.102Z",
+  "expiresAt": "2026-11-21T06:07:38.102Z",
   "packages": [
     {
       "name": "@promptframe/cli",
-      "version": "0.1.83",
-      "integrity": "sha512-2yVdd1EEGmS7ez7j1hixaiAcwKQ0FJ2jKhzc8nfD6zN5PfCMBezqAX4x31g2VDpVnHGYOMVyqonTFiUpiCVMOw=="
-    },
-    {
-      "name": "create-promptframe-component",
-      "version": "0.1.70",
-      "integrity": "sha512-qKSikff/u1QCuzCH6fcn/+k1KWBs6G16C6qeWD6jbl3v2UuEOxGWJMAHyA+li3ZHD8ZuGopVvT7xvSgdszPsXQ=="
+      "version": "0.1.84",
+      "integrity": "sha512-SB0bl/otPTSayUW9WfJC9KxbNRycYaOwA2787GPRyTN8H2TQ2oUGVLkflnZJy6ls0hqhkGKYLk6ZC2XWuMZ9sg=="
     }
   ],
-  "authorizationDigest": "sha256:94ee52b3ddd3cdb3179399fc3a1a83f102031d367c28229bb0b1654f32e40dd8"
+  "authorizationDigest": "sha256:181d8902675a0d7c5f933c7a6db47a4546e37708afb8ae5ec02a54e00357988e"
 }
