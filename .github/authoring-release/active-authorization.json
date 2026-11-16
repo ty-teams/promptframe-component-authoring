@@ -1,21 +1,26 @@
 {
   "schemaVersion": "promptframe-authoring-release-authorization/v2",
   "state": "publish_ready",
-  "releaseId": "authoring-release-2026-11-16.1",
-  "releaseTag": "authoring-release-2026-11-16.1",
-  "artifactTag": "authoring-candidate-2026-11-16.1",
-  "sourceCommit": "6b27848e0e5477f9eefd016b34828556870fb89e",
-  "candidateManifestDigest": "sha256:abd8bd697cd66ec8f4df74997f814112b9cd8e45f6b1c6b9c3a1b65fa691f958",
-  "platformGateDigest": "sha256:e13f9863e57c7438f8dcc69a6a8a58df30b20a9e3df77983db73e58d52b4af92",
-  "releaseDigest": "sha256:353e75d78e784f8a4d755d31651995aea2e36c476a2c50d4f4a7176616d8f6ec",
-  "createdAt": "2026-11-16T04:59:20.011Z",
-  "expiresAt": "2026-11-21T04:59:20.011Z",
+  "releaseId": "authoring-release-2026-11-16.2",
+  "releaseTag": "authoring-release-2026-11-16.2",
+  "artifactTag": "authoring-candidate-2026-11-16.2",
+  "sourceCommit": "874f26b3c13e233864fa41034b5c65dd4f7904c2",
+  "candidateManifestDigest": "sha256:52a49d2603748052b528bc6022f48f9a43b02d1303c0d4cd82f90b2df05dac1f",
+  "platformGateDigest": "sha256:1d933f00b75f03e347150c58f6e5e0c0aac14ca376c3dbafa057b247e03460ce",
+  "releaseDigest": "sha256:d5797df7437da2b2834396cf5d35324a30b81838cfac25b6d50fda6db47ad212",
+  "createdAt": "2026-11-16T05:33:53.859Z",
+  "expiresAt": "2026-11-21T05:33:53.859Z",
   "packages": [
     {
       "name": "@promptframe/cli",
-      "version": "0.1.82",
-      "integrity": "sha512-SxGTA83HLxub+Tlu5nYY3daTC10ke1GR0Tp6AtVsO1ZUHDPakSM/ykzSucUOesu06pkFusv+PB8IwW7jnqnTmw=="
+      "version": "0.1.83",
+      "integrity": "sha512-2yVdd1EEGmS7ez7j1hixaiAcwKQ0FJ2jKhzc8nfD6zN5PfCMBezqAX4x31g2VDpVnHGYOMVyqonTFiUpiCVMOw=="
+    },
+    {
+      "name": "create-promptframe-component",
+      "version": "0.1.70",
+      "integrity": "sha512-qKSikff/u1QCuzCH6fcn/+k1KWBs6G16C6qeWD6jbl3v2UuEOxGWJMAHyA+li3ZHD8ZuGopVvT7xvSgdszPsXQ=="
     }
   ],
-  "authorizationDigest": "sha256:99d31e21565701f243459974359ebe46320ea2d214a30578f07105d5b95e1f0d"
+  "authorizationDigest": "sha256:94ee52b3ddd3cdb3179399fc3a1a83f102031d367c28229bb0b1654f32e40dd8"
 }
