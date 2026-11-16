@@ -69,7 +69,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@promptframe/contracts": "0.1.47"
+    "@promptframe/contracts": "0.1.50"
   },
   "peerDependencies": {
     "react": "^19.0.0",
