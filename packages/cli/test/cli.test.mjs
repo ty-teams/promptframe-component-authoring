@@ -42,6 +42,34 @@ function parseStderrJsonLines(stderr) {
   return events;
 }
 
+test('public-request reuses one exact version intent without ZIP upload or approval', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-public-request-'));
+  const reads = [];
+  const server = await createServer(async (req, res) => {
+    assert.equal(req.method, 'POST');
+    assert.equal(req.url, '/components/marketplace/builds/component_build_owned/public-request');
+    const chunks = []; for await (const chunk of req) chunks.push(chunk);
+    const body = JSON.parse(Buffer.concat(chunks).toString());
+    assert.deepEqual(body, {auditReason: 'Own exact-version public review'});
+    assert.match(req.headers['x-request-id'], /^public-review-[a-f0-9]{64}$/);
+    reads.push(req.headers['x-request-id']);
+    writeJson(res, {success: true, publication: {publicationId: 'original-review', status: 'public_pending'}});
+  });
+  try {
+    const config = path.join(dir, 'config.json'); await writeFile(config, JSON.stringify({endpoint: server.url, tenantId: 'owned'}));
+    for (let i = 0; i < 2; i++) {
+      const {stdout} = await execFileAsync('node', [cliPath, 'public-request', 'component_build_owned',
+        '--reason', 'Own exact-version public review', '--config', config, '--json']);
+      const value = JSON.parse(stdout);
+      assert.equal(value.publication.status, 'public_pending');
+      assert.equal(value.buildId, 'component_build_owned');
+      assert.equal(value.requestId, reads[i]);
+    }
+    assert.equal(reads.length, 2);
+    assert.equal(reads[0], reads[1]);
+  } finally { await server.close(); await rm(dir, {recursive: true, force: true}); }
+});
+
 test('status resolves endpoint from local config and returns platform payload JSON', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-status-'));
   const server = await createServer(async (req, res) => {
@@ -923,7 +951,7 @@ test('init writes a secret-free promptframe project context from current project
       tenantId: 'tenant-a',
       projectId: 'project-a',
       projectNamespace: 'project-a',
-      defaultUploadTarget: 'marketplace_authoring',
+      defaultUploadTarget: 'project_private_generation',
       workspaceConfig: 'promptframe-workspace.json',
     });
     assert.equal(JSON.stringify(promptframeRc).includes('pf_self_secret'), false);
@@ -1372,7 +1400,20 @@ test('setup-ci writes a GitHub workflow without embedding endpoint or token secr
     assert.deepEqual(payload.requiredVariables, ['PROMPTFRAME_API_BASE']);
 
     const workflow = await readFile(payload.workflowPath, 'utf8');
-    assert.match(workflow, /# promptframe-workflow-version: 2/);
+    assert.match(workflow, /# promptframe-workflow-version: 3/);
+    const {parse} = await import('yaml');
+    const parsed = parse(workflow);
+    const steps = Object.values(parsed.jobs).flatMap(job => job.steps || []);
+    const review = steps.find(step => step.name === 'Request public review of this exact ready version');
+    assert.ok(review);
+    assert.match(review.if, /startsWith\(github.ref, 'refs\/tags\/'\)/);
+    assert.match(review.if, /PROMPTFRAME_REQUEST_PUBLIC_ON_TAG == 'true'/);
+    assert.equal(review.env.PROMPTFRAME_CI_TOKEN, '\u0024{{ secrets.PROMPTFRAME_PUBLIC_REVIEW_TOKEN }}');
+    assert.equal(review.env.PROMPTFRAME_BUILD_ID, '\u0024{{ steps.upload.outputs.build_id }}');
+    assert.match(review.run, /promptframe public-request/);
+    assert.doesNotMatch(review.run, /promptframe upload/);
+    assert.ok(steps.some(step => step.id === 'upload'));
+
     assert.match(workflow, /pull_request:/);
     assert.match(workflow, /branches: \[main\]/);
     assert.match(workflow, /\$\{\{ secrets\.PROMPTFRAME_CI_TOKEN \}\}/);
@@ -1419,7 +1460,7 @@ test('setup-ci detects and upgrades stale managed GitHub workflows', async () =>
     assert.equal(dryRun.diagnostic.code, 'setup_ci.workflow.upgrade_available');
     assert.equal(dryRun.dryRun, true);
     assert.equal(dryRun.workflow.currentVersion, null);
-    assert.equal(dryRun.workflow.latestVersion, 2);
+    assert.equal(dryRun.workflow.latestVersion, 3);
     assert.match(dryRun.workflow.repairCommand, /promptframe setup-ci .* --upgrade/);
     assert.equal(await readFile(workflowPath, 'utf8'), 'name: PromptFrame Component\non: push\njobs: {}');
 
@@ -1435,8 +1476,8 @@ test('setup-ci detects and upgrades stale managed GitHub workflows', async () =>
 
     assert.equal(upgraded.diagnostic.code, 'setup_ci.workflow.upgraded');
     assert.equal(upgraded.workflow.previousVersion, null);
-    assert.equal(upgraded.workflow.latestVersion, 2);
-    assert.match(await readFile(workflowPath, 'utf8'), /# promptframe-workflow-version: 2/);
+    assert.equal(upgraded.workflow.latestVersion, 3);
+    assert.match(await readFile(workflowPath, 'utf8'), /# promptframe-workflow-version: 3/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -1478,7 +1519,7 @@ test('setup-ci --workspace reports version-one workflows as stale before rewriti
     assert.equal(payload.workspace, true);
     assert.equal(payload.diagnostic.code, 'setup_ci.workflow.upgrade_available');
     assert.equal(payload.workflow.currentVersion, 1);
-    assert.equal(payload.workflow.latestVersion, 2);
+    assert.equal(payload.workflow.latestVersion, 3);
     assert.match(payload.workflow.message, /workflow 模板已过期/);
     assert.match(await readFile(workflowPath, 'utf8'), /# promptframe-workflow-version: 1/);
   } finally {
@@ -1712,7 +1753,20 @@ test('setup-ci --workspace writes a matrix workflow with explicit component path
     assert.deepEqual(payload.optionalVariables, ['RUNNER_LABELS']);
 
     const workflow = await readFile(payload.workflowPath, 'utf8');
-    assert.match(workflow, /# promptframe-workflow-version: 2/);
+    assert.match(workflow, /# promptframe-workflow-version: 3/);
+    const {parse} = await import('yaml');
+    const parsed = parse(workflow);
+    const steps = Object.values(parsed.jobs).flatMap(job => job.steps || []);
+    const review = steps.find(step => step.name === 'Request public review of this exact ready version');
+    assert.ok(review);
+    assert.match(review.if, /startsWith\(github.ref, 'refs\/tags\/'\)/);
+    assert.match(review.if, /PROMPTFRAME_REQUEST_PUBLIC_ON_TAG == 'true'/);
+    assert.equal(review.env.PROMPTFRAME_CI_TOKEN, '\u0024{{ secrets.PROMPTFRAME_PUBLIC_REVIEW_TOKEN }}');
+    assert.equal(review.env.PROMPTFRAME_BUILD_ID, '\u0024{{ steps.upload.outputs.build_id }}');
+    assert.match(review.run, /promptframe public-request/);
+    assert.doesNotMatch(review.run, /promptframe upload/);
+    assert.ok(steps.some(step => step.id === 'upload'));
+
     assert.match(workflow, /Discover PromptFrame components/);
     assert.match(workflow, /promptframe-workspace\.json/);
     assert.match(workflow, /matrix: \$\{\{ fromJSON\(needs\.discover\.outputs\.matrix\) \}\}/);
@@ -3762,6 +3816,8 @@ test('dev and check block missing marketplace authoring package floors', async (
         cliPath,
         'dev',
         componentDir,
+        '--target',
+        'marketplace_authoring',
         '--dry-run',
         '--json',
       ]),

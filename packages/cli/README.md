@@ -27,7 +27,7 @@ npx promptframe project list
 npx promptframe init . --endpoint https://your-promptframe.example/api-proxy
 npx promptframe component create @project-namespace/my-component --display-name "My Component"
 npx promptframe component list
-npx promptframe ci-token create --name "GitHub release" --scope component.upload --scope component.status.read --upload-target marketplace_authoring
+npx promptframe ci-token create --name "GitHub release" --scope component.upload --scope component.status.read --upload-target project_private_generation
 npx promptframe upload ./component.zip --endpoint https://your-promptframe.example/api-proxy
 npx promptframe upload ./component.zip --target project_private_generation --endpoint https://your-promptframe.example/api-proxy
 npx promptframe status <buildId> --endpoint https://your-promptframe.example/api-proxy
@@ -45,7 +45,7 @@ Endpoint resolution is explicit and public-safe:
 
 The CLI embeds no production, Tailscale, local Docker, or private PromptFrame endpoint default. `dev .` starts the component template's local Vite preview shell. `check .` runs the local public policy checks, reports standard freshness for the selected upload lane, and emits deterministic `localReusability` diagnostics so low-reuse marketplace submissions are visible before upload. If no platform endpoint is available, `dev` / `check` return `standard.freshness.offline_degraded` as a warning instead of pretending the online standard was verified. `preview .` reads `src/preview-props.json` and reports the local preview envelope; `preview . --write-local-report` also validates saved `.promptframe/local-previews/*.json` cases and writes `.promptframe/local-previews/preview-report.json` for local author evidence. Neither command runs a custom runtime or replaces the platform iframe preview/render pipeline. Upload success only means the platform accepted the source package for trust-pipeline admission; use `status`, `reindex`, and `probe` to inspect build readiness, evidence/search readiness, and layout/security diagnostics.
 
-Formal platform endpoints use bearer authentication. `promptframe login --endpoint <url>` starts a one-time browser login code flow through `/cli/auth/device/start`: open the printed URL, approve the code in an already signed-in PromptFrame browser session, and the CLI polls `/cli/auth/device/poll` until it receives a short-lived human CLI token. Platform-issued human CLI tokens expire within 24 hours. The token secret is stored only in the local PromptFrame config file with `0600` permissions and is never printed to stdout or JSON output. `promptframe login --endpoint <url> --token <token>` remains supported for already issued CLI/CI tokens and verifies them through `/cli/auth/whoami`; `promptframe whoami` shows the current platform identity and token kind/expiry without printing the token secret; `promptframe logout` revokes the current token and clears the matching local credential. Dev-header flags such as `--auth-roles` and `--auth-permissions` are local smoke helpers only and are rejected before transport for formal non-local endpoints.
+Formal platform endpoints use bearer authentication. `promptframe login --endpoint <url>` starts a one-time browser login code flow through `/cli/auth/device/start`: open the printed URL, approve the code in an already signed-in PromptFrame browser session, and the CLI polls `/cli/auth/device/poll` until it receives a short-lived human CLI token. 新签发的人工 CLI 凭据默认有效 30 天；显式期限、CI 凭据期限、撤销和既有凭据保持各自实际配置。 The token secret is stored only in the local PromptFrame config file with `0600` permissions and is never printed to stdout or JSON output. `promptframe login --endpoint <url> --token <token>` remains supported for already issued CLI/CI tokens and verifies them through `/cli/auth/whoami`; `promptframe whoami` shows the current platform identity and token kind/expiry without printing the token secret; `promptframe logout` revokes the current token and clears the matching local credential. Dev-header flags such as `--auth-roles` and `--auth-permissions` are local smoke helpers only and are rejected before transport for formal non-local endpoints.
 
 The platform derives tenant, user, and project from the browser-approved CLI token or scoped CI token. External authors should not hand-enter internal IDs, and formal endpoints reject dev identity headers. `whoami --json` is the safe way to inspect the current token kind, display identity, endpoint, scopes, upload targets, and project binding without exposing the token secret. `discovery --json` reports endpoint capabilities, and `project list --json` / `project current --json` report accessible projects. Server-side project switching is not a public CLI contract yet, so the CLI does not pretend that local config can override the platform principal. CI tokens are project-scoped automation credentials; store them in secret managers such as GitHub Actions secrets, not in source files.
 
@@ -73,7 +73,7 @@ npx promptframe ci-token create \
   --name "GitHub release" \
   --scope component.upload \
   --scope component.status.read \
-  --upload-target marketplace_authoring \
+  --upload-target project_private_generation \
   --json
 npx promptframe ci-token list --status active --json
 npx promptframe ci-token revoke <tokenId> --reason "rotating release credential" --json
@@ -81,7 +81,7 @@ npx promptframe ci-token revoke <tokenId> --reason "rotating release credential"
 
 `ci-token create` is the only self-service command that returns a token secret, and it is shown once. `ci-token list`, `ci-token revoke`, `whoami`, `discovery`, and `project` diagnostics do not print token secrets or token digests.
 
-`upload` defaults to `--target marketplace_authoring`, the external authoring lane. `--target marketplace --strict` is accepted as the public strict authoring alias and resolves to the same lane. Director Component Author jobs must use `--target project_private_generation` so the server can keep the component project scoped. Unknown targets fail locally before network transport with diagnostic code `upload.target.invalid`; stale PromptFrame authoring package floors are checked before network transport for both component folders and source zip archives. Upload also checks the platform `/components/standard` source hash before sending the package bytes; stale local standards fail with `standard.freshness.upload_blocking`. The platform repeats the same admission checks and remains the final authority.
+普通 `upload` 缺省为 `--target project_private_generation`，需要明确选定有权使用的项目；普通上传只产生该项目的私有构建，不申请公开。 `--target marketplace --strict` is accepted as the public strict authoring alias and resolves to the same lane. 项目私有的锁定引用可直接用于原项目；显式指定的既有合法上传目标仍按原用途校验。 Unknown targets fail locally before network transport with diagnostic code `upload.target.invalid`; stale PromptFrame authoring package floors are checked before network transport for both component folders and source zip archives. Upload also checks the platform `/components/standard` source hash before sending the package bytes; stale local standards fail with `standard.freshness.upload_blocking`. The platform repeats the same admission checks and remains the final authority.
 
 Upload targets are authorization boundaries, not just labels. A scoped token may be limited to `marketplace_authoring`, `project_private_generation`, or another platform-supported lane. If the request target is outside the token's allowed targets, the platform rejects the upload with a stable authorization diagnostic before build admission.
 
@@ -92,6 +92,12 @@ The upload-to-publish lifecycle has multiple gates. `upload` returning success m
 `package` excludes raw package-manager lockfiles from the public source zip, but when a root lockfile exists it adds `promptframe-lockfile-evidence.json`. The receipt contains only file names, sizes, and SHA-256 hashes so the platform can audit lockfile presence without exposing registry URLs or the full dependency tree in the source archive.
 
 `setup-ci --provider github` writes `.github/workflows/promptframe-component.yml` for a component project. Pull requests run check-only diagnostics and GitHub annotations; `main` and release-style tag pushes upload with `${{ secrets.PROMPTFRAME_CI_TOKEN }}` against `${{ vars.PROMPTFRAME_API_BASE }}`. Add those values in GitHub repository settings. Do not paste the CI token into the workflow, README, issue, or component source.
+
+### 按版本申请公开
+
+就绪后对准确构建执行 `npx promptframe public-request <buildId> --reason "公开此版本" --json`，复用原包和产物，不再次上传 ZIP。返回审核单与实际状态；`public_pending` 表示等待审核，只有审核、分发与发布完成才可使用市场正式引用。请求号默认按原构建和理由稳定生成；失去回执时使用同一请求号观察或接续，不换键重复送审。可用 `--request-id` 明确绑定一次请求。
+
+普通推送 CI 仍只上传项目私有版本。需要标签触发送审时，明确设置 `PROMPTFRAME_REQUEST_PUBLIC_ON_TAG=true`，将只有当前项目 `component.public.request` 权限的独立凭据放入 `PROMPTFRAME_PUBLIC_REVIEW_TOKEN`。上传凭据不会自动获得送审权限，送审凭据不能批准申请。既有凭据不自动扩权。
 
 ### Repository layouts and monorepos
 

@@ -71,7 +71,7 @@ test('public templates include GitHub CI workflow skeleton without private endpo
     'packages/create-component/templates/react-remotion/.github/workflows/promptframe-component.yml',
   ]) {
     const workflow = await readFile(path.join(repoRoot, workflowPath), 'utf8');
-    assert.match(workflow, /# promptframe-workflow-version: 2/, workflowPath);
+    assert.match(workflow, /# promptframe-workflow-version: 3/, workflowPath);
     assert.match(workflow, /pull_request:/, workflowPath);
     assert.match(workflow, /branches: \[main\]/, workflowPath);
     assert.match(workflow, /\$\{\{ secrets\.PROMPTFRAME_CI_TOKEN \}\}/, workflowPath);

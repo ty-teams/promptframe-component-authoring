@@ -6,7 +6,7 @@ PromptFrame 标准视频组件模板。
 
 默认协作方式是：人类用户负责审美判断和业务取舍，CodingAI 负责把 brief、用户素材、PromptFrame public authoring skill、平台 standard API 和 CLI diagnostic 落成可复用组件。
 
-本模板默认面向 `marketplace_authoring`：组件要有清晰 props、可复用数据结构、响应式布局、安全默认值和严格上传准入。如果只是当前项目临时私有组件，应走平台的 `project_private_generation` lane，不要把一次性私有组件伪装成 marketplace-ready。
+普通上传默认使用当前明确项目的 `project_private_generation`，通过后取得准确私有版本引用。组件仍须通过源码、安全、资源和构建检查。需要公开时，选择已就绪的准确版本显式申请审核；上传不自动送审或发布。旧工作流显式选择的合法目标保持有效。
 
 CodingAI 不能读取 PromptFrame 平台源码、内部协作看板、REQ/TASK/QA、内部协作收件箱、secret、内部部署脚本或私有 endpoint 默认值。
 
@@ -42,7 +42,7 @@ npx promptframe upload . --endpoint <promptframe-api-base>
 npx promptframe status <buildId> --endpoint <promptframe-api-base>
 ```
 
-`promptframe login --endpoint <promptframe-api-base>` 会打开浏览器授权码登录；如果平台已经给了 scoped token，也可以用 `promptframe login --endpoint <promptframe-api-base> --token <token>` 验证并保存。不要手填 `tenantId` / `userId` / `projectId`，正式平台会从浏览器登录或 token 推导身份和项目；用 `promptframe whoami` 查看当前身份和 scope。`marketplace_authoring` 是默认外部作者 lane，`project_private_generation` 只用于项目内私有生成；token 可能只能上传到指定 lane。
+`promptframe login --endpoint <promptframe-api-base>` 会打开浏览器授权码登录；如果平台已经给了 scoped token，也可以用 `promptframe login --endpoint <promptframe-api-base> --token <token>` 验证并保存。不要手填 `tenantId` / `userId` / `projectId`，正式平台会从浏览器登录或 token 推导身份和项目；用 `promptframe whoami` 查看当前身份和 scope。缺少明确项目时先选择项目。`project_private_generation` 是普通上传的默认目标；`marketplace_authoring` 保留显式用途，token 仍受原项目和目标范围限制。
 
 如果上传入口不可用，仍然要完成本地 `dev` 预览、`validate` 和 `preview` envelope 检查，然后按组件作者报告模板写清本地结果。
 

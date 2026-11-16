@@ -107,7 +107,7 @@ const DEV_PUBLIC_RESOURCES_MODULE_PATH = 'src/promptframe-dev-public-resources.g
 const GENERATED_PREVIEW_ROOT_PATH = 'src/PreviewRoot.tsx';
 const REPAIRABLE_GENERATED_FILE_PATHS = new Set<string>([GENERATED_PREVIEW_ROOT_PATH]);
 const PROMPTFRAME_WORKSPACE_SCHEMA_VERSION = 'promptframe-workspace.v0.1.0';
-const PROMPTFRAME_WORKFLOW_VERSION = 2;
+const PROMPTFRAME_WORKFLOW_VERSION = 3;
 const PROMPTFRAME_PROJECT_CONTEXT_SCHEMA_VERSION = 'promptframe-project-context.v0.1.0';
 const PROMPTFRAME_PROJECT_CONTEXT_FILE_NAME = '.promptframerc';
 const PROJECT_CONTEXT_FORBIDDEN_KEY_NAMES = new Set([
@@ -252,6 +252,7 @@ async function run(name: string, argv: string[]): Promise<void> {
     '--poll-interval-seconds', '--port', '--project-context', '--project-id',
     '--project-namespace', '--prop', '--provider', '--provider-kind', '--provider-name',
     '--reason', '--release-notes', '--scope', '--session-id', '--status', '--studio-origin', '--target',
+    '--request-id',
     '--tenant-id', '--timeout-seconds', '--token', '--token-id', '--upload-target',
     '--user-id', '--version-notes', '--workspace-component', '--workspace-config',
   ]);
@@ -347,6 +348,9 @@ async function run(name: string, argv: string[]): Promise<void> {
     case 'reindex':
     case 'probe':
       await remoteCommand(name, argv);
+      break;
+    case 'public-request':
+      await requestPublicReview(argv);
       break;
     case 'configure':
       configure(argv);
@@ -1309,9 +1313,29 @@ function scrubInternalReferences(value: string): string {
     .replace(/\bBUG-\d+\b/g, 'internal bug');
 }
 
+async function requestPublicReview(argv: string[]): Promise<void> {
+  const buildId = requiredArg(argv[0], 'Provide the exact ready buildId to request public review.', 'public_request.build_id_required');
+  const endpoint = resolveEndpoint('public-request', argv);
+  const auditReason = valueAfter(argv, '--reason') ?? 'Author requested public review of this exact version.';
+  const requestId = valueAfter(argv, '--request-id') ?? 'public-review-' + createHash('sha256')
+    .update(JSON.stringify([buildId, auditReason])).digest('hex');
+  if (!requestId.trim() || requestId.length > 160) fail('Public review requestId must contain 1–160 characters.', 'public_request.request_id_invalid');
+  const result = await fetchJson(`${endpoint}/components/marketplace/builds/${encodeURIComponent(buildId)}/public-request`, {
+    method: 'POST', headers: {...buildRemoteHeaders(endpoint, argv), 'content-type': 'application/json', 'x-request-id': requestId},
+    body: JSON.stringify({auditReason}),
+  }, 'public_request.result_unconfirmed');
+  const output = {...result, command: 'public-request', buildId, requestId,
+    diagnostic: diagnostic('public_request.observed', 'info', 'Read the returned review status; acceptance does not mean publication.')};
+  if (hasFlag(argv, '--json')) return printJson(output);
+  console.log(`Build: ${buildId}`);
+  console.log(`Review request: ${requestId}`);
+  console.log(`Status: ${stringValue(asRecord(result.publication)?.status) ?? 'unconfirmed'}`);
+}
+
 function resolveUploadTarget(argv: string[]): AuthoringUploadTarget {
   const raw = normalizeUploadTargetAlias(
-    valueAfter(argv, '--target') ?? valueAfter(argv, '--upload-target') ?? 'marketplace_authoring',
+    valueAfter(argv, '--target') ?? valueAfter(argv, '--upload-target')
+      ?? readProjectContext(argv)?.defaultUploadTarget ?? 'project_private_generation',
   );
   const parsed = authoringUploadTargetSchema.safeParse(raw);
   if (!parsed.success) {
@@ -2632,7 +2656,7 @@ async function initProjectContext(argv: string[]): Promise<void> {
       ?? normalizeProjectNamespace(projectId),
     defaultUploadTarget: valueAfter(argv, '--target')
       ?? valueAfter(argv, '--upload-target')
-      ?? 'marketplace_authoring',
+      ?? 'project_private_generation',
     workspaceConfig: valueAfter(argv, '--workspace-config') ?? 'promptframe-workspace.json',
   });
   mkdirSync(root, { recursive: true });
@@ -2840,7 +2864,7 @@ async function createSelfCiToken(argv: string[]): Promise<void> {
     contractVersion: CLI_AUTH_CONTRACT_VERSION,
     name,
     scopes: scopes.length > 0 ? scopes : ['component.upload'],
-    allowedUploadTargets: uploadTargets.length > 0 ? uploadTargets : ['marketplace_authoring'],
+    allowedUploadTargets: uploadTargets.length > 0 ? uploadTargets : ['project_private_generation'],
     expiresAt: valueAfter(argv, '--expires-at') ?? defaultCiTokenExpiresAt(),
     reason: valueAfter(argv, '--reason') ?? 'Self-service CI token created by PromptFrame CLI.',
   };
@@ -3199,6 +3223,22 @@ function workflowTemplateDiagnostics(
   }];
 }
 
+function promptFramePublicReviewStep(apiBaseVariable: string): string {
+  const enabled = '$' + "{{ startsWith(github.ref, 'refs/tags/') && vars.PROMPTFRAME_REQUEST_PUBLIC_ON_TAG == 'true' }}";
+  const token = '$' + '{{ secrets.PROMPTFRAME_PUBLIC_REVIEW_TOKEN }}';
+  const buildId = '$' + '{{ steps.upload.outputs.build_id }}';
+  return `      - name: Request public review of this exact ready version
+        if: ${enabled}
+        env:
+          PROMPTFRAME_API_BASE: ${apiBaseVariable}
+          PROMPTFRAME_CI_TOKEN: ${token}
+          PROMPTFRAME_BUILD_ID: ${buildId}
+        run: |
+          test -n "$PROMPTFRAME_CI_TOKEN" || { echo "Configure a project token with component.public.request."; exit 1; }
+          npx promptframe public-request "$PROMPTFRAME_BUILD_ID" --request-id "public-review-$GITHUB_RUN_ID-$PROMPTFRAME_BUILD_ID" --json
+`;
+}
+
 function promptFrameGithubWorkspaceWorkflow(_components: WorkspaceComponentReport[]): string {
   const apiBaseVariable = '$' + '{{ vars.PROMPTFRAME_API_BASE }}';
   const ciTokenSecret = '$' + '{{ secrets.PROMPTFRAME_CI_TOKEN }}';
@@ -3368,6 +3408,7 @@ jobs:
       - run: npm install -g pnpm@10
       - run: pnpm install --no-frozen-lockfile
       - name: Upload component to PromptFrame
+        id: upload
         env:
           PROMPTFRAME_API_BASE: ${apiBaseVariable}
           PROMPTFRAME_CI_TOKEN: ${ciTokenSecret}
@@ -3413,6 +3454,8 @@ jobs:
           const status = JSON.parse(fs.readFileSync('promptframe-status-' + process.env.ARTIFACT_NAME + '.json', 'utf8'));
           const build = status.build || {};
           const buildId = payload.jobId || payload.buildId || build.buildId || 'unknown';
+          if (!/^[A-Za-z0-9_.:-]{1,160}$/.test(buildId)) throw new Error('Invalid platform build identity.');
+          if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, 'build_id=' + buildId + '\\n');
           const buildStatus = String(build.status || status.status || payload.status || 'queued');
           const versionNotes = String(payload.versionNotes || build.versionNotes || process.env.PROMPTFRAME_VERSION_NOTES || '').replace(/\\r?\\n/g, ' ').slice(0, 300);
           const diagnostics = Array.isArray(build.diagnostics) ? build.diagnostics : [];
@@ -3444,7 +3487,7 @@ jobs:
           }
           NODE
           exit "$STATUS_EXIT"
-      - uses: actions/upload-artifact@v4
+${promptFramePublicReviewStep(apiBaseVariable)}      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: promptframe-upload-${matrixArtifactName}
@@ -3536,6 +3579,7 @@ jobs:
           cache: npm
       - run: npm install
       - name: Upload component to PromptFrame
+        id: upload
         env:
           PROMPTFRAME_API_BASE: ${apiBaseVariable}
           PROMPTFRAME_CI_TOKEN: ${ciTokenSecret}
@@ -3578,6 +3622,8 @@ jobs:
           const status = JSON.parse(fs.readFileSync('promptframe-status.json', 'utf8'));
           const build = status.build || {};
           const buildId = payload.jobId || payload.buildId || build.buildId || 'unknown';
+          if (!/^[A-Za-z0-9_.:-]{1,160}$/.test(buildId)) throw new Error('Invalid platform build identity.');
+          if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, 'build_id=' + buildId + '\\n');
           const buildStatus = String(build.status || status.status || payload.status || 'queued');
           const versionNotes = String(payload.versionNotes || build.versionNotes || process.env.PROMPTFRAME_VERSION_NOTES || '').replace(/\\r?\\n/g, ' ').slice(0, 300);
           const diagnostics = Array.isArray(build.diagnostics) ? build.diagnostics : [];
@@ -3607,7 +3653,7 @@ jobs:
           }
           NODE
           exit "$STATUS_EXIT"
-      - uses: actions/upload-artifact@v4
+${promptFramePublicReviewStep(apiBaseVariable)}      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: promptframe-upload-report
@@ -5301,13 +5347,15 @@ Commands:
   dev stop [dir]                    Normally close this workspace's instance
   package <dir> --out <zip>        Validate and package a component source zip
   upload <dir|zip>                 Upload component source package to PromptFrame
-    --target <target>              marketplace_authoring or project_private_generation
+    --target <target>              Default project_private_generation; explicit marketplace_authoring remains supported
     --target marketplace --strict  Alias for strict external marketplace authoring
   status <buildId>                 Fetch component build status
     --wait                        Observe this same build until usable, failed, manual review, or a bounded timeout
     --timeout-seconds <seconds>    --wait budget (default 300, maximum 1800); Ctrl-C stops observation only
     --fail-on-build-failed         Exit nonzero when platform build status is failed/cancelled
   reindex <buildId>                Rebuild component search/evidence indexes
+  public-request <buildId>         Request review of this exact ready version, without another upload
+    --request-id <id>              Replay one explicit review intent; --reason supplies its audit reason
   probe <buildId> --level <level>  Rerun component layout/security probe
   login --endpoint <url>             Start browser login code flow and store a CLI token
     --token <token>                  Verify and store an already issued CLI/CI token
