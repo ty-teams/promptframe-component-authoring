@@ -262,3 +262,14 @@ promptframe resource clear .
 ### 开发临时目录
 
 本地编译与校验把进程归属记录放在临时输入目录之外，正常完成后回收输入。后续编译只回收归属可核、生产进程已退出的遗留目录；活动目录、缺失或不明的记录继续保留，不按名称或文件时间批量删除。Linux 还检查原编译进程组的后代，确认其退出后再回收；其它宿主缺少相应退出证明时保留异常目录。此回收不修改组件项目、连接状态或浏览器模块内存。
+
+### 带原声复看指定帧段
+
+从作品的 `read_timeline` 取得目标镜头和起始帧。开发时可用作者工程已安装的 Remotion CLI 渲染所选组合的局部区间。完成导出后，也可从本人可读取的恒帧率成片（需要 FFmpeg 和 ffprobe）裁出相同帧段。每次只生成一个本地 MP4。对照两版时使用同一起始帧、帧数和各自的输出名。若前面的镜头时长有变化，按各版场景起点换算同一个镜头内帧。
+
+```sh
+promptframe review-clip --entry src/video.tsx --composition Film --props shot.json --from-frame 120 --frames 90 --output after.mp4
+promptframe review-clip --video before-export.mp4 --from-frame 120 --frames 90 --output before.mp4
+```
+
+`status --wait --json` 就绪时的顶层 `componentRef` 用于写入作品；项目私有构建使用 `project_private`。制品回执保留构建时的身份与各项摘要。

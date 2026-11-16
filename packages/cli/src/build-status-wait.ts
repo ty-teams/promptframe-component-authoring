@@ -21,6 +21,10 @@ export function readyBuildReference(build:ObjectValue):ObjectValue|undefined {
   ||build.componentId!==undefined&&build.componentId!==ref.id
   ||build.version!==undefined&&build.version!==ref.version)return;
  for(const field of ['sourceHash','schemaHash','bundleHash'])if(!hash(ref[field])||ref[field]!==receipt[field])return;
+ // The immutable artifact receipt can use marketplace for a private build. Its
+ // authorized consumption route is determined by the original admission.
+ const visibility=record(build.admission)?.targetVisibility;
+ if(visibility==='project_private'||visibility==='user_private')return {...ref,provider:'project_private'};
  return ref;
 }
 

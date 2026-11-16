@@ -67,3 +67,13 @@ test('human and JSON status retain the same relative compiler location, stage, h
  assert.match(human.stdout,/ERROR \[build\] compile\.syntax/u);assert.match(human.stdout,/src\/Component\.tsx:12:7/u);assert.match(human.stdout,/Hint: Fix/u);assert.match(human.stdout,/12 \| return <Panel \/>;/u);assert.match(human.stdout,/excerpt truncated/u);
  assert.deepEqual(JSON.parse(structured.stdout).build.logs,payload.build.logs);assert.equal(s.requests.length,2);
 });
+
+test('a ready private build yields the project consumption reference and preserves its original receipt',()=>{
+ for(const visibility of ['project_private','user_private','public']){
+  const build=ready().build;
+  build.receipt.componentRef={...ref,provider:'marketplace'};
+  build.admission={targetVisibility:visibility};
+  assert.deepEqual(readyBuildReference(build),{...ref,provider:visibility==='public'?'marketplace':'project_private'});
+  assert.equal(build.receipt.componentRef.provider,'marketplace');
+ }
+});

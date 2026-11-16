@@ -26,6 +26,7 @@ import {COMPONENT_SOURCE_LAYOUT_FILE, COMPONENT_SOURCE_LAYOUT_VERSION, component
   componentSourceLayoutSchema, componentSourceWorkspaceSchema, readComponentSourceLayout,
   type ComponentSourceLayout} from '@promptframe/contracts/source-layout';
 import {componentSourceImportSpecifiers,componentSourceRequestCandidates} from '@promptframe/contracts/source-layout-evaluator';
+import {reviewClip} from './review-clip.js';
 import {BuildStatusReadError,waitForOriginalBuild,type BuildWaitState} from './build-status-wait.js';
 import {
   COMPONENT_MANIFEST_SCHEMA_VERSION,
@@ -241,6 +242,11 @@ class PromptFrameCliError extends Error {
 }
 
 async function run(name: string, argv: string[]): Promise<void> {
+  if (name === 'review-clip') {
+    if (argv.includes('--help') || argv.includes('-h')) help();
+    else printJson(reviewClip(argv));
+    return;
+  }
   // Resolve CLI help before a handler can package, contact a platform, or write
   // configuration. Arguments after `--` belong to an explicitly launched tool.
   const ownArgs = argv.slice(0, argv.includes('--') ? argv.indexOf('--') : argv.length);
@@ -5349,6 +5355,7 @@ Commands:
   upload <dir|zip>                 Upload component source package to PromptFrame
     --target <target>              Default project_private_generation; explicit marketplace_authoring remains supported
     --target marketplace --strict  Alias for strict external marketplace authoring
+  review-clip --from-frame N --frames N --output clip.mp4   Review original audio and motion from --video FILE or --entry FILE --composition ID [--props JSON]
   status <buildId>                 Fetch component build status
     --wait                        Observe this same build until usable, failed, manual review, or a bounded timeout
     --timeout-seconds <seconds>    --wait budget (default 300, maximum 1800); Ctrl-C stops observation only
