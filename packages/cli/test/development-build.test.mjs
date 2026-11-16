@@ -12,6 +12,27 @@ import { developmentFixture, developmentLimits } from './fixtures/development-co
 const javascript = built => built.artifacts.readFiles().filter(file => file.path.endsWith('.mjs'))
   .map(file => Buffer.from(file.bytes).toString()).join('\n');
 
+test('captured model sources use only the same exact shared SDK and Three entries as the platform', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pf-build-model-runtime-'));
+  try {
+    const paths = await developmentFixture(root);
+    const original = captureDevelopmentFiles(root, paths, developmentLimits);
+    const files = original.readFiles(), component = files.find(file => file.path === 'src/Component.tsx');
+    component.bytes = Buffer.from(`import {Scene} from 'three';
+      import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+      import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
+      import {usePromptFrameModel} from '@promptframe/component-kit/model-react';
+      export default function Component(){ return <span>{String([Scene,GLTFLoader,RoomEnvironment,usePromptFrameModel].length)}</span>; }`);
+    const built = await buildDevelopmentContents(new DevelopmentContents(files, developmentLimits));
+    assert.ok(built.runtimeImports.includes('three'));
+    for (const id of ['three/addons/loaders/GLTFLoader.js', 'three/addons/environments/RoomEnvironment.js',
+      '@promptframe/component-kit/model-react']) assert.ok(built.runtimeImports.includes(id), id);
+    component.bytes = Buffer.from(`import 'three/addons/loaders/UntrustedLoader.js'; export default ()=>null;`);
+    await assert.rejects(buildDevelopmentContents(new DevelopmentContents(files, developmentLimits)),
+      error => error.diagnosticCode === 'development.build.unsupported_dependency');
+  } finally { await rm(root, {recursive: true, force: true}); }
+});
+
 test('public capture keeps the canonical resource artifact path and exact captured bytes', async () => {
   const root = await mkdtemp(join(tmpdir(), 'pf-build-public-resource-'));
   try {
