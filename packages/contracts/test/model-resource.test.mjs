@@ -129,4 +129,3 @@ test('authority expiring or being revoked during SHA verification still prevents
     }finally{Date.now=now;binding.dispose();}
   }
 });
-
