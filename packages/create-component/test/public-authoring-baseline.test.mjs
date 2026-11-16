@@ -3,26 +3,30 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import semver from 'semver';
+import { createRequire } from 'node:module';
 import {PROMPTFRAME_COMPONENT_RUNTIME_GENERATION} from '../../contracts/dist/index.js';
 
 const repoRoot = path.resolve(import.meta.dirname, '../../..');
 const release = JSON.parse(await readFile(path.join(repoRoot, 'authoring-release.json'), 'utf8'));
+const scaffoldRequire = createRequire(new URL('../package.json', import.meta.url));
+const scaffoldContracts = JSON.parse(await readFile(scaffoldRequire.resolve('@promptframe/contracts/package.json'), 'utf8'));
 function assertCompatibleRange(specifier, current) {
   assert.ok(semver.satisfies(current, specifier), 'generated dependency must accept the verified published version');
 }
 
-test('public templates use the current PromptFrame authoring package baseline', async () => {
+test('public templates retain their own supported SDK and runtime inputs across independent package releases', async () => {
   for (const templatePackagePath of [
     'templates/react-remotion/package.json',
     'packages/create-component/templates/react-remotion/package.json',
   ]) {
     const packageJson = JSON.parse(await readFile(path.join(repoRoot, templatePackagePath), 'utf8'));
-    assertCompatibleRange(packageJson.dependencies?.['@promptframe/component-kit'], release.recommendedAuthoringPackages.componentKit);
-    assertCompatibleRange(packageJson.dependencies?.['@promptframe/contracts'], release.recommendedAuthoringPackages.contracts);
+    assertCompatibleRange(packageJson.dependencies?.['@promptframe/component-kit'], PROMPTFRAME_COMPONENT_RUNTIME_GENERATION.componentKit);
+    assertCompatibleRange(packageJson.dependencies?.['@promptframe/contracts'], scaffoldContracts.version);
     assert.equal(packageJson.dependencies?.['@remotion/player'], undefined, templatePackagePath);
     assert.equal(packageJson.devDependencies?.['@remotion/player'], PROMPTFRAME_COMPONENT_RUNTIME_GENERATION.remotion, templatePackagePath);
     assert.equal(packageJson.devDependencies?.['@vitejs/plugin-react'], '^6.0.1', templatePackagePath);
-    assertCompatibleRange(packageJson.devDependencies?.['@promptframe/cli'], release.recommendedAuthoringPackages.cli);
+    assert.ok(semver.validRange(packageJson.devDependencies?.['@promptframe/cli']));
+    assert.ok(semver.intersects(packageJson.devDependencies['@promptframe/cli'], `>=${release.minPackageVersions.cli}`));
     assert.equal(packageJson.devDependencies?.typescript, '~6.0.2', templatePackagePath);
     assert.equal(packageJson.devDependencies?.vite, '^8.0.10', templatePackagePath);
     assert.equal(packageJson.dependencies?.['@vitejs/plugin-react'], undefined, templatePackagePath);
