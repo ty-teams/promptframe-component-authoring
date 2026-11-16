@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import {PROMPTFRAME_STYLE_CONTRACT_VERSION} from './style-intent.js';
 import {componentRuntimeGenerationIdSchema} from './runtime-generation.js';
+import {componentContentSlotsSchema} from './content-slots.js';
+export * from './content-slots.js';
 export {PROMPTFRAME_COMPONENT_RUNTIME_GENERATION, componentRuntimeGenerationIdSchema, resolveComponentRuntimeGeneration} from './runtime-generation.js';
 export * from './style-intent.js';
 import { createPromptFramePublicSecurityPolicyDigest } from './security-policy-fingerprint.js';
@@ -1597,6 +1599,7 @@ export const componentManifestSchema = z
     standardVersion: z.literal(COMPONENT_STANDARD_VERSION),
     standardSourceHash: sha256Schema.optional(),
     runtimeGeneration: componentRuntimeGenerationIdSchema.optional(),
+    contentSlots: componentContentSlotsSchema.optional(),
     id: componentIdSchema,
     name: componentNameSchema,
     displayName: nonEmptyStringSchema.max(80),

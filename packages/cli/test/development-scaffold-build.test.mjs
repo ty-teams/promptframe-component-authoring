@@ -27,6 +27,21 @@ async function scaffold(root, moduleId = '@demo/captured-component') {
 const javascript = built => built.artifacts.readFiles().filter(file => file.path.endsWith('.mjs'))
   .map(file => Buffer.from(file.bytes).toString()).join('\n');
 
+test('a checked optional content declaration survives the real development capture and build', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pf-content-slot-build-'));
+  try {
+    const source = join(root, 'source'), initial = await scaffold(source);
+    const manifest = JSON.parse(await readFile(join(source, 'manifest.json'), 'utf8'));
+    manifest.contentSlots = [{ name: 'description', description: 'Explanation', maxChildren: 2 }];
+    await writeFile(join(source, 'manifest.json'), JSON.stringify(manifest));
+    const captured = captureDevelopmentFiles(source, initial.readFiles().map(file => file.path), developmentLimits);
+    await validateDevelopmentContents(captured);
+    const built = await buildDevelopmentContents(captured);
+    const manifestFile = built.artifacts.readFiles().find(file => file.path === 'manifest.json');
+    assert.deepEqual(JSON.parse(Buffer.from(manifestFile.bytes).toString()).contentSlots, manifest.contentSlots);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('the actual scaffold TSX, CSS Modules, lower-case schema and named index build from their checked capture', async () => {
   const root = await mkdtemp(join(tmpdir(), 'pf-default-scaffold-build-'));
   try {

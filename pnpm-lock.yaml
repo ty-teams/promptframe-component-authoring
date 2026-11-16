@@ -18,7 +18,7 @@ importers:
   packages/cli:
     dependencies:
       '@promptframe/contracts':
-        specifier: 0.1.48
+        specifier: 0.1.49
         version: link:../contracts
       ignore:
         specifier: 7.0.14
@@ -87,7 +87,7 @@ importers:
     dependencies:
       '@promptframe/contracts':
         specifier: 0.1.48
-        version: link:../contracts
+        version: 0.1.48
     devDependencies:
       '@types/node':
         specifier: ^24.12.4
@@ -280,6 +280,9 @@ packages:
 
   '@promptframe/contracts@0.1.47':
     resolution: {integrity: sha512-P+zgllv+wrI1whE9aGO7732WoOrBd0PrvdKXHw5ljAUY/HJQ2JLnxR3byC6zSpPwa1t43BhvsyY3/2JvH+B5Ig==}
+
+  '@promptframe/contracts@0.1.48':
+    resolution: {integrity: sha512-74A1sDPZYvlLyn0nBQHDg3gOt6Y84I1JNaKjBR2A5xNGcH9FUbu/gb2QQHfWv8EBTTPqqPGi7a+CtEBH/gkqJw==}
 
   '@rolldown/binding-android-arm64@1.0.0-rc.17':
     resolution: {integrity: sha512-s70pVGhw4zqGeFnXWvAzJDlvxhlRollagdCCKRgOsgUOH3N1l0LIxf83AtGzmb5SiVM4Hjl5HyarMRfdfj3DaQ==}
@@ -753,6 +756,11 @@ snapshots:
       playwright: 1.61.1
 
   '@promptframe/contracts@0.1.47':
+    dependencies:
+      typescript: 5.7.3
+      zod: 3.25.76
+
+  '@promptframe/contracts@0.1.48':
     dependencies:
       typescript: 5.7.3
       zod: 3.25.76
