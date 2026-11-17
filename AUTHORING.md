@@ -192,6 +192,27 @@ function ModelScene(props: Props) {
 
 `disposeModel`由组件实现，释放其拥有的geometry、material、texture和ImageBitmap；SDK保证当前准备结果在取消或退场时调用一次。解析器不支持中途取消时，超时后仍不会采用其晚到结果，不能把超时当作解析器物理退出。首帧所需的异步解析和处理都放入 `prepare`，不要在其成功后另起未受控的加载。
 
+模型已能绘制，但关键贴图或其它视觉处理仍需异步完成时，使用同一入口的 `usePromptFramePreparation`（component-kit 0.1.43 起）。在组件中无条件调用该 hook，在占位画面可能绘制前登记；`identity=null` 表示该组件当前没有这项工作。`prepare` 返回已完成解码的值，组件在同次提交的同步 `useLayoutEffect` 中应用材质并绘制，SDK随后才解除有限渲染等待和播放缓冲。
+
+```tsx
+import { usePromptFramePreparation } from '@promptframe/component-kit/model-react';
+
+// prepareTexture/disposeTexture 使用稳定函数。读取仍来自现有授权资源。
+const texture = usePromptFramePreparation(model ? textureVersion : null, {
+  prepare: prepareTexture,
+  dispose: disposeTexture,
+});
+useLayoutEffect(() => {
+  if (!model) return;
+  applyMaterial(model, texture); // texture为null时可以绘制占位，但不能交就绪回执。
+  renderer.render(scene, camera);
+}, [model, texture, frame]);
+```
+
+`identity`和稳定回调必须随资源、模型/内容版本变化；若异步结果依赖帧，也须包含该帧。多个节点分别拥有自己的准备任务，不共享可变材质。退场、`identity=null`、换代或卸载会取消旧任务；异步代码每次await后先检查signal，不将旧值写到新画面。SDK释放未采用的晚到结果，每项总预算15秒，失败只返回`visual.preparation_timeout/cancelled/failed`，不会把异常中的URL或其它自由文本作为公开原因。组件仍负责关闭其ImageBitmap和释放geometry/material/texture。
+
+保证范围是已登记的关键工作，以及结果提交中的同步layout绘制。稍后才启动的未登记Promise、useEffect或requestAnimationFrame中的绘制不能据此视为完成；应将准备纳入hook，并在其结果提交的同步layout阶段完成实际绘制。不要用固定sleep、背景颜色、一次DOM提交或全网空闲代替准备。下一镜应在它实际挂载或需要内容时登记，不要让不属于当前画面的任务阻塞当前帧。该能力不增加网络权限、延长素材授权或改变原捕获期限。
+
 CLI本地选择支持GLB，`resource clear` 仍只清选择记录；已有项目用兼容CLI执行 `sync . --apply` 更新开发壳。包内public与已授权作品引用使用同一个读取、准备接口，不开放任意fetch。
 
 ## 包版本与发行组合

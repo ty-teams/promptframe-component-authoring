@@ -26,6 +26,8 @@ The CodingAI must not read PromptFrame internal platform source, agent board, RE
 
 ## Technology Stack
 
+关键异步视觉内容须在可能提交占位画面前登记准备。模型沿`usePromptFrameModel`；已能绘制但贴图等仍未就绪时，component-kit 0.1.43起可用同`model-react`入口的`usePromptFramePreparation`。资源/版本（以及依赖的帧）变更须换identity，值在同步layout effect中应用并绘制；取消后不采用晚回值并释放资源。详见AUTHORING的GLB节。未登记的后续Promise、useEffect/RAF绘制没有语义就绪保证，不用sleep或放开fetch规避。
+
 Use:
 
 - React

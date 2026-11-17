@@ -162,6 +162,8 @@ import { resolvePromptFrameStyle } from '@promptframe/component-kit/style';
 
 prepare和dispose使用稳定函数。组件负责释放其geometry、material、texture及ImageBitmap。SDK持有渲染等待和播放缓冲，不向组件开放延迟句柄、任意fetch或额外权限。完整示例见[AUTHORING](../../AUTHORING.md#自包含-glb-模型槽)。
 
+模型已经可绘制、关键贴图仍异步处理时，同入口的`usePromptFramePreparation(identity, {prepare, dispose})`登记这项视觉准备（0.1.43起）。identity随资源/版本变化；结果依赖帧时也包含帧，null表示当前无此工作。返回值在组件同步layout effect中应用并绘制后才解除等待。每项预算15秒，取消/退场/换代不会采用旧结果；不得在其成功后另起未登记的加载或异步绘制。它不提供额外读取权限。覆盖范围与取消、释放示例见AUTHORING。
+
 收到准备结果后，组件在同一次React提交的useLayoutEffect中挂载画布并同步绘制当前帧。SDK在该提交的布局效果完成后解除准备等待；后续帧也应根据useCurrentFrame同步更新，不依赖额外定时器绘制首帧。
 
 ## Component Workflow
