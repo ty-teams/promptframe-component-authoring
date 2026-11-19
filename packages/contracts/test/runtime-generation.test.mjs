@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFile} from 'node:fs/promises';
+import semver from 'semver';
 import {componentManifestSchema, PROMPTFRAME_COMPONENT_RUNTIME_GENERATION, resolveComponentRuntimeGeneration} from '../dist/index.js';
 
 test('generated manifest declares the supported runtime while historical omission is unchanged', async () => {
@@ -11,8 +12,10 @@ test('generated manifest declares the supported runtime while historical omissio
   assert.equal(resolveComponentRuntimeGeneration(current.runtimeGeneration), PROMPTFRAME_COMPONENT_RUNTIME_GENERATION);
   const pkg = JSON.parse(await readFile(new URL('../../create-component/templates/react-remotion/package.json', import.meta.url), 'utf8'));
   for (const [name, version] of [['react', PROMPTFRAME_COMPONENT_RUNTIME_GENERATION.react],
-    ['react-dom', PROMPTFRAME_COMPONENT_RUNTIME_GENERATION.reactDom], ['remotion', PROMPTFRAME_COMPONENT_RUNTIME_GENERATION.remotion],
-    ['@promptframe/component-kit', PROMPTFRAME_COMPONENT_RUNTIME_GENERATION.componentKit]]) assert.equal(pkg.dependencies[name], version);
+    ['react-dom', PROMPTFRAME_COMPONENT_RUNTIME_GENERATION.reactDom], ['remotion', PROMPTFRAME_COMPONENT_RUNTIME_GENERATION.remotion]]) assert.equal(pkg.dependencies[name], version);
+  const kit = JSON.parse(await readFile(new URL('../../component-kit/package.json', import.meta.url), 'utf8'));
+  assert.equal(pkg.dependencies['@promptframe/component-kit'], kit.version);
+  assert.ok(semver.satisfies(kit.version, `^${PROMPTFRAME_COMPONENT_RUNTIME_GENERATION.componentKit}`), 'selected kit must retain the supported SDK ABI baseline');
   assert.equal(pkg.devDependencies['@remotion/player'], PROMPTFRAME_COMPONENT_RUNTIME_GENERATION.remotion);
   delete manifest.runtimeGeneration;
   const legacy = componentManifestSchema.parse(manifest);

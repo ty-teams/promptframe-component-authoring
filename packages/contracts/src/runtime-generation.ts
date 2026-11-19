@@ -1,7 +1,9 @@
 import {z} from 'zod';
 
-/** One supported component runtime. These are host-provided versions, not
- * dependencies a component may replace or install into its preview host. */
+/** One supported component runtime. React/Remotion are host-provided versions,
+ * not dependencies a component may replace in its preview host. componentKit
+ * is the compatible SDK baseline; exact installed patch versions are recorded
+ * separately in authoring release metadata and the host's package manifest. */
 export const PROMPTFRAME_COMPONENT_RUNTIME_GENERATION = Object.freeze({
   id: 'runtime-2026.11',
   node: '20.20.2',
