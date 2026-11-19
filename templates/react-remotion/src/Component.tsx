@@ -1,4 +1,4 @@
-import { promptFramePublicResource, type PromptFrameRuntimeResourceProps } from '@promptframe/component-kit';
+import { promptFrameFontStack, promptFramePublicResource, type PromptFrameRuntimeResourceProps } from '@promptframe/component-kit';
 import { createPromptFrameLayout } from '@promptframe/component-kit/layout';
 import type { CSSProperties } from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
@@ -22,6 +22,7 @@ export default function Component(props: ComponentProps & PromptFrameRuntimeReso
     extrapolateRight: 'clamp',
   });
   const rootStyle = {
+    fontFamily: promptFrameFontStack('Inter'),
     background: props.background,
     color: props.foreground,
     '--pf-padding': `${layout.px(72)}px`,
