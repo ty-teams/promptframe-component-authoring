@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
-import { loadPromptFrameRuntimeFonts, PROMPTFRAME_RUNTIME_FONTS, promptFrameFontStack } from '../src/fonts.js';
+import { loadPromptFrameRuntimeFonts, PROMPTFRAME_RUNTIME_FONTS, promptFrameFontStack, promptFrameRuntimeFontSupport } from '../src/fonts.js';
 
 test('fixed font bytes match the manifest and preserve Inter 4.1', async () => {
   const modules = await Promise.all([
@@ -85,4 +85,42 @@ test('fixed fallbacks precede host generics and keep custom names, variables and
   assert.equal(promptFrameFontStack('"Custom, Display", var(--heading, "Other"), serif'), '"Custom, Display", var(--heading, "Other"), "Noto Sans SC", "Noto Color Emoji", serif');
   assert.equal(promptFrameFontStack('"Noto Sans SC", "Noto Color Emoji", sans-serif'), '"Noto Sans SC", "Noto Color Emoji", sans-serif');
   assert.equal(promptFrameFontStack('monospace'), '"Noto Sans SC", "Noto Color Emoji", monospace');
+});
+
+test('a browser that explicitly lacks COLRv1 keeps fixed CJK without installing an empty emoji face', async t => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'CSS');
+  Object.defineProperty(globalThis, 'CSS', {configurable: true, value: {supports: () => false}});
+  t.after(() => {
+    if (previous) Object.defineProperty(globalThis, 'CSS', previous);
+    else Reflect.deleteProperty(globalThis, 'CSS');
+  });
+  const families: string[] = [];
+  const installed: string[] = [];
+  class Face {
+    constructor(readonly family: string) { families.push(family); }
+    async load() { return this; }
+  }
+  await loadPromptFrameRuntimeFonts({add(face: Face) { installed.push(face.family); }} as unknown as FontFaceSet,
+    Face as unknown as typeof FontFace);
+  assert.deepEqual(promptFrameRuntimeFontSupport(), {colorEmoji: 'unsupported', reasonCode: 'font.color_emoji_format_unsupported'});
+  assert.deepEqual(families, ['Inter', 'Noto Sans SC']);
+  assert.deepEqual(installed, families);
+});
+
+test('unknown format support still decodes every fixed font and preserves a real emoji failure', async t => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'CSS');
+  Object.defineProperty(globalThis, 'CSS', {configurable: true, value: {supports: () => { throw new Error('query unavailable'); }}});
+  t.after(() => {
+    if (previous) Object.defineProperty(globalThis, 'CSS', previous);
+    else Reflect.deleteProperty(globalThis, 'CSS');
+  });
+  assert.deepEqual(promptFrameRuntimeFontSupport(), {colorEmoji: 'unknown'});
+  const families: string[] = [];
+  class Face {
+    constructor(readonly family: string) { families.push(family); }
+    async load() { if (this.family === 'Noto Color Emoji') throw new Error('real emoji failure'); return this; }
+  }
+  await assert.rejects(loadPromptFrameRuntimeFonts({add() { assert.fail('no partial set'); }} as unknown as FontFaceSet,
+    Face as unknown as typeof FontFace), /real emoji failure/);
+  assert.deepEqual(families, ['Inter', 'Noto Sans SC', 'Noto Color Emoji']);
 });

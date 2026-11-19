@@ -22,6 +22,22 @@ export const PROMPTFRAME_RUNTIME_FONTS = [
   },
 ] as const;
 
+/** Format support is separate from successful font decoding and installation. */
+export function promptFrameRuntimeFontSupport(): {
+  colorEmoji: 'supported' | 'unsupported' | 'unknown';
+  reasonCode?: 'font.color_emoji_format_unsupported';
+} {
+  if (typeof CSS === 'undefined' || typeof CSS.supports !== 'function') return {colorEmoji: 'unknown'};
+  try {
+    return CSS.supports('font-tech(color-COLRv1)')
+      ? {colorEmoji: 'supported'}
+      : {colorEmoji: 'unsupported', reasonCode: 'font.color_emoji_format_unsupported'};
+  } catch {
+    // Older hosts without the query still use the real decoder; failure stays visible.
+    return {colorEmoji: 'unknown'};
+  }
+}
+
 const GENERIC = /^(?:serif|sans-serif|monospace|cursive|fantasy|system-ui|ui-serif|ui-sans-serif|ui-monospace|ui-rounded|emoji|math|fangsong)$/i;
 
 /** Keep declared families, then fixed glyph fallbacks, before host generics. */

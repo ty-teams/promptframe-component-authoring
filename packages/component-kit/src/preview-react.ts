@@ -1,5 +1,5 @@
 import React from 'react';
-import { loadPromptFrameRuntimeFonts, promptFrameFontStack } from './fonts.js';
+import { loadPromptFrameRuntimeFonts, promptFrameFontStack, promptFrameRuntimeFontSupport } from './fonts.js';
 import { selectComponentPreviewDurationFrames } from '@promptframe/contracts';
 import {
   promptFramePublicResource,
@@ -567,6 +567,7 @@ export function PromptFramePreviewApp<TProps extends Record<string, unknown>>({
   };
 
   const fillPlayerByWidth = previewState.size.width >= previewState.size.height;
+  const usesHostEmoji = promptFrameRuntimeFontSupport().colorEmoji === 'unsupported';
 
   return React.createElement(
     'main',
@@ -613,6 +614,11 @@ export function PromptFramePreviewApp<TProps extends Record<string, unknown>>({
           'data-promptframe-preview-controls-scroll': 'true',
           style: previewScrollStyle,
         },
+        usesHostEmoji && React.createElement('p', {
+          role: 'note', 'data-promptframe-emoji-fallback': 'host', style: previewMutedTextStyle,
+        }, previewState.locale === 'zh'
+          ? '当前浏览器不支持固定彩色 Emoji，将使用系统字体；部分符号可能无法显示。'
+          : 'This browser uses system emoji fonts; some symbols may differ or be unavailable.'),
         React.createElement(
           'section',
           {

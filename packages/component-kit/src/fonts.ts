@@ -1,5 +1,5 @@
-import { PROMPTFRAME_RUNTIME_FONTS } from './runtime-fonts.js';
-export { PROMPTFRAME_RUNTIME_FONTS, promptFrameFontStack } from './runtime-fonts.js';
+import { PROMPTFRAME_RUNTIME_FONTS, promptFrameRuntimeFontSupport } from './runtime-fonts.js';
+export { PROMPTFRAME_RUNTIME_FONTS, promptFrameFontStack, promptFrameRuntimeFontSupport } from './runtime-fonts.js';
 
 const loads = new WeakMap<FontFaceSet, Promise<void>>();
 
@@ -10,13 +10,14 @@ export function loadPromptFrameRuntimeFonts(
 ): Promise<void> {
   const existing = loads.get(fonts);
   if (existing) return existing;
+  const useFixedEmoji = promptFrameRuntimeFontSupport().colorEmoji !== 'unsupported';
   const decode = (async () => {
     const modules = await Promise.all([
       import('./fonts/inter.generated.js'),
       import('./fonts/notoSansSC.generated.js'),
-      import('./fonts/notoColorEmoji.generated.js'),
+      ...(useFixedEmoji ? [import('./fonts/notoColorEmoji.generated.js')] : []),
     ]);
-    return Promise.all(PROMPTFRAME_RUNTIME_FONTS.map(async (font, index) => {
+    return Promise.all(PROMPTFRAME_RUNTIME_FONTS.filter(font => useFixedEmoji || font.id !== 'notoColorEmoji').map(async (font, index) => {
       const face = new createFace(font.family, `url("${modules[index]!.FONT_DATA_URL}") format("${font.format}")`, {
         style: font.style, weight: font.weight, display: 'block',
       });

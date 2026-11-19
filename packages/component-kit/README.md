@@ -24,6 +24,10 @@ and use `promptFrameFontStack(primaryFamily)` for text. The small catalog is
 also available from `@promptframe/component-kit/runtime-fonts` without loading
 the font bytes. The loader accepts no external font URL. Decode errors and a
 30-second loading deadline reject rather than silently changing fonts.
+浏览器明确报告不支持 COLRv1 时，加载器仍加载固定 Inter 和中文字体，Emoji
+改用宿主字体，预览会提示字形差异或符号缺失。自定义宿主可读取
+`promptFrameRuntimeFontSupport()` 显示同一提示。未知格式支持仍需实际解码；
+字体损坏和加载超时不会被当成成功回退。
 
 ## Usage
 
