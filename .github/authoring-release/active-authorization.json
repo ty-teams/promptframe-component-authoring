@@ -1,21 +1,26 @@
 {
   "schemaVersion": "promptframe-authoring-release-authorization/v2",
   "state": "publish_ready",
-  "releaseId": "authoring-release-2026-11-17.5",
-  "artifactTag": "authoring-candidate-2026-11-17.5",
-  "releaseTag": "authoring-release-2026-11-17.5",
-  "sourceCommit": "c50e0cfe9728eaa16b85c817ab953f5a11094820",
-  "candidateManifestDigest": "sha256:9cb17a70b0d89168e00e1054511e38686098037a501ac02830421f4d22779b74",
-  "platformGateDigest": "sha256:480c7652113daaee2d2827f8911f2b9c9ff29776d95bfe4bffb276d9ba9611ec",
-  "releaseDigest": "sha256:48db0c2e676741ac482f027e2abf0aa832d17701b521c210b31acc446541d681",
-  "createdAt": "2026-11-17T08:13:20.935Z",
-  "expiresAt": "2026-11-22T07:55:24.777Z",
+  "releaseId": "authoring-release-2026-11-19.1",
+  "artifactTag": "authoring-candidate-2026-11-19.1-r4",
+  "releaseTag": "authoring-release-2026-11-19.1",
+  "sourceCommit": "e28fe0ebeffddbdf182a5687ab6401462ec8705e",
+  "candidateManifestDigest": "sha256:61a90ef2fb539fa4bdc6ffa0b753b403a64a44d1f1574120386d60361bf1f595",
+  "platformGateDigest": "sha256:82c1fcba03d0a1c984e6a83f2b6e59d6909979641ceb93486eb1ee646f4ba57b",
+  "releaseDigest": "sha256:f8649049cefc121d3e4a72cd8b556b338df3766b70bb935d6da1351167f3caa5",
+  "createdAt": "2026-11-19T13:08:09.102Z",
+  "expiresAt": "2026-11-24T12:38:18.209Z",
   "packages": [
     {
       "name": "@promptframe/component-kit",
-      "version": "0.1.43",
-      "integrity": "sha512-rrAyfmPFDFCJbE3siChlPZchATS3SCrPVSxsbzbVAKdDwLgrACAJn+SmjG2kqZCzPqxJ4m3ldEr0m5WvG6Tj8w=="
+      "version": "0.1.44",
+      "integrity": "sha512-kY/G59po0GsmLMdh2nwtPXPKUlG1fMadYpXVb9mELSU6AsUSFTngoA6YgLydw+2LFOfOoqcOb/VssvLMl+uoLA=="
+    },
+    {
+      "name": "create-promptframe-component",
+      "version": "0.1.72",
+      "integrity": "sha512-/d0mhFHnKTH8D+RcxngukbpfKDL8egU+rsqb6QTYBh9ykuJm/W5LzT9mUNfd65y3BvabUvRm6txExgl377Tm2g=="
     }
   ],
-  "authorizationDigest": "sha256:690e5a43621f6534cb45cf99aebdd71d9127413d0a6096f36dd3be80bf7b8958"
+  "authorizationDigest": "sha256:addfbda108fa9898d676dc67d1379c785c61969c154107f968b011def4427e64"
 }
