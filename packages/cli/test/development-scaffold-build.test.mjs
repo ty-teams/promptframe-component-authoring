@@ -98,7 +98,7 @@ test('the actual scaffold TSX, CSS Modules, lower-case schema and named index bu
       { '.': './index.js', './jsx-runtime': './jsx-runtime.js' });
     await writeFile(join(output, 'node_modules/react/jsx-runtime.js'), 'export const jsx = () => {}; export const jsxs = jsx;');
     await runtime('remotion', 'export const AbsoluteFill=()=>{}; export const interpolate=()=>0; export const useCurrentFrame=()=>0; export const useVideoConfig=()=>({});');
-    await runtime('@promptframe/component-kit', 'export const promptFramePublicResource=()=>""; export const createPromptFrameLayout=()=>({px:x=>x});', { '.': './index.js', './layout': './index.js' });
+    await runtime('@promptframe/component-kit', 'export const promptFrameFontStack=family=>family; export const promptFramePublicResource=()=>""; export const createPromptFrameLayout=()=>({px:x=>x});', { '.': './index.js', './layout': './index.js' });
     await runtime('zod', 'const field={describe(){return this},default(){return this}}; export const z={string:()=>({...field}),object:()=>({parse:value=>value})};');
     const [component, schema, index] = await Promise.all(['component', 'schema', 'index']
       .map(name => import(pathToFileURL(join(output, built.entries[name])).href)));
