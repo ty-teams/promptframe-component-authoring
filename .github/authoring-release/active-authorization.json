@@ -1,26 +1,26 @@
 {
   "schemaVersion": "promptframe-authoring-release-authorization/v2",
   "state": "publish_ready",
-  "releaseId": "authoring-release-2026-11-19.1",
-  "artifactTag": "authoring-candidate-2026-11-19.1-r4",
-  "releaseTag": "authoring-release-2026-11-19.1",
-  "sourceCommit": "e28fe0ebeffddbdf182a5687ab6401462ec8705e",
-  "candidateManifestDigest": "sha256:61a90ef2fb539fa4bdc6ffa0b753b403a64a44d1f1574120386d60361bf1f595",
-  "platformGateDigest": "sha256:82c1fcba03d0a1c984e6a83f2b6e59d6909979641ceb93486eb1ee646f4ba57b",
-  "releaseDigest": "sha256:f8649049cefc121d3e4a72cd8b556b338df3766b70bb935d6da1351167f3caa5",
-  "createdAt": "2026-11-19T13:08:09.102Z",
-  "expiresAt": "2026-11-24T12:38:18.209Z",
+  "releaseId": "authoring-release-2026-11-19.2",
+  "artifactTag": "authoring-candidate-2026-11-19.2-r1",
+  "releaseTag": "authoring-release-2026-11-19.2",
+  "sourceCommit": "bf295f1da7257311e71e0da81e15499040e0c04e",
+  "candidateManifestDigest": "sha256:21b2ad88d8ebeb04d1990b9a29192a891bd42bc53abffcca69b0bd2044245cb0",
+  "platformGateDigest": "sha256:125f93534e07f96025e5efca31008fcf388701049dab65ab63251498c85ae0ac",
+  "releaseDigest": "sha256:6932c6cb5a7aae0776f2ab132c29d6962f2fdef15c7a4f4f0668ce55a5ec2895",
+  "createdAt": "2026-11-19T14:32:17.901Z",
+  "expiresAt": "2026-11-24T14:25:07.555Z",
   "packages": [
     {
       "name": "@promptframe/component-kit",
-      "version": "0.1.44",
-      "integrity": "sha512-kY/G59po0GsmLMdh2nwtPXPKUlG1fMadYpXVb9mELSU6AsUSFTngoA6YgLydw+2LFOfOoqcOb/VssvLMl+uoLA=="
+      "version": "0.1.45",
+      "integrity": "sha512-upCS5m/OIiQ19yzZhnlz4H+4JpVn8gLzFNEF2BC9o4R2d5oMRMJ51qaDdGSRK6Jrk+AzLQIfMedXd2a2g9ekqw=="
     },
     {
       "name": "create-promptframe-component",
-      "version": "0.1.72",
-      "integrity": "sha512-/d0mhFHnKTH8D+RcxngukbpfKDL8egU+rsqb6QTYBh9ykuJm/W5LzT9mUNfd65y3BvabUvRm6txExgl377Tm2g=="
+      "version": "0.1.73",
+      "integrity": "sha512-uXtyMb/pgsImBd/qU0RvxV6WLJpoW9BxSvBM4Ap9e6o+BMPbFrdd2FNiyENUFWqSrqwtB3s33aH9nlB2AW9pQw=="
     }
   ],
-  "authorizationDigest": "sha256:addfbda108fa9898d676dc67d1379c785c61969c154107f968b011def4427e64"
+  "authorizationDigest": "sha256:7c9e4ba67d5094ccea385a9a6c16d634146b5693f7b8c0cd05b6b670fa6c1d70"
 }
