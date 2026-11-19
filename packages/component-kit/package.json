@@ -1,12 +1,13 @@
 {
   "name": "@promptframe/component-kit",
-  "version": "0.1.43",
-  "license": "MIT",
+  "version": "0.1.44",
+  "license": "MIT AND OFL-1.1",
   "type": "module",
   "sideEffects": false,
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "fonts"
   ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -45,6 +46,14 @@
     },
     "./package.json": {
       "default": "./package.json"
+    },
+    "./runtime-fonts": {
+      "import": "./dist/runtime-fonts.js",
+      "types": "./dist/runtime-fonts.d.ts"
+    },
+    "./fonts": {
+      "import": "./dist/fonts.js",
+      "types": "./dist/fonts.d.ts"
     }
   },
   "publishConfig": {

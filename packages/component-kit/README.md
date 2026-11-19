@@ -15,6 +15,15 @@ npm install @promptframe/component-kit
 - Timing helpers for deterministic fps-aware timing and frame-driven animations.
 - Public style helpers backed by `@promptframe/contracts`.
 - Shared React preview props inspector for scaffold and platform preview surfaces.
+- Fixed Inter, Chinese and color emoji fonts with a shared readiness loader and [OFL licenses](fonts/README.md).
+
+The preview shell loads the fixed font set before mounting its video stage.
+For a custom host, use `loadPromptFrameRuntimeFonts(document.fonts)` from
+`@promptframe/component-kit/fonts`, await it before declaring the picture ready,
+and use `promptFrameFontStack(primaryFamily)` for text. The small catalog is
+also available from `@promptframe/component-kit/runtime-fonts` without loading
+the font bytes. The loader accepts no external font URL. Decode errors and a
+30-second loading deadline reject rather than silently changing fonts.
 
 ## Usage
 

@@ -11,7 +11,7 @@ const release = JSON.parse(await readFile(path.join(repoRoot, 'authoring-release
 const scaffoldRequire = createRequire(new URL('../package.json', import.meta.url));
 const scaffoldContracts = JSON.parse(await readFile(scaffoldRequire.resolve('@promptframe/contracts/package.json'), 'utf8'));
 function assertCompatibleRange(specifier, current) {
-  assert.ok(semver.satisfies(current, specifier), 'generated dependency must accept the verified published version');
+  assert.ok(semver.satisfies(current, specifier), 'generated dependency must accept the selected release version');
 }
 
 test('public templates retain their own supported SDK and runtime inputs across independent package releases', async () => {
@@ -20,7 +20,7 @@ test('public templates retain their own supported SDK and runtime inputs across 
     'packages/create-component/templates/react-remotion/package.json',
   ]) {
     const packageJson = JSON.parse(await readFile(path.join(repoRoot, templatePackagePath), 'utf8'));
-    assertCompatibleRange(packageJson.dependencies?.['@promptframe/component-kit'], PROMPTFRAME_COMPONENT_RUNTIME_GENERATION.componentKit);
+    assertCompatibleRange(packageJson.dependencies?.['@promptframe/component-kit'], release.recommendedAuthoringPackages.componentKit);
     assertCompatibleRange(packageJson.dependencies?.['@promptframe/contracts'], scaffoldContracts.version);
     assert.equal(packageJson.dependencies?.['@remotion/player'], undefined, templatePackagePath);
     assert.equal(packageJson.devDependencies?.['@remotion/player'], PROMPTFRAME_COMPONENT_RUNTIME_GENERATION.remotion, templatePackagePath);

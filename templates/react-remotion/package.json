@@ -16,15 +16,15 @@
     "upgrade": "promptframe upgrade ."
   },
   "dependencies": {
-    "@promptframe/component-kit": "0.1.41",
-    "@promptframe/contracts": "0.1.48",
+    "@promptframe/component-kit": "0.1.44",
+    "@promptframe/contracts": "0.1.51",
     "react": "19.2.5",
     "react-dom": "19.2.5",
     "remotion": "4.0.487",
     "zod": "^3.24.0"
   },
   "devDependencies": {
-    "@promptframe/cli": "0.1.85",
+    "@promptframe/cli": "0.1.88",
     "@remotion/player": "4.0.487",
     "@eslint/js": "^10.0.1",
     "@types/react": "^19.0.0",

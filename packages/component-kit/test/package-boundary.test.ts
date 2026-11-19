@@ -28,21 +28,23 @@ test('component-kit exposes only public authoring entrypoints', () => {
   assert.equal(packageJson.name, '@promptframe/component-kit');
   assert.deepEqual(Object.keys(packageJson.exports ?? {}).sort(), [
     '.',
+    './fonts',
     './layout',
     './model-react',
     './package.json',
     './preview',
     './preview-react',
+    './runtime-fonts',
     './standard',
     './style',
     './timing',
   ]);
   assert.equal(packageJson.sideEffects, false);
-  assert.deepEqual(packageJson.files, ['dist', 'README.md']);
+  assert.deepEqual(packageJson.files, ['dist', 'README.md', 'fonts']);
 });
 
 test('component-kit records PromptFrame public release provenance metadata', () => {
-  assert.equal(packageJson.license, 'MIT');
+  assert.equal(packageJson.license, 'MIT AND OFL-1.1');
   assert.equal(packageJson.repository?.type, 'git');
   assert.equal(packageJson.repository?.url, 'git+https://github.com/ty-teams/promptframe-component-authoring.git');
   assert.equal(packageJson.repository?.directory, 'packages/component-kit');

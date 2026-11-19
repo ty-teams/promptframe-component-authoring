@@ -1,6 +1,6 @@
 {
   "releaseVersion": "authoring-standard-release.v0.1.0",
-  "releaseId": "authoring-release-2026-11-17.5",
+  "releaseId": "authoring-release-2026-11-19.1",
   "contractsVersion": "promptframe-contracts.v0.1.0",
   "manifestSchemaVersion": "component-manifest.v0.1.0",
   "componentRefVersion": "component-ref.v0.1.0",
@@ -22,7 +22,7 @@
     },
     "componentKit": {
       "name": "@promptframe/component-kit",
-      "version": "0.1.43"
+      "version": "0.1.44"
     },
     "cli": {
       "name": "@promptframe/cli",
@@ -30,7 +30,7 @@
     },
     "createComponent": {
       "name": "create-promptframe-component",
-      "version": "0.1.71"
+      "version": "0.1.72"
     }
   },
   "minPackageVersions": {
@@ -41,14 +41,14 @@
   },
   "recommendedAuthoringPackages": {
     "contracts": "0.1.51",
-    "componentKit": "0.1.43",
+    "componentKit": "0.1.44",
     "cli": "0.1.88",
-    "createComponent": "0.1.71"
+    "createComponent": "0.1.72"
   },
   "scaffoldTemplates": [
     {
       "name": "react-remotion",
-      "digest": "sha256:d6909a593c26214ca6a4cf3d6d6fc9eef14832eb517e2f95dacc8a1c2e46a205"
+      "digest": "sha256:883df4915aa785ed11cd46d00253205ee7649316e7dfb1dc96b6e341feb8c1bf"
     }
   ],
   "uploadTargets": [

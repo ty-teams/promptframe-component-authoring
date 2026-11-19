@@ -1,4 +1,5 @@
 import React from 'react';
+import { loadPromptFrameRuntimeFonts, promptFrameFontStack } from './fonts.js';
 import { selectComponentPreviewDurationFrames } from '@promptframe/contracts';
 import {
   promptFramePublicResource,
@@ -458,6 +459,17 @@ export function PromptFramePreviewApp<TProps extends Record<string, unknown>>({
   );
   const [previewState, setPreviewState] = React.useState<PromptFramePreviewState<TProps>>(initialState);
   const [status, setStatus] = React.useState('');
+  const [fontState, setFontState] = React.useState<'loading' | 'ready' | 'failed'>(
+    () => typeof document === 'undefined' ? 'ready' : 'loading',
+  );
+  React.useEffect(() => {
+    let current = true;
+    void loadPromptFrameRuntimeFonts(document.fonts).then(
+      () => { if (current) setFontState('ready'); },
+      () => { if (current) setFontState('failed'); },
+    );
+    return () => { current = false; };
+  }, []);
 
   React.useEffect(() => {
     setPreviewState(initialState);
@@ -575,13 +587,18 @@ export function PromptFramePreviewApp<TProps extends Record<string, unknown>>({
           'data-promptframe-preview-player': 'true',
           style: previewPlayerStyle(previewState.size, fillPlayerByWidth),
         },
-        renderStage({
+        fontState === 'ready' ? renderStage({
           props: previewState.props,
           width: previewState.size.width,
           height: previewState.size.height,
           fps: previewState.timing.fps as PromptFramePreviewFps,
           durationFrames: previewState.timing.durationFrames,
-        }),
+        }) : React.createElement('p', {
+          role: fontState === 'failed' ? 'alert' : 'status',
+          'data-promptframe-font-state': fontState,
+        }, previewState.locale === 'zh'
+          ? (fontState === 'failed' ? '固定字体加载失败，请重新打开预览。' : '正在加载固定字体…')
+          : (fontState === 'failed' ? 'Fixed fonts failed to load. Reopen the preview.' : 'Loading fixed fonts…')),
       ),
     ),
     React.createElement(
@@ -1607,7 +1624,7 @@ const advancedJsonStyle: React.CSSProperties = { display: 'grid', gap: 6 };
 const colorFieldStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8 };
 const colorSwatchStyle: React.CSSProperties = { width: 20, height: 20, borderRadius: 999, border: '1px solid var(--pf-preview-border, #cbd5e1)', display: 'inline-block' };
 const jsonBoxStyle: React.CSSProperties = { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, overflow: 'auto', fontSize: 12 };
-const previewStageStyle: React.CSSProperties = { minWidth: 0, minHeight: 0, width: '100%', height: '100%', display: 'grid', placeItems: 'center', overflow: 'hidden' };
+const previewStageStyle: React.CSSProperties = { minWidth: 0, minHeight: 0, width: '100%', height: '100%', display: 'grid', placeItems: 'center', overflow: 'hidden', fontFamily: promptFrameFontStack() };
 const previewAsideStyle: React.CSSProperties = { alignSelf: 'stretch', background: '#f8fafc', color: '#111827', borderRadius: 8, boxSizing: 'border-box', maxHeight: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' };
 const previewScrollStyle: React.CSSProperties = { flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: 18, boxSizing: 'border-box', overscrollBehavior: 'contain' };
 const previewToolbarStickyStyle: React.CSSProperties = { position: 'sticky', top: 0, zIndex: 2, background: '#f8fafc', paddingBottom: 12, borderBottom: '1px solid #e2e8f0', display: 'grid', gap: 8 };

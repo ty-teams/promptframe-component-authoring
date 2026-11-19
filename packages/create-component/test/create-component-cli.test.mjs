@@ -6,7 +6,9 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import test from 'node:test';
 import { evaluatePromptFrameDependencyPolicy, PROMPTFRAME_COMPONENT_RUNTIME_GENERATION } from '../../contracts/dist/index.js';
-const PROMPTFRAME_AUTHORING_STANDARD_RELEASE = JSON.parse(await readFile(new URL('../../cli/authoring-release.json', import.meta.url), 'utf8'));
+// The independently versioned scaffold uses its own current template, while a
+// reused CLI keeps the release metadata it was actually published with.
+const PROMPTFRAME_AUTHORING_STANDARD_RELEASE = JSON.parse(await readFile(new URL('../../../authoring-release.json', import.meta.url), 'utf8'));
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(import.meta.dirname, '..');
