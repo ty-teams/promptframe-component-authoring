@@ -1,0 +1,7 @@
+{
+  "durationFrames": 120,
+  "fps": 30,
+  "width": 1280,
+  "height": 720,
+  "props": { "title": "Two arrows", "lowerLength": 140, "cueFrame": 72 }
+}

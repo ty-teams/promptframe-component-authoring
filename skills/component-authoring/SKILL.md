@@ -14,11 +14,13 @@ Use this skill when creating a PromptFrame component. A component is authored as
 
 Assume the human user is the visual reviewer and product judge. The CodingAI is the component author that turns the brief, user assets, public authoring skill, platform standard API output, and CLI diagnostics into a reusable component.
 
-Default external authoring is `marketplace_authoring`: design for reusable marketplace quality, clear props, responsive layout, safe defaults, and strict upload admission. If the user only needs a temporary private component inside the product, use the platform's `project_private_generation` lane instead; do not pretend a one-off private component is marketplace-ready.
+为当前作品制作的镜头可使用 `project_private_generation`。有公开发布意图时采用 `marketplace_authoring`，设计可复用的参数、响应式布局和默认示例，按相应准入检查提交。实拍或已定稿的离线镜头可直接作为视频素材编排。
 
 The CodingAI must not read PromptFrame internal platform source, agent board, REQ/TASK/QA docs, inboxes, private prompts, secrets, deployment scripts, or internal endpoint defaults.
 
 ## Read First
+
+需要在原字幕上改画面、试两版模型或跟原声调切点时，可阅读[脚手架改稿示例](../../examples/director-revisions/README.md)。每例都有可运行输入、参考画面和适用条件。
 
 - [rules/timing-ssot.md](rules/timing-ssot.md): deterministic frame timing and duration adaptation.
 - [rules/search-metadata.md](rules/search-metadata.md): how metadata, schema, source evidence, visual evidence, and feedback affect component search.

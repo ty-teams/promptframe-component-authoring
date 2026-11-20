@@ -94,6 +94,8 @@ promptframe check .
 
 如果 CLI 报 `standard.freshness.platform_behind`，说明本地工具比平台部署更新；本地 dev/check 可以继续观察，upload 需要等平台 rollout 或使用平台广告的兼容版本。
 
+反复改一镜、换本机模型或跟旁白调切点时，可按需查看[三个可运行的改稿示例](examples/director-revisions/README.md)，内含脚手架、输入素材、前后画面和判断依据。
+
 ## 素材引用槽与本地私有预览
 
 在 schema 中用 `promptFrameResourceSchema` 声明素材参数，在组件中用 `promptFrameResource` 消费。参数保存 public 路径或 `asset-proxy://` 引用；组件不读取凭据，也不调用平台解析接口。
@@ -128,7 +130,7 @@ promptframe resource set ./components/model-shot --prop /model --file ./selected
 promptframe dev . --studio-origin https://studio.example
 ```
 
-监听复用当前工作区开发连接，仅观察明确选定的路径，不因文件更新延长原24小时期限。在 Studio 连接同一工程后，于“模型临试”为对应节点和声明模型槽选择该模型；路径不发给浏览器。有效改动经自包含、大小及摘要校验后替换预览；坏更新显示原因并保留上一份已验证模型，清除或断开后恢复作品已采用素材。仅有活跃观察者时做有界补查以覆盖合并的文件事件；开发服务关闭即停止，未变化的文件不重新编译组件。普通 Vite 单组件预览仍按一次选定的文件快照读取，不把浏览器手选 File 当成持久磁盘监听。
+监听复用当前工作区开发连接，仅观察明确选定的路径，不因文件更新延长原24小时期限。导演在已有授权的开发连接上读取目标 Studio 页面当前版本、已声明的模型槽以及本机模型标识。通过 studio_preview 的 bind_model_resource 将对应摘要绑定到该页的具体节点和槽位，读回实际采用状态，再用当前页共享采帧检查画面。clear_model_resource 可清除该绑定。文件路径仅在本机使用。有效改动经自包含、大小及摘要校验后替换预览；坏更新显示原因并保留上一份已验证模型，清除或断开后恢复作品已采用素材。仅有活跃观察者时做有界补查以覆盖合并的文件事件；开发服务关闭即停止，未变化的文件不重新编译组件。普通 Vite 单组件预览仍按一次选定的文件快照读取，不把浏览器手选 File 当成持久磁盘监听。
 
 平台素材使用同一选择命令的 `--asset-ref` 和原作品 `--session-id`，不得与 `--file` 同用。项目来自正常 `promptframe init` 写入的无凭据上下文。需要先沿正常 `promptframe login --endpoint <平台API> --with-assets` 授予 `asset.read`；旧组件上传凭据不会自动扩大权限。开发服务复用现有 CLI 凭据，逐次请求当前用户、项目与作品范围内的短时只读表示，核字节 SHA 后向浏览器提供本机地址。凭据、签名 URL 和私有文件路径不会发送给组件。断网、撤权、文件变化或选择过期时，预览明确提示不可用并标明正在展示包内示例；恢复条件后刷新。
 
