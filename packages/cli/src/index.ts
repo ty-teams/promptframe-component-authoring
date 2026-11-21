@@ -9,6 +9,7 @@ import {
 import { accountKey, accountsRoot, directoryError, forgetCliCredential, identityFromKey, listLocalAccounts, multipleLocalAccounts,
   readPrivateAccountFile, validEndpoint } from './account-directory.js';
 import { recordObservation, resolveAccountRoute, sameIdentity, separateCredentialFile, type AccountRoute } from './account-routing.js';
+import { CLIENT_OBSERVATION_HEADER, clientObservation, readDisplayIdentity } from './client-observation.js';
 import { normalizePublicResourcePath } from './public-resource-path.js';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -171,6 +172,7 @@ interface UploadAuthorization {
   headers: Record<string, string>;
   summary?: Record<string, string>;
   expected?: AccountIdentity;
+  observation?: string;
 }
 
 interface PublicResourceReport {
@@ -1245,9 +1247,10 @@ async function uploadPreparedComponent(
   const payload = await fetchJson(`${endpoint}/components/marketplace/upload`, {
     method: 'POST',
     body: form,
-    ...(authorization.expected && {redirect: 'error' as const}),
+    ...((authorization.expected || authorization.observation) && {redirect: 'error' as const}),
     headers: {
       ...authorization.headers,
+      ...(authorization.observation && { [CLIENT_OBSERVATION_HEADER]: authorization.observation }),
       ...(authorization.expected && { [EXPECTED_IDENTITY_HEADER]: JSON.stringify(authorization.expected) }),
       ...buildSecurityPolicyHeaders(),
       ...buildSourceMetadataHeaders(input.source),
@@ -2880,7 +2883,13 @@ async function whoami(argv: string[]): Promise<void> {
       authorization: `Bearer ${tokenSecret}`,
     },
   }, 'whoami.http.failed');
-  const accountDirectory = recordObservation(payload, endpoint, resolveConfigPath(argv), tokenSecret);
+  const configFile = resolveConfigPath(argv);
+  const observation = clientObservation(payload, configFile);
+  if (observation) {
+    await readDisplayIdentity(endpoint, {authorization: 'Bearer ' + tokenSecret, [CLIENT_OBSERVATION_HEADER]: observation,
+      ...(accountRoute && {[EXPECTED_IDENTITY_HEADER]: JSON.stringify(accountRoute.identity)})});
+  }
+  const accountDirectory = recordObservation(payload, endpoint, configFile, tokenSecret);
   const output = {
     ...payload,
     accountDirectory,
@@ -4081,15 +4090,18 @@ async function captureUploadAuthorization(endpoint: string, argv: string[], targ
   if (expected && !accountRoute?.verified) await requireAccountBinding(endpoint, expected);
   const headers = buildRemoteHeaders(endpoint, argv, { config });
   const summary = describeAuthForEndpoint(endpoint, argv, config);
+  let verified = accountRoute?.verified;
   if (expected) {
-    const verified = accountRoute?.verified ?? await readBoundCredential(endpoint, headers.authorization, expected);
+    verified ??= await readBoundCredential(endpoint, headers.authorization, expected);
     const allowedTargets = verified.allowedUploadTargets;
     if (!Array.isArray(allowedTargets) || !Array.isArray(verified.scopes)) throw accountError('cli.auth.identity_check_unavailable');
     if (!verified.scopes.includes('component.upload') || (allowedTargets.length > 0 && !allowedTargets.includes(target))) {
       throw accountError('cli.auth.scope_missing');
     }
+  } else if (headers.authorization) {
+    verified = await readDisplayIdentity(endpoint, {authorization: headers.authorization});
   }
-  return { headers, summary, expected };
+  return { headers, summary, expected, observation: clientObservation(verified, resolveConfigPath(argv)) };
 }
 
 function describeAuthForEndpoint(endpoint: string, argv: string[], config: Record<string, unknown>): Record<string, string> | undefined {

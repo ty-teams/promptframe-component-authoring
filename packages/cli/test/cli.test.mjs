@@ -2072,7 +2072,12 @@ test('an upload keeps the selected credential and its receipt when another proce
     credential: {endpoint: server.url, tokenSecret: 'fixture-'+id, tokenId: id, tokenKind: 'human'},
   }));
   const server = await createServer(async (req, res) => {
-    headers.push(req.headers.authorization);
+    headers.push([req.url, req.headers.authorization]);
+    assert.equal(req.headers['x-promptframe-client-observation'], undefined);
+    if (req.url === '/cli/auth/whoami') {
+      res.statusCode = 404;
+      return writeJson(res, {success:false});
+    }
     if (req.url === '/components/standard') {
       await select('b');
       return writeJson(res, {success: true, sourceHash: COMPONENT_STANDARD_SOURCE_HASH});
@@ -2086,7 +2091,11 @@ test('an upload keeps the selected credential and its receipt when another proce
   const {stdout} = await execFileAsync(process.execPath,
     [cliPath, 'upload', component, '--endpoint', server.url, '--config', config, '--json'],
     {env: {PATH: process.env.PATH, HOME: root}});
-  assert.deepEqual(headers, ['Bearer fixture-a', 'Bearer fixture-a']);
+  assert.deepEqual(headers, [
+    ['/cli/auth/whoami', 'Bearer fixture-a'],
+    ['/components/standard', 'Bearer fixture-a'],
+    ['/components/marketplace/upload', 'Bearer fixture-a'],
+  ]);
   assert.equal(JSON.parse(stdout).auth.tokenId, 'a');
   assert.equal(JSON.parse(await readFile(config, 'utf8')).credential.tokenId, 'b');
 });

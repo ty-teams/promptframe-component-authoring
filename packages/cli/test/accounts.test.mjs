@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { tmpdir } from 'node:os';
+import { release, tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -11,12 +11,30 @@ import test from 'node:test';
 import { COMPONENT_STANDARD_SOURCE_HASH } from '@promptframe/contracts';
 
 const binary = fileURLToPath(new URL('../dist/index.js', import.meta.url));
+const {version: cliVersion} = JSON.parse(await readFile(new URL('../package.json', import.meta.url)));
 const invoke = promisify(execFile);
 const hash = value => 'sha256:' + createHash('sha256').update(value).digest('hex');
 const identity = account => ({contractVersion: 'promptframe-account-identity/v1',
   platformDigest: hash('fixture-platform'), accountDigest: hash(JSON.stringify(['fixture-tenant', account]))});
 const key = account => identity(account).platformDigest.slice(7) + '-' + identity(account).accountDigest.slice(7);
 const expiry = '2099-01-01T00:00:00Z';
+const whoamiPath = '/api/cli/auth/whoami';
+const uploadPath = '/api/components/marketplace/upload';
+
+function observationId(header) {
+  assert.equal(typeof header, 'string', 'expected an observation header');
+  const value = JSON.parse(decodeURIComponent(header));
+  assert.equal(header, encodeURIComponent(JSON.stringify(value)));
+  assert.deepEqual(Object.keys(value).sort(), ['application', 'applicationVersion', 'contractVersion', 'instanceId', 'systemFamily']);
+  assert.equal(value.contractVersion, 'promptframe-client-observation/v1');
+  assert.equal(value.application, 'PromptFrame CLI');
+  assert.equal(value.applicationVersion, cliVersion);
+  assert.match(value.instanceId, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  const families = {win32:'Windows', darwin:'macOS', android:'Android', ios:'iOS',
+    linux:/microsoft|wsl/i.test(release()) ? 'WSL' : 'Linux'};
+  assert.equal(value.systemFamily, families[process.platform] ?? 'unknown');
+  return value.instanceId;
+}
 
 async function fixture(t) {
   const home = await mkdtemp(path.join(tmpdir(), 'pf-account-test-'));
@@ -28,26 +46,33 @@ async function fixture(t) {
   const server = createServer(async (req, res) => {
     const token = req.headers.authorization?.slice(7) ?? '';
     const account = token.match(/^test-only-([AB])(?:-renewed)?$/)?.[1];
-    calls.push({path: req.url, account});
+    const observation = req.headers['x-promptframe-client-observation'];
+    calls.push({path: req.url, method: req.method, account, observation});
     const reply = (value, code = 200) => { res.writeHead(code, {'content-type': 'application/json'}); res.end(JSON.stringify(value)); };
     if (req.url === '/api/cli/discovery') return reply({accountIdentityBinding: {
       contractVersion: identity('A').contractVersion, platformDigest: identity('A').platformDigest, deviceStartField: 'expectedIdentity',
       uploadHeader: 'X-PromptFrame-Expected-Identity', credentialIdentityField: 'accountIdentity'}});
     if (!account || revoked.has(token)) return reply({success:false}, 401);
-    if (req.url === '/api/cli/auth/whoami') {
+    if (req.url === whoamiPath) {
       if (control.waitForWhoami) await control.waitForWhoami();
-      return reply({success:true, accountIdentity: identity(control.observed ?? account), revoked:false, expiresAt:expiry,
+      if (control.whoamiUnavailable || (observation && control.rejectObservation)) return reply({success:false}, 503);
+      const actual = identity(control.observed ?? account);
+      if (control.platform) actual.platformDigest = hash(control.platform);
+      return reply({success:true, accountIdentity: control.legacy ? undefined : actual, revoked:false, expiresAt:expiry,
         scopes:['component.status.read', 'component.upload'], allowedUploadTargets:['project_private_generation'],
-        principal:{tenantId:'fixture-tenant', userId:account, projectId:'same-project'}, tokenKind:'human', tokenId:'grant-' + account});
+        principal:{tenantId:'fixture-tenant', userId:account, projectId:'same-project'}, tokenKind:control.tokenKind ?? 'human', tokenId:'grant-' + account});
     }
     if (req.url === '/api/cli/auth/logout') { revoked.add(token); return reply({success:true}); }
     if (req.url === '/api/components/standard') {
       if (control.waitForStandard) await control.waitForStandard();
       return reply({success:true, sourceHash:COMPONENT_STANDARD_SOURCE_HASH});
     }
-    if (req.url === '/api/components/marketplace/upload') {
-      let bytes = 0; for await (const chunk of req) bytes += chunk.length;
-      uploads.push({account, original: token === 'test-only-' + account, expected: JSON.parse(req.headers['x-promptframe-expected-identity']), bytes});
+    if (req.url === uploadPath) {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      const body = Buffer.concat(chunks), expected = req.headers['x-promptframe-expected-identity'];
+      uploads.push({account, original: token === 'test-only-' + account, expected: expected && JSON.parse(expected),
+        observation, bytes: body.length, body, contentType: req.headers['content-type']});
       return reply({success:true, buildId:'build-' + account});
     }
     return reply({success:false}, 404);
@@ -203,4 +228,120 @@ test('two shell invocations can select opposite accounts and an old upload pins 
   assert.equal(f.uploads.length, 1); assert.equal(f.uploads[0].original, true);
   assert.deepEqual(f.uploads[0].expected, identity('A'));
   assert.ok(f.uploads[0].bytes > 0);
+  const byAccount = account => f.calls.filter(call => call.path === whoamiPath && call.account === account && call.observation)
+    .map(call => observationId(call.observation));
+  const a = byAccount('A'), b = byAccount('B');
+  assert.ok(a.length && b.length);
+  assert.ok(a.every(id => id === observationId(f.uploads[0].observation)));
+  assert.ok(b.every(id => id === b[0] && id !== a[0]));
+  assert.ok(f.calls.filter(call => ![whoamiPath, uploadPath].includes(call.path)).every(call => call.observation === undefined));
+});
+
+async function whoamiDevice(f, file, env = {}) {
+  const before = f.calls.length;
+  const {stdout, stderr} = await f.execute(['whoami', '--config', file], env);
+  const checks = f.calls.slice(before).filter(call => call.path === whoamiPath);
+  const reported = checks.filter(call => call.observation !== undefined);
+  assert.equal(reported.length, 1);
+  const id = observationId(reported[0].observation);
+  assert.ok(!stdout.includes(id) && !stderr.includes(id));
+  return {identity: JSON.parse(stdout).accountIdentity, id, checks};
+}
+
+test('cold concurrent whoami confirms each bearer before reporting one stable profile instance', async t => {
+  const f = await fixture(t);
+  // An existing personal login from before the observation contract.
+  await mkdir(path.dirname(f.original), {recursive:true, mode:0o700});
+  const credential = {endpoint:f.endpoint, tokenSecret:'test-only-A', tokenKind:'human', expiresAt:expiry};
+  await writeFile(f.original, JSON.stringify({endpoint:f.endpoint, credential}), {mode:0o600});
+  let arrivals = 0, release;
+  const both = new Promise(resolve => { release = resolve; });
+  f.control.waitForWhoami = async () => { if (++arrivals === 2) release(); await both; };
+  const first = await Promise.all([f.run('whoami','--config',f.original), f.run('whoami','--config',f.original)]);
+  delete f.control.waitForWhoami;
+  assert.deepEqual(first.map(row => row.accountIdentity), [identity('A'), identity('A')]);
+  assert.deepEqual(f.calls.slice(0, 2).map(call => [call.method, call.path, call.account, call.observation]),
+    Array(2).fill(['GET', whoamiPath, 'A', undefined]));
+  const reports = f.calls.filter(call => call.observation !== undefined);
+  assert.equal(reports.length, 2);
+  assert.ok(reports.every(call => call.method === 'GET' && call.path === whoamiPath && call.account === 'A'));
+  const id = observationId(reports[0].observation);
+  assert.equal(observationId(reports[1].observation), id);
+  assert.deepEqual(JSON.parse(await readFile(f.original)).credential, credential);
+  assert.equal((await whoamiDevice(f, f.original)).id, id);
+
+  const other = path.join(f.home,'second-profile.json');
+  await f.login('A', '--config', other);
+  assert.notEqual((await whoamiDevice(f, other)).id, id);
+  await f.login('A', '--config', f.original);
+  await f.login('A-renewed', '--config', f.original);
+  assert.equal((await whoamiDevice(f, f.original)).id, id);
+  f.control.platform = 'second-fixture-platform';
+  assert.notEqual((await whoamiDevice(f, f.original)).id, id);
+  delete f.control.platform;
+  f.control.rejectObservation = true;
+  const failedReport = await whoamiDevice(f, f.original);
+  assert.deepEqual(failedReport.identity, identity('A'));
+  assert.equal(failedReport.id, id);
+  delete f.control.rejectObservation;
+  await rm(path.join(f.root, 'client-observations'), {recursive:true});
+  assert.notEqual((await whoamiDevice(f, f.original)).id, id);
+});
+
+test('ordinary upload observes the actual override credential and only transports the original archive', async t => {
+  const f = await fixture(t);
+  await f.login('A');
+  const a = await whoamiDevice(f, f.original);
+  const archive = Buffer.from('fixture component archive'), zip = path.join(f.home,'source.zip');
+  await writeFile(zip, archive);
+  const before = f.calls.length;
+  const result = await f.execute(['upload', zip, '--config', f.original], {PROMPTFRAME_CLI_TOKEN:'test-only-B'});
+  const calls = f.calls.slice(before);
+  assert.equal(JSON.parse(result.stdout).jobId, 'build-B');
+  assert.ok(calls.every(call => call.account === 'B'));
+  assert.ok(calls.some(call => call.method === 'GET' && call.path === whoamiPath && call.observation === undefined));
+  assert.ok(calls.filter(call => call.path !== whoamiPath && call.path !== uploadPath).every(call => call.observation === undefined));
+  assert.equal(f.uploads.length, 1);
+  const [upload] = f.uploads;
+  assert.equal(upload.expected, undefined);
+  const b = observationId(upload.observation);
+  assert.notEqual(b, a.id);
+  assert.ok(calls.filter(call => call.observation).every(call => observationId(call.observation) === b));
+  assert.ok(!result.stdout.includes(b) && !result.stderr.includes(b));
+  const form = await new Response(upload.body, {headers:{'content-type':upload.contentType}}).formData();
+  assert.deepEqual([...form.keys()], ['file']);
+  assert.deepEqual(Buffer.from(await form.get('file').arrayBuffer()), archive);
+  const verified = await whoamiDevice(f, f.original, {PROMPTFRAME_CLI_TOKEN:'test-only-B'});
+  assert.deepEqual(verified.identity, identity('B'));
+  assert.equal(verified.id, b);
+  assert.equal((await whoamiDevice(f, f.original)).id, a.id);
+});
+
+test('ordinary upload succeeds once without device metadata when verification or private storage is unavailable', async t => {
+  const f = await fixture(t);
+  await f.login('A');
+  const zip = path.join(f.home, 'source.zip');
+  await writeFile(zip, 'fixture component');
+  const credential = JSON.parse(await readFile(f.original)).credential;
+  async function checkUpload() {
+    const before = f.calls.length, posts = f.uploads.length;
+    assert.equal((await f.run('upload', zip, '--config', f.original)).jobId, 'build-A');
+    assert.equal(f.uploads.length, posts + 1);
+    assert.ok(f.calls.slice(before).every(call => call.observation === undefined));
+    assert.deepEqual(JSON.parse(await readFile(f.original)).credential, credential);
+  }
+  f.control.legacy = true;
+  await checkUpload();
+  delete f.control.legacy;
+  f.control.tokenKind = 'ci';
+  await checkUpload();
+  delete f.control.tokenKind;
+  f.control.whoamiUnavailable = true;
+  await checkUpload();
+  delete f.control.whoamiUnavailable;
+  await writeFile(path.join(f.root, 'client-observations'), 'occupied', {mode:0o600, flag:'wx'});
+  await checkUpload();
+  const before = f.calls.length;
+  assert.deepEqual((await f.run('whoami', '--config', f.original)).accountIdentity, identity('A'));
+  assert.ok(f.calls.slice(before).every(call => call.path === whoamiPath && call.observation === undefined));
 });

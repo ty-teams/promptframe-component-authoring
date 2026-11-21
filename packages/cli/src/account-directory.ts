@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { closeSync, constants, fstatSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync,
-  opendirSync, readSync, realpathSync, renameSync, unlinkSync, writeFileSync, type Stats } from 'node:fs';
+  mkdtempSync, opendirSync, readSync, realpathSync, renameSync, rmdirSync, unlinkSync, writeFileSync, type Stats } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { readAccountIdentity, type AccountIdentity } from './account-identity.js';
@@ -133,6 +133,35 @@ function atomicAccountFile(file: string, value: RecordObject | AccountReference)
 }
 
 function idFor(client: Client, file: string) { return digest(JSON.stringify([client, resolve(file)])); }
+
+export function cliObservationInstance(root: string, identity: AccountIdentity, configFile: string): string {
+  const parent = join(root, 'client-observations', 'v1', identity.platformDigest.slice(7), identity.accountDigest.slice(7));
+  const dir = join(parent, idFor('component-cli', configFile).slice(7));
+  const file = 'instance.json';
+  if (!checkedDirectory(root, dir, false)) {
+    checkedDirectory(root, parent, true);
+    const pending = mkdtempSync(join(parent, '.instance-'));
+    try {
+      atomicAccountFile(join(pending, file), {contractVersion: 'promptframe-client-instance/v1', instanceId: randomUUID()});
+      // A directory containing a complete record cannot be replaced by a concurrent first observation.
+      try { renameSync(pending, dir); }
+      catch (error) {
+        if (!['EEXIST', 'ENOTEMPTY'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
+      }
+    } finally {
+      try { unlinkSync(join(pending, file)); } catch (error) { if (!missing(error)) throw error; }
+      try { rmdirSync(pending); } catch (error) { if (!missing(error)) throw error; }
+    }
+    checkedDirectory(root, dir, false);
+  }
+  const data = readPrivateAccountFile(join(dir, file));
+  if (data?.contractVersion !== 'promptframe-client-instance/v1' || Object.keys(data).length !== 2 ||
+      typeof data.instanceId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(data.instanceId)) {
+    throw directoryError();
+  }
+  return data.instanceId;
+}
+
 function folder(root: string, identity: AccountIdentity, client: Client) {
   return join(root, 'identities', identity.platformDigest.slice(7), identity.accountDigest.slice(7), client);
 }
