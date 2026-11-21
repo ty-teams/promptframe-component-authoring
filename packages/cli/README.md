@@ -12,6 +12,17 @@ Use it to inspect the public component standard, check component folders, valida
 
 运行 `promptframe check . --endpoint "$PROMPTFRAME_API_BASE" --json` 可比较平台标准和各包最低版本。离线 `standard` 读取本机发行资料。项目实际依赖可从包管理器和锁文件核对。
 
+### 终端诊断语言
+
+语言按 `PROMPTFRAME_LANG`、`LC_ALL`、`LC_MESSAGES`、`LANG` 的顺序取首个非空值。支持 `zh`、`en` 及其地区形式（例如 `zh_CN.UTF-8`、`en-US`）；未设置、`C`、`POSIX` 或不支持的语言回退英文。
+
+```bash
+PROMPTFRAME_LANG=zh npx --no-install promptframe standard --json
+PROMPTFRAME_LANG=en npx --no-install promptframe doctor . --json
+```
+
+PowerShell 可先设置 `$env:PROMPTFRAME_LANG = 'zh'`，再运行命令。语言覆盖标准新鲜度、`doctor`、`upgrade`、脚手架过时和常见布局/样式诊断。人读与 JSON 的 `message`、`repairHint` 随语言变化；错误码、严重程度、退出码、路径、版本和可复制命令保持不变。未知诊断保留原文。语言不会改写 manifest、组件 props、源文件或已保存的检查报告。
+
 ```bash
 npm install -D @promptframe/cli
 npx promptframe dev .

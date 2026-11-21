@@ -2,6 +2,7 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { PromptFrameCliError } from './cli-error.js';
+import { terminalDiagnostic, terminalHeading, terminalOutput } from './terminal-language.js';
 import {
   accountError, EXPECTED_IDENTITY_HEADER, identityResponseError, parseExpectedIdentity,
   readAccountIdentity, readBoundCredential, requireAccountBinding, type AccountIdentity,
@@ -468,7 +469,8 @@ function doctor(argv: string[]): void {
     printJson(output);
     return;
   }
-  console.log(`doctor passed: ${dir}`);
+  console.log(terminalHeading(`doctor passed: ${dir}`, `doctor 检查通过：${dir}`));
+  printDiagnostics(diagnostics);
 }
 
 function validate(argv: string[]): void {
@@ -666,7 +668,9 @@ function upgrade(argv: string[]): void {
     printJson(output);
     return;
   }
-  console.log(apply ? `upgrade applied: ${dir}` : `upgrade dry-run: ${dir}`);
+  console.log(apply
+    ? terminalHeading(`upgrade applied: ${dir}`, `upgrade 已应用：${dir}`)
+    : terminalHeading(`upgrade dry-run: ${dir}`, `upgrade 预览变更：${dir}`));
   for (const change of packageChanges) {
     console.log(`${change.dependencySet} ${change.name}: ${change.current ?? '<missing>'} -> ${change.next}`);
   }
@@ -5553,9 +5557,10 @@ function diagnostic(
 }
 
 function printDiagnostics(diagnostics: PrintableDiagnostic[]): void {
-  for (const item of diagnostics) {
+  for (const original of diagnostics) {
+    const item = terminalDiagnostic(original);
     console.log(`${item.severity.toUpperCase()} ${item.code}: ${item.message}`);
-    if (item.repairHint) console.log(`Hint: ${item.repairHint}`);
+    if (item.repairHint) console.log(`${terminalHeading('Hint', '提示')}: ${item.repairHint}`);
   }
 }
 
@@ -5689,7 +5694,7 @@ function requiredPayloadString(payload: Record<string, unknown>, key: string, co
 }
 
 function printJson(value: unknown): void {
-  console.log(JSON.stringify(value, null, 2));
+  console.log(JSON.stringify(terminalOutput(value), null, 2));
 }
 
 function fail(message: string, code: string, exitCode = 1, repairHint?: string): never {
@@ -5773,15 +5778,17 @@ try {
 } catch (error) {
   if (error instanceof PromptFrameCliError) {
     if (hasFlag(args, '--json')) {
-      console.error(JSON.stringify({
+      console.error(JSON.stringify(terminalOutput({
         success: false,
         command,
         diagnostic: diagnostic(error.code, 'error', error.message, error.repairHint),
         failureReason: error.message,
         retryable: false,
-      }, null, 2));
+      }), null, 2));
     } else {
-      console.error(`${error.code}: ${error.message}`);
+      const translated = terminalDiagnostic({code: error.code, message: error.message, repairHint: error.repairHint});
+      console.error(`${error.code}: ${translated.message}`);
+      if (translated.repairHint) console.error(`${terminalHeading('Hint', '提示')}: ${translated.repairHint}`);
     }
     process.exit(error.exitCode);
   }

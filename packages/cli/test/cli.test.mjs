@@ -18,10 +18,11 @@ import {
 // Personal credentials/config must never turn an offline fixture into a live read.
 const testConfigRoot=await mkdtemp(path.join(os.tmpdir(),'promptframe-cli-suite-config-'));
 const isolatedKeys=['PROMPTFRAME_CONFIG','PROMPTFRAME_API_BASE','REMOTION_MEDIA_API_BASE','PROMPTFRAME_CLI_TOKEN','PROMPTFRAME_CI_TOKEN',
-  'XDG_CONFIG_HOME','PROMPTFRAME_ACCOUNT','PROMPTFRAME_ACCOUNT_DIRECTORY','PROMPTFRAME_AUTH_TOKEN'];
+  'XDG_CONFIG_HOME','PROMPTFRAME_ACCOUNT','PROMPTFRAME_ACCOUNT_DIRECTORY','PROMPTFRAME_AUTH_TOKEN','PROMPTFRAME_LANG'];
 const originalEnv=Object.fromEntries(isolatedKeys.map(key=>[key,process.env[key]]));
 for(const key of isolatedKeys)delete process.env[key];process.env.PROMPTFRAME_CONFIG=path.join(testConfigRoot,'config.json');
 process.env.XDG_CONFIG_HOME=testConfigRoot;
+process.env.PROMPTFRAME_LANG='en';
 after(async()=>{for(const key of isolatedKeys){if(originalEnv[key]===undefined)delete process.env[key];else process.env[key]=originalEnv[key];}await rm(testConfigRoot,{recursive:true,force:true});});
 const execFileAsync = promisify(execFile);
 const PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS = PROMPTFRAME_AUTHORING_STANDARD_RELEASE.recommendedAuthoringPackages;
