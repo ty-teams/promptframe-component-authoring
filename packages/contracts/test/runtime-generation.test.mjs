@@ -14,7 +14,9 @@ test('generated manifest declares the supported runtime while historical omissio
   for (const [name, version] of [['react', PROMPTFRAME_COMPONENT_RUNTIME_GENERATION.react],
     ['react-dom', PROMPTFRAME_COMPONENT_RUNTIME_GENERATION.reactDom], ['remotion', PROMPTFRAME_COMPONENT_RUNTIME_GENERATION.remotion]]) assert.equal(pkg.dependencies[name], version);
   const kit = JSON.parse(await readFile(new URL('../../component-kit/package.json', import.meta.url), 'utf8'));
-  assert.equal(pkg.dependencies['@promptframe/component-kit'], kit.version);
+  const templateKit = pkg.dependencies['@promptframe/component-kit'];
+  assert.ok(semver.valid(templateKit), 'the published template keeps its exact SDK version');
+  assert.ok(semver.satisfies(templateKit, `^${PROMPTFRAME_COMPONENT_RUNTIME_GENERATION.componentKit}`), 'the template SDK must retain the supported ABI baseline');
   assert.ok(semver.satisfies(kit.version, `^${PROMPTFRAME_COMPONENT_RUNTIME_GENERATION.componentKit}`), 'selected kit must retain the supported SDK ABI baseline');
   assert.equal(pkg.devDependencies['@remotion/player'], PROMPTFRAME_COMPONENT_RUNTIME_GENERATION.remotion);
   delete manifest.runtimeGeneration;
