@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {PROMPTFRAME_AUTHORING_STANDARD_RELEASE} from '../dist/authoring-release.js';
 import { execFile, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
@@ -2970,6 +2971,44 @@ test('directory upload returns local reusability diagnostics with the accepted p
   }
 });
 
+test('after the upload response is lost the printed digest recovers that build with no second upload', async t => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-lost-upload-'));
+  t.after(() => rm(dir, {recursive: true, force: true}));
+  const zip = path.join(dir, 'component.zip');
+  await writeFile(zip, 'test component source');
+  let build;
+  const calls = [];
+  const server = await createServer(async (req, res) => {
+    const pathname = new URL(req.url, 'http://localhost').pathname;
+    calls.push([req.method, pathname]);
+    if (pathname === '/components/standard') return writeJson(res, {success: true, sourceVersion: 'component-standard.v0.1.0', sourceHash: COMPONENT_STANDARD_SOURCE_HASH});
+    if (req.method === 'POST' && pathname === '/components/marketplace/upload') {
+      const form = await new Response(req, {headers: req.headers}).formData();
+      const bytes = Buffer.from(await form.get('file').arrayBuffer());
+      build = {buildId: 'accepted-once', sourceArchive: {sha256: 'sha256:' + createHash('sha256').update(bytes).digest('hex')}, admission: {uploadTarget: 'project_private_generation'}};
+      res.destroy();
+      return;
+    }
+    if (pathname === '/components/marketplace/self/builds') return writeJson(res, {success: true, items: [build], page: {hasNextPage: false}});
+    if (pathname === '/components/marketplace/builds/accepted-once') return writeJson(res, {success: true, build});
+    res.writeHead(404).end();
+  });
+  t.after(() => server.close());
+  const options = ['--endpoint', server.url, '--json'];
+  let sent;
+  await assert.rejects(execFileAsync('node', [cliPath, 'upload', zip, ...options]), error => {
+    assert.match(error.stderr, /upload\.outcome_unconfirmed/);
+    sent = error.stderr.trim().split('\n').filter(line => line.startsWith('{"type":"upload.progress"')).map(line => JSON.parse(line)).find(event => event.phase === 'upload');
+    return sent?.sourceSha256 === build.sourceArchive.sha256;
+  });
+  const result = await execFileAsync('node', [cliPath, 'status', '--source-sha256', sent.sourceSha256, '--target', sent.uploadTarget, ...options]);
+  assert.equal(JSON.parse(result.stdout).buildId, build.buildId);
+  assert.deepEqual(calls, [
+    ['GET', '/components/standard'], ['POST', '/components/marketplace/upload'],
+    ['GET', '/components/marketplace/self/builds'], ['GET', '/components/marketplace/builds/accepted-once'],
+  ]);
+});
+
 test('upload --json redacts public-unsafe platform response fields', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-upload-json-safe-'));
   const server = await createServer(async (req, res) => {
@@ -3030,6 +3069,9 @@ test('upload --json redacts public-unsafe platform response fields', async () =>
 
     assert.equal(payload.command, 'upload');
     assert.equal(payload.jobId, 'build-safe-json');
+    const uploadStep = progressEvents.find(event => event.phase === 'upload');
+    assert.equal(uploadStep.sourceSha256, payload.package.sha256);
+    assert.equal(uploadStep.uploadTarget, 'project_private_generation');
     assert.deepEqual(progressEvents.map((event) => event.type), [
       'upload.progress',
       'upload.progress',

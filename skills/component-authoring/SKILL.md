@@ -72,6 +72,7 @@ npx promptframe component create @project-namespace/my-component --display-name 
 npx promptframe upload . --endpoint <promptframe-api-base>
 npx promptframe status <buildId> --endpoint <promptframe-api-base>
 npx promptframe status <buildId> --wait --json --endpoint <promptframe-api-base>
+npx promptframe status --zip <original.zip> --wait --json --endpoint <promptframe-api-base>
 ```
 
 `status --wait` observes only that existing build, with a default 300-second budget and bounded backoff. `--timeout-seconds` changes the observation budget, and Ctrl-C stops only the observer. Read `wait.state`; failed, manual-action, timed-out and unconfirmed results are not usable-build success. Only a ready result adds a top-level locked `componentRef`. Keep the original build id and inspect its diagnostics instead of repeating upload or build.

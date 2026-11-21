@@ -32,8 +32,11 @@ npx promptframe upload ./component.zip --endpoint https://your-promptframe.examp
 npx promptframe upload ./component.zip --target project_private_generation --endpoint https://your-promptframe.example/api-proxy
 npx promptframe status <buildId> --endpoint https://your-promptframe.example/api-proxy
 npx promptframe status <buildId> --wait --json --endpoint https://your-promptframe.example/api-proxy
+npx promptframe status --zip ./component.zip --json --endpoint https://your-promptframe.example/api-proxy
 npx promptframe logout
 ```
+
+首次上传未拿到构建号时，用原 ZIP 或上传进度中的 `--source-sha256 <摘要>` 找回原构建。请使用原账号、项目和平台地址。同一文件用于不同上传目标时，可加 `--target <原目标>`。该命令只读取本人的构建，唯一匹配后可以继续 `--wait`。未观察到原单或结果不唯一时会返回具体状态，请保留原文件。
 
 Endpoint resolution is explicit and public-safe:
 

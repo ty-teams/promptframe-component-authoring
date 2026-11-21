@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import {
   chmodSync,
+  createReadStream,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -259,7 +260,7 @@ async function run(name: string, argv: string[]): Promise<void> {
     '--poll-interval-seconds', '--port', '--project-context', '--project-id',
     '--project-namespace', '--prop', '--provider', '--provider-kind', '--provider-name',
     '--reason', '--release-notes', '--scope', '--session-id', '--status', '--studio-origin', '--studio-slot', '--target',
-    '--request-id',
+    '--request-id', '--source-sha256', '--zip',
     '--tenant-id', '--timeout-seconds', '--token', '--token-id', '--upload-target',
     '--user-id', '--version-notes', '--workspace-component', '--workspace-config',
   ]);
@@ -284,6 +285,9 @@ async function run(name: string, argv: string[]): Promise<void> {
     return;
   }
   if(hasFlag(ownArgs,'--wait')&&name!=='status')fail('--wait is supported only by status.','cli.option.unsupported',2);
+  if (name !== 'status' && ownArgs.some(arg => ['--zip', '--source-sha256'].includes(arg.split('=', 1)[0]!))) {
+    fail('--zip and --source-sha256 are supported only by status.', 'cli.option.unsupported', 2);
+  }
   switch (name) {
     case 'standard':
       standard();
@@ -1071,7 +1075,6 @@ async function uploadComponent(argv: string[]): Promise<void> {
   reportUploadProgress(argv, 'standard', 'Checking platform component standard.');
   const remoteStandard = await assertRemoteStandardFreshness(endpoint, argv, [prepared.artifact.out]);
   assertSourceLayoutSupported(prepared.artifact, remoteStandard);
-  reportUploadProgress(argv, 'upload', 'Uploading source package.');
   const output = await uploadPreparedComponent(input, argv, endpoint, uploadTarget, prepared);
   reportUploadProgress(argv, 'accepted', 'Platform accepted upload.');
   if (hasFlag(argv, '--json')) {
@@ -1117,7 +1120,6 @@ async function uploadWorkspace(
   for (const item of preparedUploads) assertSourceLayoutSupported(item.prepared.artifact, remoteStandard);
   const uploads = [];
   for (const item of preparedUploads) {
-    reportUploadProgress(argv, 'upload', 'Uploading workspace source package.');
     uploads.push(await uploadPreparedComponent(item.input, argv, endpoint, uploadTarget, item.prepared));
   }
   reportUploadProgress(argv, 'accepted', 'Platform accepted workspace upload.');
@@ -1185,8 +1187,11 @@ async function uploadPreparedComponent(
   const { artifact, localReusability, diagnostics } = prepared;
   const versionNotes = resolveVersionNotes(argv);
   const file = readFileSync(artifact.out);
+  const sourceSha256 = sha256Buffer(file);
+  const lookupHint = `Read the original submission with promptframe status --source-sha256 ${sourceSha256} --target ${uploadTarget} using the same account and endpoint.`;
   const form = new FormData();
   form.set('file', new Blob([new Uint8Array(file)], { type: 'application/zip' }), basename(artifact.out));
+  reportUploadProgress(argv, 'upload', 'Uploading source package.', {sourceSha256, uploadTarget});
   const payload = await fetchJson(`${endpoint}/components/marketplace/upload`, {
     method: 'POST',
     body: form,
@@ -1197,7 +1202,13 @@ async function uploadPreparedComponent(
       ...buildVersionNotesHeaders(versionNotes),
       'x-promptframe-upload-target': uploadTarget,
     },
-  }, 'upload.http.failed');
+  }, 'upload.http.failed').catch(error => {
+    if (error instanceof PromptFrameCliError) throw error;
+    fail('The upload response was not received. The original build may have been accepted.', 'upload.outcome_unconfirmed', 2, lookupHint);
+  });
+  if (!getBuildId(payload)) {
+    fail('The upload response did not identify a build.', 'upload.outcome_unconfirmed', 2, lookupHint);
+  }
   const safePayload = sanitizePublicUploadPayload(payload);
   const versionOutcome = extractUploadVersionOutcome(payload);
   const output = sanitizePublicUploadPayload({
@@ -1217,12 +1228,13 @@ async function uploadPreparedComponent(
   return output;
 }
 
-function reportUploadProgress(argv: string[], phase: UploadProgressPhase, message: string): void {
+function reportUploadProgress(argv: string[], phase: UploadProgressPhase, message: string, source?: {sourceSha256: string; uploadTarget: AuthoringUploadTarget}): void {
   if (hasFlag(argv, '--json')) {
-    console.error(JSON.stringify({ type: 'upload.progress', phase, message }));
+    console.error(JSON.stringify({ type: 'upload.progress', phase, message, ...source }));
     return;
   }
   console.error(`PromptFrame upload progress: ${message}`);
+  if (source) console.error(`To find this upload: promptframe status --source-sha256 ${source.sourceSha256} --target ${source.uploadTarget}`);
 }
 
 function marketplaceMetadataLocaleDiagnostics(
@@ -2354,18 +2366,80 @@ function extractRemoteStandardSourceHash(payload: Record<string, unknown>): stri
     ?? stringValue(asRecord(payload.authoringStandardRelease)?.standardSourceHash);
 }
 
+async function statusSourceDigest(argv: string[]): Promise<string | undefined> {
+  const byZip = hasFlag(argv, '--zip') || valueAfter(argv, '--zip') !== undefined;
+  const byHash = hasFlag(argv, '--source-sha256') || valueAfter(argv, '--source-sha256') !== undefined;
+  if (!byZip && !byHash) return undefined;
+  if ((byZip && byHash) || (argv[0] && !argv[0].startsWith('-'))) {
+    fail('Choose one build id, --zip or --source-sha256.', 'status.source.conflicting_inputs', 2);
+  }
+  if (byHash) {
+    const value = valueAfter(argv, '--source-sha256')?.replace(/^sha256:/i, '').toLowerCase() ?? '';
+    if (!/^[a-f0-9]{64}$/.test(value)) fail('Provide the SHA-256 of the original uploaded ZIP.', 'status.source.invalid_digest', 2);
+    return 'sha256:' + value;
+  }
+  const file = requiredArg(valueAfter(argv, '--zip'), 'Provide the original uploaded ZIP.', 'status.source.zip_required');
+  try {
+    if (!statSync(file).isFile()) throw new Error();
+    const hash = createHash('sha256');
+    for await (const bytes of createReadStream(file)) hash.update(bytes);
+    return 'sha256:' + hash.digest('hex');
+  } catch {
+    fail('Could not read the selected source ZIP.', 'status.source.zip_unreadable', 2);
+  }
+}
+
+async function findOwnBuildByArchive(endpoint: string, headers: HeadersInit, digest: string, target?: AuthoringUploadTarget): Promise<string> {
+  const seenCursors = new Set<string>();
+  const matchingIds = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    const query = new URLSearchParams({pageSize: '50'});
+    if (cursor) query.set('cursor', cursor);
+    const result = await fetchJson(`${endpoint}/components/marketplace/self/builds?${query}`, {headers, redirect: 'error'}, 'status.source.lookup_failed');
+    const page = asRecord(result.page);
+    if (result.success !== true || !Array.isArray(result.items) || typeof page?.hasNextPage !== 'boolean') {
+      fail('The author build list could not be verified. The upload outcome is unknown.', 'status.source.incomplete', 2);
+    }
+    for (const item of result.items) {
+      const build = asRecord(item);
+      const archive = asRecord(build?.sourceArchive);
+      const submitted = asRecord(archive?.submittedSource);
+      const id = stringValue(build?.buildId);
+      if (!id || !stringValue(archive?.sha256)) fail('Incomplete author build data.', 'status.source.incomplete', 2);
+      if (target && asRecord(build?.admission)?.uploadTarget !== target) continue;
+      if (archive?.sha256 === digest || (submitted?.sha256 === digest && submitted.storedArchiveSha256 === archive?.sha256)) matchingIds.add(id);
+    }
+    if (matchingIds.size > 1) fail('More than one author build matches this ZIP. Specify the original upload target or an exact build id.', 'status.source.ambiguous', 2);
+    if (!page.hasNextPage) break;
+    cursor = stringValue(page.nextCursor);
+    if (!cursor || seenCursors.has(cursor)) fail('Build pagination is incomplete. The upload outcome is unknown.', 'status.source.incomplete', 2);
+    seenCursors.add(cursor);
+  } while (cursor);
+  const [id] = matchingIds;
+  if (!id) fail('No original build was observed for this ZIP under the current account and project. Keep the archive and check again.', 'status.source.unobserved', 2);
+  return id;
+}
+
 async function showStatus(argv: string[]): Promise<void> {
-  const buildId = requiredArg(argv[0]?.startsWith('-')?undefined:argv[0], 'status requires a build id', 'status.build_id.missing');
+  const digest = await statusSourceDigest(argv);
+  const explicitId = digest ? undefined : requiredArg(argv[0]?.startsWith('-')?undefined:argv[0], 'status requires a build id, --zip or --source-sha256', 'status.build_id.missing');
   const waiting=hasFlag(argv,'--wait');
   const seconds=waiting?parsePositiveSeconds(valueAfter(argv,'--timeout-seconds'),'--timeout-seconds',300):0;
   if(waiting&&(seconds<0.1||seconds>1800))fail('Status wait timeout must be between 0.1 and 1800 seconds.','status.wait.timeout_invalid',2);
   const endpoint = resolveEndpoint('status', argv);
+  const headers = buildRemoteHeaders(endpoint, argv);
+  const hasTarget = ['--target', '--upload-target'].some(flag => hasFlag(argv, flag) || valueAfter(argv, flag) !== undefined);
+  if (digest && hasTarget && !(valueAfter(argv, '--target') || valueAfter(argv, '--upload-target'))) {
+    fail('Provide the original upload target.', 'status.source.target_required', 2);
+  }
+  const target = digest && hasTarget ? resolveUploadTarget(argv) : undefined;
+  const buildId = explicitId ?? await findOwnBuildByArchive(endpoint, headers, digest!, target);
   if(waiting){
     const controller=new AbortController();let cancelledBy:string|undefined;
     const interrupt=()=>{cancelledBy='SIGINT';controller.abort('SIGINT');},terminate=()=>{cancelledBy='SIGTERM';controller.abort('SIGTERM');};
     process.once('SIGINT',interrupt);process.once('SIGTERM',terminate);
     try{
-      const headers=buildRemoteHeaders(endpoint,argv);
       const result=await waitForOriginalBuild({buildId,timeoutMs:seconds*1000,signal:controller.signal,
         read:async signal=>{const response=await fetch(`${endpoint}/components/marketplace/builds/${encodeURIComponent(buildId)}`,{headers,signal,redirect:'error'});
           if(!response.ok)throw new BuildStatusReadError(response.status);
@@ -2384,10 +2458,14 @@ async function showStatus(argv: string[]): Promise<void> {
     return;
   }
   const payload = await fetchJson(`${endpoint}/components/marketplace/builds/${encodeURIComponent(buildId)}`, {
-    headers: buildRemoteHeaders(endpoint, argv),
+    headers, redirect: 'error',
   }, 'status.http.failed');
+  if (digest && (payload.success !== true || asRecord(payload.build)?.buildId !== buildId)) {
+    fail('The status response did not confirm the matched build id.', 'status.source.incomplete', 2);
+  }
   const output = {
     ...payload,
+    ...(digest ? {buildId, sourceSha256: digest} : {}),
     command: 'status',
     endpoint,
     diagnostic: diagnostic('status.completed', 'info', 'Component build status fetched.'),
@@ -5389,6 +5467,8 @@ Commands:
     --target marketplace --strict  Alias for strict external marketplace authoring
   review-clip --from-frame N --frames N --output clip.mp4   Review original audio and motion from --video FILE or --entry FILE --composition ID [--props JSON]
   status <buildId>                 Fetch component build status
+  status --zip <original.zip>      Find an uploaded ZIP in the current author's builds
+  status --source-sha256 <digest>  Find the original upload using its SHA-256; optionally add --target or --wait
     --wait                        Observe this same build until usable, failed, manual review, or a bounded timeout
     --timeout-seconds <seconds>    --wait budget (default 300, maximum 1800); Ctrl-C stops observation only
     --fail-on-build-failed         Exit nonzero when platform build status is failed/cancelled
