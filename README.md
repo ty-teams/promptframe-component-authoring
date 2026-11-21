@@ -102,13 +102,13 @@ This writes `.github/workflows/promptframe-component.yml`. Pull requests run `pr
 
 ## Repository Layouts
 
-结构、共享源码、npm、CI 与历史源码恢复的统一选择见 [作者决策表](AUTHORING.md#authoring-decisions)。固定版本沿对应发行 tag 阅读同一节。
+第一次接手工程，先核对已安装 CLI 的发行标识，再按组件是否共用源码选择目录和上传方式。手册给出了 A、B 共用主题而 C 独立的清单，以及如何从 Studio 或 MCP 找回本人上传的某一版。见[作者决策表](AUTHORING.md#authoring-decisions)和[历史源码恢复](AUTHORING.md#restore-source)。
 
 PromptFrame supports two repository styles. Use the simple one unless you have a real multi-component team workflow.
 
 **Single component repository (recommended default):** the repository root is the component package. It contains `manifest.json`, `package.json`, `src/`, and optional `public/`. Run `promptframe check .`, `promptframe upload .`, and `promptframe setup-ci --provider github` from the root. This is the generated scaffold's default shape and is the easiest path for external authors and CodingAI.
 
-**Multi-component repository / monorepo (advanced):** the repository may contain many independent component packages, but each upload must explicitly name one component entry from `promptframe-workspace.json`. The CI token authorizes the request; it does not tell the platform which component changed. Component identity comes from the selected directory's `manifest.json`, and `promptframe workspace validate` blocks manifest/config mismatches before upload. The platform remains the final authority for project, owner, upload target, and admission checks.
+**多组件工作区。** 在 `promptframe-workspace.json` 登记组件 ID 和相对目录，`workspace validate` 会核对每个 manifest。只发布一个组件时传 `--workspace-component <id>`。在有清单的根执行 `upload .` 并省略此参数，会依次上传清单里的全部组件，每个组件有自己的构建号。
 
 Create an advanced workspace scaffold:
 
@@ -147,14 +147,14 @@ npx promptframe check . --workspace-component @marketplace/image-particle-remoti
 npx promptframe upload . --workspace-component @marketplace/image-particle-remotion --endpoint "$PROMPTFRAME_API_BASE" --json
 ```
 
-The older path-explicit form is still valid when you intentionally work inside one component directory:
+组件的源码和随包文件全部在组件目录内时，也可以从子目录操作。引用 `sharedDirectories` 的组件使用上述工作区根命令。
 
 ```bash
 cd components/motion-intro/image-particle-remotion
 npx promptframe upload . --endpoint "$PROMPTFRAME_API_BASE" --json
 ```
 
-Do not run `promptframe upload .` at a monorepo root unless that root is itself a valid single component package. Do not rely on repository names, commit messages, or tag names as the component mapping source. For CI tokens, use `promptframe setup-ci . --provider github --workspace`; it writes a matrix workflow that validates the workspace and uploads each configured component with explicit source metadata headers.
+整仓 CI 从 Git 根运行 `promptframe setup-ci . --provider github --workspace`，由矩阵逐个选择组件。目录映射来自工作区清单，授权来自对应项目的 CI Token。
 
 组件开发可使用 CLI JSON diagnostics、GitHub annotations、artifact reports 和平台 status/admission diagnostics。私有平台实现、凭据与部署配置不属于公开作者接口。
 

@@ -1,9 +1,10 @@
 ---
 name: component-authoring
 description: Build, validate, package, upload, and debug PromptFrame marketplace/private video components. Use this skill for external CodingAI and Director coding mode when authoring user components.
-runtime: developer
-visibility: public
-audience: coding-ai
+metadata:
+  runtime: developer
+  visibility: public
+  audience: coding-ai
 ---
 
 # PromptFrame Component Authoring
@@ -19,6 +20,8 @@ Assume the human user is the visual reviewer and product judge. The CodingAI is 
 The CodingAI must not read PromptFrame internal platform source, agent board, REQ/TASK/QA docs, inboxes, private prompts, secrets, deployment scripts, or internal endpoint defaults.
 
 ## Read First
+
+接手已有项目时，先在项目内用 `npx --no-install promptframe standard --json` 取得本机 CLI 的 `authoringStandardRelease.releaseId`。平台项目入门给出采用版本的固定文档。需要选工程结构、配置组件上传 CI 或恢复历史源码时，按[作者决策表](https://github.com/ty-teams/promptframe-component-authoring/blob/main/AUTHORING.md#authoring-decisions)对照本机版本和平台能力。
 
 需要在原字幕上改画面、试两版模型或跟原声调切点时，可阅读[脚手架改稿示例](../../examples/director-revisions/README.md)。每例都有可运行输入、参考画面和适用条件。
 
@@ -72,7 +75,6 @@ npx promptframe component create @project-namespace/my-component --display-name 
 npx promptframe upload . --endpoint <promptframe-api-base>
 npx promptframe status <buildId> --endpoint <promptframe-api-base>
 npx promptframe status <buildId> --wait --json --endpoint <promptframe-api-base>
-npx promptframe status --zip <original.zip> --wait --json --endpoint <promptframe-api-base>
 ```
 
 `status --wait` observes only that existing build, with a default 300-second budget and bounded backoff. `--timeout-seconds` changes the observation budget, and Ctrl-C stops only the observer. Read `wait.state`; failed, manual-action, timed-out and unconfirmed results are not usable-build success. Only a ready result adds a top-level locked `componentRef`. Keep the original build id and inspect its diagnostics instead of repeating upload or build.
@@ -129,11 +131,11 @@ Do not paste `PROMPTFRAME_CI_TOKEN` into the workflow, README, source, issue, pu
 
 ### Repository layout choice
 
-先按[作者决策表](https://github.com/ty-teams/promptframe-component-authoring/blob/authoring-release-2026-11-15.2/AUTHORING.md#authoring-decisions)选择结构、共享方式、CI 或历史源码恢复。显式清单的 `sharedDirectories` 支持选中组件实际引用的同根共享代码；普通组件路径不会自动扩大到 Git 根。
+独立镜头可以单组件起步。几个组件确实共用颜色、计算或布局代码时，在工作区清单声明 `sharedDirectories`，从工作区根选择组件。只捕获该组件实际引用的共享源码。决定由 CI 上传时，从 Git 根生成并提交工作流；子目录中的模板供复制或生成使用。
 
 Default to a single component repository. The repo root is the component package, and `promptframe check .`, `promptframe upload .`, and `promptframe setup-ci --provider github` all run from that root.
 
-Use a monorepo only when the user or team explicitly needs multiple independent components in one repository. In a monorepo, never ask the platform to infer the component from the repository, branch, commit, or tag. The CI job must pass the component directory explicitly, and the uploaded directory's `manifest.json` is the component identity source.
+在工作区根只上传当前改动的组件时，传 `--workspace-component <id>`；省略选择会上传清单中的全部组件。CI 矩阵给每个作业传入清单 ID，并核对所选 manifest。
 
 The supported monorepo SSOT is `promptframe-workspace.json`. It lists component ids and relative paths, and `promptframe workspace validate` checks that every path exists and every `manifest.json` id matches before upload.
 
@@ -159,16 +161,18 @@ npx promptframe workspace add . components/motion-intro/image-particle-remotion 
 npx promptframe workspace validate . --json
 ```
 
-The older path-explicit form remains valid when the command runs inside one component directory:
+组件全部输入都在自身目录内时，可在子目录运行以下命令。依赖已声明共享目录时使用上一段的工作区根命令。
 
 ```bash
 cd components/motion-intro/image-particle-remotion
 npx promptframe upload . --endpoint <promptframe-api-base> --json
 ```
 
-`PROMPTFRAME_CI_TOKEN` authorizes upload and status access; it does not choose the component. Keep monorepo workflows workspace-explicit and do not run `upload .` at the monorepo root unless that root is itself a valid component package. Workspace uploads send source metadata headers so the platform can record the selected workspace component id, component path, and manifest id.
+`PROMPTFRAME_CI_TOKEN` 授予相应项目的上传和状态读取权限。平台按每个已选组件记录清单 ID、组件目录与 manifest ID。
 
 ### CodingAI feedback locations
+
+查询原构建用 `status <buildId> --wait --json`。本机 `status --help` 列出 `--zip` 时，还可用原 ZIP 找回首次回执中断的构建。需要修改已上传的旧版源码时，先列出本人构建，再按准确的构建号下载到新空目录。见[历史源码恢复步骤](https://github.com/ty-teams/promptframe-component-authoring/blob/main/AUTHORING.md#restore-source)。
 
 External CodingAI should read local CLI JSON diagnostics first. In GitHub Actions, read GitHub Check annotations, the Action summary, the artifact report, and then platform status / admission diagnostics. Treat `ruleId`, `diagnostic.code`, `severity`, `failureReason`, and `retryable` as machine-readable feedback; do not scrape prose logs.
 

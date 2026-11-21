@@ -5,20 +5,27 @@
 <a id="authoring-decisions"></a>
 ## 作者决策表
 
-本节随工具链发行保存；使用固定版本时，从对应的 `authoring-release-*` tag 阅读本节。当前源码对应 contracts `0.1.46`、component-kit `0.1.40`、CLI `0.1.78`、scaffold `0.1.68`；公开版本和平台实际支持以 registry 与 `/components/standard` 为准。
+在作者工程里运行下面两条命令。第一条列出本工程安装的包版本，第二条给出实际运行的 CLI 随包携带的发行标识 `authoringStandardRelease.releaseId`。在仓库的标签选择器打开这个标识，再读同一路径的手册。例如 CLI 0.1.89 对应 [authoring-release-2026-11-21.1 的手册](https://github.com/ty-teams/promptframe-component-authoring/blob/authoring-release-2026-11-21.1/AUTHORING.md#authoring-decisions)。
+
+```bash
+npm ls --depth=0 @promptframe/cli @promptframe/component-kit @promptframe/contracts
+npx --no-install promptframe standard --json
+```
+
+Studio 的项目入门和 MCP 的 `platform_read_onboarding` 提供平台已采用的作者工具组合及四个固定文档入口，见 `navigation.componentAuthoring.release`。创作基线的版本属于导演指引。需要上传时，用当前项目的 `promptframe check . --endpoint "$PROMPTFRAME_API_BASE" --json` 对照平台标准和最低依赖；使用可选功能时再核对本机命令帮助与目标页面、平台实际返回的能力。这样可以同时使用较新的本机工具和平台已经支持的功能。
 
 | 需要 | 采用方式 | 边界与当前支持 |
 | --- | --- | --- |
-| 独立组件 | 组件根放 `manifest.json`、`package.json`、`src/`、`public/` | `check/package/upload .` 只读取此根，不因同 Git 仓而扩大边界 |
+| 独立组件 | 组件根放 `manifest.json`、`package.json`、`src/` 和可选的 `public/` | 在组件根运行 `check/package/upload .`。同一 Git 仓里有其它组件，也可逐个从各自目录操作 |
 | 同仓共享本地源码 | 工作区清单显式声明 `sharedDirectories`，从根选择 `--workspace-component` | 捕获选中组件及实际引用的共享 JS/TS/JSON/文本闭包，保留真实根相对路径；不纳入未引用组件或共享文件 |
 | 跨仓公共库 | 使用允许的精确 npm 版本并保留依赖锁证据 | 不自动内联 `workspace:*`、`file:`、宿主 `node_modules` 或任意 path alias；运行依赖仍须原准入 |
-| 手动上传 | `check` → `package` → `upload` → `status --wait` | 平台须声明 `sourcePackageLayouts` 支持 `promptframe-component-source-layout/v1`，否则新格式在上传前拒绝 |
-| CI 上传 | 原 `setup-ci --workspace` 矩阵及 upload CI Token | 组件选择来自清单和 manifest；Token 不选择组件，也不授予其它项目权限 |
-| 从历史版本恢复 | 原作者在 Studio 的构建历史选版本并下载源码；MCP 使用 `platform_read_component_source` | 逐次核项目、作者、版本和归档；MCP 只返回版本摘要与短期下载入口，不把 ZIP 塞入模型上下文，不授编辑或发布权 |
+| 手动上传 | 在目标项目 `check`，上传目录或先 `package` 再上传原 ZIP，用 `status <buildId> --wait --json` 读回锁定引用 | 普通上传默认项目私有。使用共享布局的包时平台须声明 `sourcePackageLayouts` 支持 `promptframe-component-source-layout/v1`。申请公开沿同一构建执行 `public-request` |
+| GitHub Actions 上传 | 在 Git 根运行 `promptframe setup-ci . --provider github`，清单工作区加 `--workspace` | 提交根 `.github/workflows/` 中生成的工作流后才启用。仅在组件子目录放模板不会触发整仓 CI。PR 运行检查，推送按工作流调用同一条 CLI 上传命令。CI Token 只提供相应项目与范围的权限 |
+| 从历史版本恢复 | 在自己的构建详情下载源码，或让已授权的导演读取指定的历史构建 | 用构建号定位，按该版本的 ZIP 和包内目录恢复。具体操作见下方的历史源码步骤 |
 | 依赖恢复 | 原 Git 历史和安全的原锁文件优先；归档只含脱敏锁证据 | 证据绑定 package.json 和锁摘要，不是可执行锁文件；不得把 `.npmrc`、凭据或原始锁文件发布进源包 |
 | 本地与正式预览 | 共用上述捕获输入及原 public/素材槽 | dev 输入上限仍 16MiB，正式源包仍 50MiB；CSS Modules 继续沿原限制，不支持 CSS import/URL 或全局样式 |
 
-显式共享工作区示例：
+例如同仓有三个组件，A、B 都引用同一套主题，C 有自己的样式。可用以下清单声明共享边界。
 
 ```json
 {
@@ -35,11 +42,21 @@
 组件根须互不嵌套，共享目录须与所有组件根分开。组件可从 `components/part-a/src/Component.tsx` 静态导入 `../../../shared/theme`。A/B 引用主题而 C 不引用时，修改主题只改变 A/B 的新包输入；旧固定源包不变。单组件内部合法的 `../` 引用不会仅因向上一级而拒绝，实际路径仍须在组件根内。
 
 ```bash
-npx -y -p @promptframe/cli@0.1.78 promptframe check . --workspace-component @demo/part-a --json
-npx -y -p @promptframe/cli@0.1.78 promptframe package . --workspace-component @demo/part-a --out ./part-a.zip --json
+npx --no-install promptframe workspace validate . --json
+npx --no-install promptframe check . --workspace-component @demo/part-a --json
+npx --no-install promptframe package . --workspace-component @demo/part-a --out ./part-a.zip --json
 ```
 
-每个历史 ZIP 解压到独立的新空目录，保留 `promptframe-source-layout.json` 和包内路径，然后在恢复根运行 `promptframe validate . --json`。不要把不同版本的 `shared/` 合并，不自动写回 Git；缺归档或无源码读取权时保留明确失败，不重新上传或生成替代版本。
+在有清单的工作区根，`upload .` 会依次上传所有已登记组件，每个组件有独立构建号。只交付 A 时，上传也用同一个 `--workspace-component @demo/part-a`，或上传刚生成的 `part-a.zip`。A 引用共享文件时要从工作区根选择 A。进 A 的子目录按普通单组件打包，只能使用该组件根内的源码。小型随包资源放在该组件的 `public/`，作品私有素材通过已声明的素材槽传入。试改代码、对照两版 GLB 或跟原声改节奏，可运行[三个改稿示例](examples/director-revisions/README.md)。
+
+<a id="restore-source"></a>
+### 找回已上传的那一版源码
+
+1. 先确定平台、项目和目标组件。网页端在「我的组件」的构建详情核对版本与构建号，有下载权限时点「下载此版本源码」。MCP 端在原项目有权作品上调用 `platform_read_component_source`，传 `action: "list"`、`projectId`、`sessionId`、`componentId`。结果最多列出本人在该项目提交的 100 个构建，含实际版本、构建号、归档记录与摘要。
+2. 选中对应的 `buildId`，在同一项目和作品调用该工具，传 `action: "download"` 和构建号。返回 ZIP 的 `sha256`、字节数、到期时间和两分钟有效的下载入口。下载时仍会核对授权。用返回的大小和归档摘要核对文件；链接到期时为同一构建重新申请。有权使用成品的作者，仍需具备该源包的读取权限。
+3. 每份 ZIP 解到各自的新空目录。普通包在组件根恢复；共享布局保留 `promptframe-source-layout.json`、清单及包内相对路径，从解压根运行已安装的 `promptframe validate . --json`。还原当时的依赖安装环境时回到原 Git 版本找锁文件，包内脱敏锁证据只供核对。若来源已回收或无权下载，可从自己保存的原 ZIP 或 Git 版本继续。
+
+只想观察构建是否就绪时，用 `status <buildId> --wait --json` 即可。首次回执中断时，先从本人的构建记录查原单；支持按摘要查找的 CLI 还可按原 ZIP 查询。见[构建查询的版本说明](packages/cli/README.md#build-status)。
 
 ## Preview Shell
 
