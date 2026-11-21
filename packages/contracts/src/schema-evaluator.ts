@@ -33,6 +33,9 @@ export interface PromptFrameStaticSchemaNode {
   maxItems?: number;
   minimum?: number;
   maximum?: number;
+  exclusiveMinimum?: number;
+  exclusiveMaximum?: number;
+  nullable?: boolean;
 }
 
 export type PromptFrameSchemaDiagnosticCode =
@@ -355,6 +358,11 @@ function applyZodMethod(
     required = false;
   }
   if (method === 'default' && args[0]) schema.default = readJsonLiteralValue(args[0]);
+  if (method === 'nullable' || method === 'nullish') schema.nullable = true;
+  if (method === 'positive') schema.exclusiveMinimum = 0;
+  if (method === 'nonnegative') schema.minimum = 0;
+  if (method === 'negative') schema.exclusiveMaximum = 0;
+  if (method === 'nonpositive') schema.maximum = 0;
   if (method === 'describe' && args[0] && ts.isStringLiteralLike(unwrapExpression(args[0]))) {
     schema.description = (unwrapExpression(args[0]) as ts.StringLiteralLike).text;
   }

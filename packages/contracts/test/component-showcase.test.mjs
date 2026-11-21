@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { z } from 'zod';
-import { componentShowcaseDefaultFrames, resolveComponentShowcaseGroups, ComponentShowcaseError } from '../dist/index.js';
+import { componentShowcaseDefaultFrames, resolveComponentShowcaseGroups, ComponentShowcaseError, createComponentShowcasePropsValidator } from '../dist/index.js';
 
 const preview = { width: 960, height: 540, fps: 30, durationFrames: 120,
   props: { title: 'Original', camera: { distance: 3, target: [0, 1, 0] }, values: [1, 2] } };
@@ -62,4 +62,20 @@ test('non-JSON, prototype keys, malformed structure and unbounded nested data ca
   assert.throws(() => resolve({ presets: [{ id: 'deep', label: 'Deep', propsOverride: deep }] }), error => error instanceof ComponentShowcaseError && error.code === 'component.showcase.props_depth');
   assert.throws(() => resolve(undefined, { ...preview, durationFrames: 0 }), ComponentShowcaseError);
   assert.equal({}.polluted, undefined);
+});
+
+test('static props validation preserves defaults, nullable data and exact nested field errors', () => {
+  const validate = createComponentShowcasePropsValidator({ type: 'object', required: ['count'], properties: {
+    count: { type: 'integer', minimum: 1, maximum: 120 }, color: { type: 'string', nullable: true, default: null },
+    mode: { type: 'string', enum: ['slow', 'fast'], default: 'slow' },
+  } });
+  assert.deepEqual(validate({ count: 12 }, []), { count: 12, color: null, mode: 'slow' });
+  for (const [props, field] of [[{ count: 0 }, 'count'], [{ count: 12, mode: 'bad' }, 'mode'], [{ count: 12, extra: true }, 'extra']]) {
+    assert.throws(() => validate(props, ['presets', 0, 'propsOverride']), error => error.code === 'component.showcase.props_invalid'
+      && error.path.join('.') === 'presets.0.propsOverride.' + field);
+  }
+});
+test('unresolved schema references and undeclared required properties fail before validating props', () => {
+  for (const schema of [{ $ref: 'https://invalid.example/schema' }, { type: 'object', required: ['missing'], properties: {} }])
+    assert.throws(() => createComponentShowcasePropsValidator(schema), error => error.code === 'component.showcase.schema_unsupported');
 });

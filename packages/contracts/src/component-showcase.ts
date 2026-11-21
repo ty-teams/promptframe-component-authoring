@@ -32,6 +32,21 @@ export interface ComponentShowcaseGroup extends ComponentShowcasePreview {
   frames: number[];
 }
 
+/** Compile the published, static JSON schema facts without loading a component.
+ * Resource authorization and component runtime predicates remain with the caller. */
+export function createComponentShowcasePropsValidator(schema: unknown) {
+  const validator = staticSchema(schema, []);
+  return (props: Record<string, unknown>, path: Array<string | number>): Record<string, unknown> => {
+    const result = validator.safeParse(props);
+    if (!result.success) {
+      const issue = result.error.issues[0];
+      fail('props_invalid', [...path, ...(issue?.path ?? []), ...(issue?.code === 'unrecognized_keys' ? issue.keys.slice(0, 1) : [])]);
+    }
+    if (!record(result.data)) return fail('props_json_required', path);
+    return result.data;
+  };
+}
+
 export class ComponentShowcaseError extends Error {
   constructor(readonly code: string, readonly path: Array<string | number>) {
     super(`${code}: ${path.join('.')}`);
@@ -104,5 +119,70 @@ function mergeProps(base: Record<string, unknown>, override: Record<string, unkn
     result[key] = record(value) && record(result[key])
       ? mergeProps(result[key] as Record<string, unknown>, value, [...path, key]) : value;
   }
+  return result;
+}
+
+function staticSchema(value: unknown, path: Array<string | number>, depth = 0): z.ZodTypeAny {
+  if (!record(value) || depth > 32 || ['$ref', 'oneOf', 'allOf', 'not', 'if', 'dependentSchemas'].some(key => Object.hasOwn(value, key)))
+    return fail('schema_unsupported', path);
+  const child = (node: unknown, key: string | number) => staticSchema(node, [...path, key], depth + 1);
+  const limit = (key: string) => {
+    const result = value[key];
+    if (result !== undefined && (typeof result !== 'number' || !Number.isFinite(result))) fail('schema_invalid', [...path, key]);
+    return result as number | undefined;
+  };
+  let result: z.ZodTypeAny;
+  if (value.anyOf !== undefined) {
+    if (!Array.isArray(value.anyOf) || value.anyOf.length < 2 || value.anyOf.length > 16) return fail('schema_unsupported', path);
+    const variants = value.anyOf.map((node, index) => child(node, index));
+    result = z.union(variants as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]]);
+  } else if (value.type === 'object') {
+    const properties = value.properties === undefined ? {} : value.properties;
+    if (!record(properties) || value.required !== undefined && (!Array.isArray(value.required) || value.required.some(key => typeof key !== 'string')))
+      return fail('schema_invalid', path);
+    const required = new Set(value.required as string[] | undefined);
+    if ([...required].some(key => !Object.hasOwn(properties, key))) return fail('schema_unsupported', path);
+    const shape = Object.fromEntries(Object.entries(properties).map(([key, node]) => {
+      if (['__proto__', 'constructor', 'prototype'].includes(key)) fail('props_key', [...path, key]);
+      const field = child(node, key);
+      return [key, required.has(key) || record(node) && Object.hasOwn(node, 'default') ? field : field.optional()];
+    }));
+    const object = z.object(shape);
+    result = value.additionalProperties === true ? object.passthrough()
+      : record(value.additionalProperties) ? object.catchall(child(value.additionalProperties, '*')) : object.strict();
+  } else if (value.type === 'array') {
+    let array = z.array(child(value.items ?? {}, 'items'));
+    if (limit('minItems') !== undefined) array = array.min(limit('minItems')!);
+    if (limit('maxItems') !== undefined) array = array.max(limit('maxItems')!);
+    result = array;
+  } else if (value.type === 'string') {
+    let string = z.string();
+    if (limit('minLength') !== undefined) string = string.min(limit('minLength')!);
+    if (limit('maxLength') !== undefined) string = string.max(limit('maxLength')!);
+    if (value.pattern !== undefined) {
+      if (typeof value.pattern !== 'string') return fail('schema_invalid', path);
+      try { string = string.regex(new RegExp(value.pattern)); } catch { return fail('schema_invalid', path); }
+    }
+    if (value.format === 'uri') string = string.url();
+    result = string;
+  } else if (value.type === 'number' || value.type === 'integer') {
+    let number = z.number().finite();
+    if (value.type === 'integer') number = number.int();
+    if (limit('minimum') !== undefined) number = number.min(limit('minimum')!);
+    if (limit('maximum') !== undefined) number = number.max(limit('maximum')!);
+    if (limit('exclusiveMinimum') !== undefined) number = number.gt(limit('exclusiveMinimum')!);
+    if (limit('exclusiveMaximum') !== undefined) number = number.lt(limit('exclusiveMaximum')!);
+    result = number;
+  } else if (value.type === 'boolean') result = z.boolean();
+  else if (value.type === 'null') result = z.null();
+  else if (value.type === undefined) result = z.unknown();
+  else return fail('schema_unsupported', path);
+  if (value.enum !== undefined || Object.hasOwn(value, 'const')) {
+    const values = Object.hasOwn(value, 'const') ? [value.const] : value.enum;
+    if (!Array.isArray(values) || !values.length) return fail('schema_invalid', path);
+    result = result.refine(item => values.some(allowed => JSON.stringify(allowed) === JSON.stringify(item)));
+  }
+  if (value.nullable === true) result = result.nullable();
+  if (Object.hasOwn(value, 'default')) result = result.default(() => cloneJson(value.default, path));
   return result;
 }

@@ -71,3 +71,9 @@ The helper requires no component-kit update and does not change the runtime gene
 ## 模型读取期间的授权续期
 
 `createPromptFrameModelReader` 在读取和摘要校验结束后重新核对宿主当前提供的同一引用、MIME、大小、SHA 和有效期限。同一表示的合法续期可接续在途读取；撤权、内容变化、真实到期和取消仍拒绝，单次读取的 15 秒预算不续期。返回的 ArrayBuffer 只包含验证过的 GLB 字节。
+
+## 展示预设
+
+`componentShowcaseSchema` 定义可选的 `defaultFrames` 和最多两个 `presets`。`resolveComponentShowcaseGroups` 以默认预览为底合并参数，生成准确的局部采样帧；对象递归合并，数组替换。调用方必须传入其正常预览使用的参数验证函数。`createComponentShowcasePropsValidator` 可校验公共静态 schema facts；资源授权、原渲染预算和组件运行期谓词继续由调用方处理。
+
+解析失败抛出 `ComponentShowcaseError`，包含稳定 `code` 和字段 `path`，不携带原参数正文。该 helper 不加载组件模块，不访问素材、网络或文件。

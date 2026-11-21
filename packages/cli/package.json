@@ -1,6 +1,6 @@
 {
   "name": "@promptframe/cli",
-  "version": "0.1.91",
+  "version": "0.1.92",
   "license": "MIT",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
@@ -51,7 +51,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@promptframe/contracts": "0.1.51",
+    "@promptframe/contracts": "0.1.52",
     "ignore": "7.0.14",
     "picomatch": "4.0.7",
     "postcss": "8.5.30",

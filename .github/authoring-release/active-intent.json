@@ -1,37 +1,41 @@
 {
   "schemaVersion": "promptframe-authoring-release-intent/v2",
-  "releaseId": "authoring-release-2026-11-21.4",
-  "artifactTag": "authoring-candidate-2026-11-21.4-r3",
+  "releaseId": "authoring-release-2026-11-22.1",
+  "artifactTag": "authoring-candidate-2026-11-22.1-r1",
   "registry": "https://registry.npmjs.org/",
-  "createdAt": "2026-11-21T13:36:14.394Z",
-  "expiresAt": "2026-11-25T13:36:14.394Z",
+  "createdAt": "2026-11-21T18:21:56.581Z",
+  "expiresAt": "2026-11-25T18:21:56.581Z",
   "packages": [
     {
-      "name": "@promptframe/component-kit",
-      "version": "0.1.46"
+      "name": "@promptframe/contracts",
+      "version": "0.1.52"
+    },
+    {
+      "name": "@promptframe/cli",
+      "version": "0.1.92"
+    },
+    {
+      "name": "create-promptframe-component",
+      "version": "0.1.74"
     }
   ],
   "dependencies": {
-    "componentKit": [
+    "contracts": [],
+    "cli": [
       "contracts"
+    ],
+    "createComponent": [
+      "contracts",
+      "componentKit",
+      "cli"
     ]
   },
   "reusedPackages": [
     {
-      "name": "@promptframe/contracts",
-      "version": "0.1.51",
-      "integrity": "sha512-lNkLvzJ9KDO5Xv1rdWxEuBynKWV9pyVazhD3+tbSyZH8tiE+aVF7yAMyMJ2U3dwN/GjFWLo+cJgWC3jUnZpOcw=="
-    },
-    {
-      "name": "create-promptframe-component",
-      "version": "0.1.73",
-      "integrity": "sha512-uXtyMb/pgsImBd/qU0RvxV6WLJpoW9BxSvBM4Ap9e6o+BMPbFrdd2FNiyENUFWqSrqwtB3s33aH9nlB2AW9pQw=="
-    },
-    {
-      "name": "@promptframe/cli",
-      "version": "0.1.91",
-      "integrity": "sha512-UC6NfU+8y1NS+bAAhVGYShGJzu+Dfc5Nu9tAAp8tCDgNe4K153QWmd/pWPHSBYd0Ypn1DFoT/UBL/4wU+2oiuw=="
+      "name": "@promptframe/component-kit",
+      "version": "0.1.46",
+      "integrity": "sha512-Hb7RerpPMtBF0txxZ7xdZyAMVhuhiq7rl03FzgiRXw9ocEaUaQdZnEPFAAq2g6HmaHgM+csb5xcwgjuDmONg4Q=="
     }
   ],
-  "intentDigest": "sha256:55199786a5f844d639d7e6269c9a17dc3b1120581e20598a49666ce234397d3d"
+  "intentDigest": "sha256:819fb3f1c922457633b0935425b1e9407ce980156d60d196af0cf63b68f6614b"
 }

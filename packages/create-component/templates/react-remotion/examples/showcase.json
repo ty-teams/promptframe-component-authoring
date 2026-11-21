@@ -1,0 +1,15 @@
+{
+  "defaultFrames": [0, 24, 48, 71, 95, 119],
+  "presets": [
+    {
+      "id": "alternate-title",
+      "label": "Alternative title",
+      "propsOverride": { "title": "A second message" }
+    },
+    {
+      "id": "light-background",
+      "label": "Light background",
+      "propsOverride": { "background": "#f4f1ea", "foreground": "#101114" }
+    }
+  ]
+}

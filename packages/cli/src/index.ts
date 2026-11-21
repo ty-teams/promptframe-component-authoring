@@ -45,6 +45,7 @@ import {COMPONENT_SOURCE_LAYOUT_FILE, COMPONENT_SOURCE_LAYOUT_VERSION, component
 import {componentSourceImportSpecifiers,componentSourceRequestCandidates} from '@promptframe/contracts/source-layout-evaluator';
 import {reviewClip} from './review-clip.js';
 import {BuildStatusReadError,waitForOriginalBuild,type BuildWaitState} from './build-status-wait.js';
+import { validateSourceShowcase } from './showcase.js';
 import {
   COMPONENT_MANIFEST_SCHEMA_VERSION,
   COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION,
@@ -4461,7 +4462,8 @@ function validatePreviewProps(dir: string, manifest: ComponentManifest): void {
   if (references.some(row => row.source !== 'public')) fail(
     'Private resource selections belong in resource set drafts; public preview props must use package examples.',
     'component_standard.preview.private_resource_reference');
-
+  validateSourceShowcase({ root: dir, preview: preview as unknown as import('@promptframe/contracts').ComponentShowcasePreview,
+    facts: schemaFacts, fail });
 }
 
 function assertActionSlotsMatchSchema(manifest: ComponentManifest, facts: PromptFrameSchemaFacts): void {

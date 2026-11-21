@@ -5351,6 +5351,29 @@ function zipEntryNames(zip) {
   return names;
 }
 
+test('package validates optional showcase frames and merged props before preserving the exact declaration in the ZIP', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-showcase-package-'));
+  const componentDir = path.join(dir, 'component');
+  try {
+    await writeFixtureComponent(componentDir);
+    await writeFile(path.join(componentDir, 'src/schema.ts'), "import {z} from 'zod'; export const propsSchema=z.object({count:z.number().int().min(1).max(120).describe('Count duration').default(18)});\n");
+    const declaration = JSON.stringify({ presets: [{ id: 'faster', label: 'Faster', propsOverride: { count: 12 }, frames: [0, 8, 17, 18, 24, 59] }] });
+    await writeFile(path.join(componentDir, 'src/showcase.json'), declaration);
+    const output = path.join(dir, 'component.zip');
+    const accepted = await execFileAsync('node', [cliPath, 'package', componentDir, '--out', output, '--json']);
+    assert.equal(JSON.parse(accepted.stdout).out, output);
+    assert.ok(zipEntryNames(await readFile(output)).includes('src/showcase.json'));
+    assert.equal(await readFile(path.join(componentDir, 'src/showcase.json'), 'utf8'), declaration);
+    for (const [value, code] of [
+      [{ presets: [{ id: 'bad', label: 'Bad', propsOverride: { count: 0 } }] }, 'component.showcase.props_invalid'],
+      [{ defaultFrames: [0, 8, 17, 18, 24, 60] }, 'component.showcase.frame_out_of_range'],
+    ]) {
+      await writeFile(path.join(componentDir, 'src/showcase.json'), JSON.stringify(value));
+      await assert.rejects(execFileAsync('node', [cliPath, 'package', componentDir, '--out', path.join(dir, 'rejected.zip'), '--json']), error => String(error.stderr).includes(code));
+    }
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 async function writeFixtureComponent(componentDir) {
   await writeFileTree(componentDir, {
     'package.json': JSON.stringify({
