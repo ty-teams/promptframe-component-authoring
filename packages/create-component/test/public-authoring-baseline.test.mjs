@@ -20,7 +20,9 @@ test('public templates retain their own supported SDK and runtime inputs across 
     'packages/create-component/templates/react-remotion/package.json',
   ]) {
     const packageJson = JSON.parse(await readFile(path.join(repoRoot, templatePackagePath), 'utf8'));
-    assertCompatibleRange(packageJson.dependencies?.['@promptframe/component-kit'], release.recommendedAuthoringPackages.componentKit);
+    const kit = packageJson.dependencies?.['@promptframe/component-kit'];
+    assert.ok(semver.validRange(kit));
+    assert.ok(semver.subset(kit, `^${PROMPTFRAME_COMPONENT_RUNTIME_GENERATION.componentKit}`), 'the template keeps a supported SDK without following unrelated patch releases');
     assertCompatibleRange(packageJson.dependencies?.['@promptframe/contracts'], scaffoldContracts.version);
     assert.equal(packageJson.dependencies?.['@remotion/player'], undefined, templatePackagePath);
     assert.equal(packageJson.devDependencies?.['@remotion/player'], PROMPTFRAME_COMPONENT_RUNTIME_GENERATION.remotion, templatePackagePath);
