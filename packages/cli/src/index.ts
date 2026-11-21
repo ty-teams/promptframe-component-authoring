@@ -1,24 +1,33 @@
 #!/usr/bin/env node
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { PromptFrameCliError } from './cli-error.js';
 import {
   accountError, EXPECTED_IDENTITY_HEADER, identityResponseError, parseExpectedIdentity,
-  readBoundCredential, requireAccountBinding, type AccountIdentity,
+  readAccountIdentity, readBoundCredential, requireAccountBinding, type AccountIdentity,
 } from './account-identity.js';
+import { accountKey, accountsRoot, directoryError, forgetCliCredential, identityFromKey, listLocalAccounts, multipleLocalAccounts,
+  readPrivateAccountFile, validEndpoint } from './account-directory.js';
+import { recordObservation, resolveAccountRoute, sameIdentity, separateCredentialFile, type AccountRoute } from './account-routing.js';
 import { normalizePublicResourcePath } from './public-resource-path.js';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import {
-  chmodSync,
+  closeSync,
   createReadStream,
   existsSync,
+  fsyncSync,
   lstatSync,
+  linkSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readdirSync,
   statSync,
+  renameSync,
+  unlinkSync,
   writeFileSync,
+  type Stats,
 } from 'node:fs';
 import os from 'node:os';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
@@ -243,6 +252,9 @@ interface PromptFrameProjectContext {
   workspaceConfig?: string;
 }
 
+// The executable handles exactly one command. Pin its verified credential through all reads and mutations.
+let accountRoute: AccountRoute | undefined;
+
 async function run(name: string, argv: string[]): Promise<void> {
   if (name === 'review-clip') {
     if (argv.includes('--help') || argv.includes('-h')) help();
@@ -253,7 +265,7 @@ async function run(name: string, argv: string[]): Promise<void> {
   // configuration. Arguments after `--` belong to an explicitly launched tool.
   const ownArgs = argv.slice(0, argv.includes('--') ? argv.indexOf('--') : argv.length);
   const valueOptions = new Set([
-    '--allowed-upload-target', '--asset-ref', '--auth-permissions', '--auth-roles',
+    '--account', '--reference-id', '--allowed-upload-target', '--asset-ref', '--auth-permissions', '--auth-roles',
     '--component-id', '--component-path', '--config', '--cursor', '--description',
     '--display-name', '--endpoint', '--expected-identity', '--expires-at', '--file', '--host', '--id',
     '--idle-timeout', '--level', '--limit', '--name', '--out', '--page-size',
@@ -291,7 +303,38 @@ async function run(name: string, argv: string[]): Promise<void> {
   if (name !== 'status' && ownArgs.some(arg => ['--zip', '--source-sha256'].includes(arg.split('=', 1)[0]!))) {
     fail('--zip and --source-sha256 are supported only by status.', 'cli.option.unsupported', 2);
   }
+  const accountFlags = ownArgs.filter(arg => arg.split('=', 1)[0] === '--account');
+  const refFlags = ownArgs.filter(arg => arg.split('=', 1)[0] === '--reference-id');
+  if (accountFlags.length > 1 || refFlags.length > 1) throw directoryError('cli.accounts.unknown');
+  const remoteAccountCommand = ['login', 'whoami', 'logout', 'discovery', 'init', 'project', 'projects', 'component', 'components',
+    'ci-token', 'token', 'upload', 'status', 'reindex', 'probe', 'public-request', 'check', 'dev'].includes(name)
+    || name === 'accounts' && positionalArgs(ownArgs)[0] === 'verify';
+  const account = accountFlags.length ? requiredValue(ownArgs, '--account') : remoteAccountCommand ? process.env.PROMPTFRAME_ACCOUNT : undefined;
+  if (refFlags.length && !account) throw directoryError('cli.accounts.unknown');
+  if (account) {
+    if (!remoteAccountCommand) {
+      fail('--account is supported on platform operations and accounts verify.', 'cli.option.unsupported', 2);
+    }
+    const identity = identityFromKey(account), expected = selectedAccount(ownArgs);
+    if (expected && !sameIdentity(identity, expected)) throw accountError('cli.auth.account_mismatch');
+    const endpoint = valueAfter(ownArgs, '--endpoint') ?? process.env.PROMPTFRAME_API_BASE ?? process.env.REMOTION_MEDIA_API_BASE;
+    try {
+      accountRoute = await resolveAccountRoute({identity, defaultFile: resolveConfigPath(ownArgs),
+        configFile: valueAfter(ownArgs, '--config'), referenceId: refFlags.length ? requiredValue(ownArgs, '--reference-id') : undefined,
+        endpoint: endpoint ? normalizeEndpoint(endpoint) : undefined, login: name === 'login'});
+    } catch (error) { throw error instanceof PromptFrameCliError ? error : directoryError(); }
+    if (name !== 'login' && valueAfter(ownArgs, '--token') && valueAfter(ownArgs, '--token') !== asRecord(accountRoute.config.credential)?.tokenSecret) {
+      throw accountError('cli.auth.account_mismatch');
+    }
+  } else if (remoteAccountCommand && !['login', 'accounts', 'check', 'dev', 'discovery'].includes(name) &&
+      !valueAfter(ownArgs, '--config') && !valueAfter(ownArgs, '--token') && !selectedAccount(ownArgs) &&
+      !process.env.PROMPTFRAME_CI_TOKEN && process.getuid) {
+    if (multipleLocalAccounts(accountsRoot())) throw directoryError('cli.accounts.account_required');
+  }
   switch (name) {
+    case 'accounts':
+      await accountCommand(argv);
+      break;
     case 'standard':
       standard();
       break;
@@ -2313,7 +2356,7 @@ function buildVersionNotesHeaders(versionNotes: string | undefined): Record<stri
 }
 
 const POSITIONAL_VALUE_FLAGS = new Set([
-  '--expected-identity',
+  '--expected-identity', '--account', '--reference-id',
   '--prop', '--file', '--asset-ref', '--studio-slot',
   '--allowed-upload-target',
   '--auth-permissions',
@@ -2555,9 +2598,35 @@ async function runProbe(argv: string[]): Promise<void> {
 
 function selectedAccount(argv: string[]): AccountIdentity | undefined {
   const options = argv.filter(arg => arg.split('=', 1)[0] === '--expected-identity');
-  if (options.length === 0) return;
+  if (options.length === 0) return accountRoute?.identity;
   if (options.length !== 1) throw accountError('cli.auth.identity_invalid');
   return parseExpectedIdentity(valueAfter(argv, '--expected-identity'));
+}
+
+async function accountCommand(argv: string[]): Promise<void> {
+  const [action = 'list'] = positionalArgs(argv);
+  if (action === 'list') {
+    try { printJson({command: 'accounts.list', ...listLocalAccounts(accountsRoot())}); }
+    catch (error) { throw error instanceof PromptFrameCliError ? error : directoryError(); }
+    return;
+  }
+  if (action === 'verify' && accountRoute?.verified) {
+    printJson({command: 'accounts.verify', accountIdentity: accountRoute.identity, status: 'verified',
+      scopes: accountRoute.verified.scopes, expiresAt: accountRoute.verified.expiresAt});
+    return;
+  }
+  if (action === 'refresh') {
+    const file = resolveConfigPath(argv), config = readPrivateAccountFile(file, 131072), stored = asRecord(config?.credential);
+    const endpoint = stringValue(stored?.endpoint), token = stringValue(stored?.tokenSecret);
+    if (!token || !endpoint) throw directoryError('cli.accounts.credential_missing');
+    if (!validEndpoint(endpoint) || endpoint !== resolveEndpoint('accounts.refresh', argv)) throw accountError('cli.auth.platform_mismatch');
+    const payload = await fetchJson(endpoint + '/cli/auth/whoami', {headers: {authorization: 'Bearer ' + token}, redirect: 'error'},
+      'cli.auth.identity_check_unavailable', true);
+    printJson({command: 'accounts.refresh', ...recordObservation(payload, endpoint, file, token, true)});
+    return;
+  }
+  if (action === 'switch' || action === 'select') throw directoryError('cli.accounts.host_unverified');
+  fail('Use accounts list, accounts refresh [--config <file>], or accounts verify --account <identityKey>.', 'cli.accounts.command_invalid', 2);
 }
 
 function requestedLoginScopes(argv: string[]): string[] {
@@ -2571,8 +2640,7 @@ async function login(argv: string[]): Promise<void> {
   const expected = selectedAccount(argv);
   if (expected) await requireAccountBinding(endpoint, expected);
   const tokenSecret = valueAfter(argv, '--token')
-    ?? process.env.PROMPTFRAME_CLI_TOKEN
-    ?? process.env.PROMPTFRAME_CI_TOKEN;
+    ?? (accountRoute ? undefined : process.env.PROMPTFRAME_CLI_TOKEN ?? process.env.PROMPTFRAME_CI_TOKEN);
   if (!tokenSecret) {
     if (expected && await reuseBoundLogin(endpoint, argv, expected)) return;
     await loginWithDeviceCode(endpoint, argv, expected);
@@ -2588,19 +2656,13 @@ async function login(argv: string[]): Promise<void> {
     throw accountError('cli.auth.scope_missing');
   }
   const credential = buildStoredCredential(endpoint, tokenSecret, whoamiPayload);
-  const current = readConfig(argv);
-  writeConfig(argv, {
-    ...current,
-    endpoint,
-    tenantId: credential.tenantId,
-    projectId: credential.projectId,
-    credential,
-  });
+  const accountDirectory = saveLoginCredential(argv, endpoint, credential, whoamiPayload);
   const output = {
     command: 'login',
     endpoint,
     ...(expected && {accountIdentity: expected}),
     credential: redactCredential(credential),
+    accountDirectory,
     storage: fileCredentialWarning(),
     diagnostic: diagnostic('login.completed', 'info', 'PromptFrame CLI credential stored locally.'),
   };
@@ -2626,9 +2688,10 @@ async function reuseBoundLogin(endpoint: string, argv: string[], expected: Accou
     throw error;
   }
   if (!requestedLoginScopes(argv).every(scope => arrayValue(verified.scopes).includes(scope))) return false;
+  const accountDirectory = recordObservation(verified, endpoint, resolveConfigPath(argv), secret);
   if (hasFlag(argv, '--json')) {
     printJson({
-      command: 'login', endpoint, reused: true, accountIdentity: expected,
+      command: 'login', endpoint, reused: true, accountIdentity: expected, accountDirectory,
       credential: redactCredential(buildStoredCredential(endpoint, secret, verified)),
       diagnostic: diagnostic('login.completed', 'info', 'Reused the active credential for the selected account.'),
     });
@@ -2665,23 +2728,25 @@ async function loginWithDeviceCode(endpoint: string, argv: string[], expected?: 
   }
   const received = await pollDeviceCredential(endpoint, deviceCode, startPayload, argv, Boolean(expected));
   let credential = received;
+  let observed: Record<string, unknown> = {};
   if (expected) {
     const verified = await readBoundCredential(endpoint, 'Bearer ' + received.tokenSecret, expected);
     if (!requestedLoginScopes(argv).every(scope => arrayValue(verified.scopes).includes(scope))) throw accountError('cli.auth.scope_missing');
     credential = buildStoredCredential(endpoint, received.tokenSecret, verified);
+    observed = verified;
+  } else {
+    // Older device servers omit identity in their receipt. Their completed login still works if discovery is unavailable.
+    try {
+      observed = await fetchJson(endpoint + '/cli/auth/whoami', {headers: {authorization: 'Bearer ' + received.tokenSecret},
+        redirect: 'error', signal: AbortSignal.timeout(5000)}, 'cli.auth.identity_check_unavailable', true);
+    } catch { /* Keep the approved credential. accounts refresh can observe its identity later. */ }
   }
-  const current = readConfig(argv);
-  writeConfig(argv, {
-    ...current,
-    endpoint,
-    tenantId: credential.tenantId,
-    projectId: credential.projectId,
-    credential,
-  });
+  const accountDirectory = saveLoginCredential(argv, endpoint, credential, observed);
   const output = {
     command: 'login',
     endpoint,
     device,
+    accountDirectory,
     ...(expected && {accountIdentity: expected}),
     credential: redactCredential(credential),
     storage: fileCredentialWarning(),
@@ -2695,6 +2760,68 @@ async function loginWithDeviceCode(endpoint: string, argv: string[], expected?: 
   if (credential.displayIdentifier) console.log(`User: ${credential.displayIdentifier}`);
   printAuthSummary(credential);
   console.log('Credential stored in local PromptFrame config with file permissions restricted to the current OS user.');
+}
+
+function saveLoginCredential(argv: string[], endpoint: string, credential: Record<string, string>, observed: Record<string, unknown>) {
+  const id = readAccountIdentity(observed.accountIdentity);
+  const initialFile = resolveConfigPath(argv);
+  let file = initialFile;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const original = lstatSync(file, {throwIfNoEntry: false});
+    const current = readCliConfiguration(file);
+    const previousId = readAccountIdentity(current.accountIdentity), previous = asRecord(current.credential);
+    if ((previousId && (!id || !sameIdentity(id, previousId))) ||
+        (id && !previousId && previous?.tokenSecret && previous.tokenSecret !== credential.tokenSecret)) {
+      if (!id || accountRoute || valueAfter(argv, '--config') || file !== initialFile) throw directoryError('cli.accounts.config_in_use');
+      file = separateCredentialFile(initialFile, id);
+      continue;
+    }
+    const stored = {...current, endpoint, tenantId: credential.tenantId, projectId: credential.projectId, credential,
+      ...(id && {accountIdentity: id})};
+    // Two first logins may both have read the same preconfigured, credentialless file.
+    if (original && id && !previousId && !previous?.tokenSecret && process.getuid) {
+      const result = fillUnassignedProfile(file, original, id, stored);
+      if (result === 'retry') continue;
+      if (result === 'occupied') {
+        if (accountRoute || valueAfter(argv, '--config') || file !== initialFile) throw directoryError('cli.accounts.config_in_use');
+        file = separateCredentialFile(initialFile, id);
+        continue;
+      }
+      return recordObservation(observed, endpoint, file, credential.tokenSecret);
+    }
+    try { writePrivateConfiguration(file, stored, !original); }
+    catch (error) {
+      if (!original && (error as NodeJS.ErrnoException).code === 'EEXIST') continue;
+      throw error;
+    }
+    return recordObservation(observed, endpoint, file, credential.tokenSecret);
+  }
+  throw directoryError('cli.accounts.config_in_use');
+}
+
+function fillUnassignedProfile(file: string, original: Stats, identity: AccountIdentity, config: Record<string, unknown>) {
+  const claim = join(dirname(file), '.promptframe-account-' + original.dev + '-' + original.ino);
+  let mayRemove = false;
+  try {
+    try {
+      writePrivateConfiguration(claim, {identity}, true);
+      mayRemove = true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      const existing = readPrivateAccountFile(claim);
+      if (!existing) return 'retry';
+      if (!sameIdentity(identity, existing.identity)) return 'occupied';
+    }
+    const current = lstatSync(file, {throwIfNoEntry: false});
+    if (current?.dev !== original.dev || current.ino !== original.ino) return 'retry';
+    writePrivateConfiguration(file, config);
+    mayRemove = true;
+    return 'saved';
+  } finally {
+    if (mayRemove) {
+      try { unlinkSync(claim); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    }
+  }
 }
 
 async function pollDeviceCredential(
@@ -2747,13 +2874,16 @@ async function whoami(argv: string[]): Promise<void> {
       2,
     );
   }
-  const payload = await fetchJson(`${endpoint}/cli/auth/whoami`, {
+  const payload = accountRoute?.verified ?? await fetchJson(`${endpoint}/cli/auth/whoami`, {
+    redirect: 'error',
     headers: {
       authorization: `Bearer ${tokenSecret}`,
     },
   }, 'whoami.http.failed');
+  const accountDirectory = recordObservation(payload, endpoint, resolveConfigPath(argv), tokenSecret);
   const output = {
     ...payload,
+    accountDirectory,
     command: 'whoami',
     endpoint,
     diagnostic: diagnostic('whoami.completed', 'info', 'PromptFrame CLI identity fetched.'),
@@ -3140,6 +3270,7 @@ function appendOptionalParam(params: URLSearchParams, key: string, value: string
 
 async function logout(argv: string[]): Promise<void> {
   const endpoint = resolveEndpoint('logout', argv);
+  const identity = accountRoute?.identity ?? readAccountIdentity(readConfig(argv).accountIdentity);
   const tokenSecret = resolveBearerToken(endpoint, argv);
   if (!tokenSecret) {
     fail(
@@ -3155,11 +3286,17 @@ async function logout(argv: string[]): Promise<void> {
     },
   }, 'logout.http.failed');
   const clearedLocalCredential = clearStoredCredential(endpoint, tokenSecret, argv);
+  let indexCleanup: string | undefined;
+  if (identity) {
+    try { forgetCliCredential(accountsRoot(), identity, resolveConfigPath(argv), tokenSecret); indexCleanup = 'checked'; }
+    catch { indexCleanup = 'unavailable'; }
+  }
   const output = {
     ...payload,
     command: 'logout',
     endpoint,
     clearedLocalCredential,
+    ...(indexCleanup && {indexCleanup}),
     diagnostic: diagnostic('logout.completed', 'info', 'PromptFrame CLI credential revoked.'),
   };
   if (hasFlag(argv, '--json')) {
@@ -3172,14 +3309,13 @@ async function logout(argv: string[]): Promise<void> {
 
 function configure(argv: string[]): void {
   const current = readConfig(argv);
-  const next = compactRecord({
-    ...current,
+  const next = {...current, ...compactRecord({
     endpoint: valueAfter(argv, '--endpoint') ? normalizeEndpoint(requiredValue(argv, '--endpoint')) : current.endpoint,
     tenantId: valueAfter(argv, '--tenant-id') ?? current.tenantId,
     userId: valueAfter(argv, '--user-id') ?? current.userId,
     projectId: valueAfter(argv, '--project-id') ?? current.projectId,
     sessionId: valueAfter(argv, '--session-id') ?? current.sessionId,
-  });
+  })};
   if (hasFlag(argv, '--show')) {
     printJson({ configPath: resolveConfigPath(argv), config: redactConfig(next) });
     return;
@@ -3837,6 +3973,7 @@ ${promptFramePublicReviewStep(apiBaseVariable)}      - uses: actions/upload-arti
 }
 
 function resolveEndpoint(commandName: string, argv: string[]): string {
+  if (accountRoute) return accountRoute.endpoint;
   const config = readConfig(argv);
   const credential = asRecord(config.credential);
   const projectContext = readProjectContext(argv);
@@ -3857,6 +3994,7 @@ function resolveEndpoint(commandName: string, argv: string[]): string {
 }
 
 function resolveOptionalEndpoint(argv: string[]): string | undefined {
+  if (accountRoute) return accountRoute.endpoint;
   const config = readConfig(argv);
   const credential = asRecord(config.credential);
   const projectContext = readProjectContext(argv);
@@ -3890,6 +4028,7 @@ function buildRemoteHeaders(
   if (bearerToken) {
     return {
       authorization: `Bearer ${bearerToken}`,
+      ...(accountRoute && {[EXPECTED_IDENTITY_HEADER]: JSON.stringify(accountRoute.identity)}),
     };
   }
   const contextHeaders = buildContextHeaders(argv);
@@ -3924,6 +4063,10 @@ function buildSecurityPolicyHeaders(): Record<string, string> {
 }
 
 function resolveBearerToken(endpoint: string, argv: string[], config = readConfig(argv)): string | undefined {
+  if (accountRoute) {
+    if (endpoint !== accountRoute.endpoint) throw accountError('cli.auth.platform_mismatch');
+    return stringValue(asRecord(accountRoute.config.credential)?.tokenSecret);
+  }
   const explicit = valueAfter(argv, '--token')
     ?? process.env.PROMPTFRAME_CI_TOKEN
     ?? process.env.PROMPTFRAME_CLI_TOKEN
@@ -3935,11 +4078,11 @@ function resolveBearerToken(endpoint: string, argv: string[], config = readConfi
 async function captureUploadAuthorization(endpoint: string, argv: string[], target: AuthoringUploadTarget): Promise<UploadAuthorization> {
   const expected = selectedAccount(argv);
   const config = readConfig(argv);
-  if (expected) await requireAccountBinding(endpoint, expected);
+  if (expected && !accountRoute?.verified) await requireAccountBinding(endpoint, expected);
   const headers = buildRemoteHeaders(endpoint, argv, { config });
   const summary = describeAuthForEndpoint(endpoint, argv, config);
   if (expected) {
-    const verified = await readBoundCredential(endpoint, headers.authorization, expected);
+    const verified = accountRoute?.verified ?? await readBoundCredential(endpoint, headers.authorization, expected);
     const allowedTargets = verified.allowedUploadTargets;
     if (!Array.isArray(allowedTargets) || !Array.isArray(verified.scopes)) throw accountError('cli.auth.identity_check_unavailable');
     if (!verified.scopes.includes('component.upload') || (allowedTargets.length > 0 && !allowedTargets.includes(target))) {
@@ -3950,6 +4093,7 @@ async function captureUploadAuthorization(endpoint: string, argv: string[], targ
 }
 
 function describeAuthForEndpoint(endpoint: string, argv: string[], config: Record<string, unknown>): Record<string, string> | undefined {
+  if (accountRoute) return compactRecord({source: 'selected-account', tokenKind: asRecord(config.credential)?.tokenKind});
   if (valueAfter(argv, '--token')) {
     return { tokenKind: 'explicit', source: '--token' };
   }
@@ -4067,7 +4211,8 @@ function redactDeviceStart(payload: Record<string, unknown>): Record<string, str
 }
 
 function clearStoredCredential(endpoint: string, tokenSecret: string, argv: string[]): boolean {
-  const current = readConfig(argv);
+  // A revoked request can finish after another login rotated this profile.
+  const current = readCliConfiguration(resolveConfigPath(argv));
   const credential = asRecord(current.credential);
   if (
     !credential
@@ -4107,17 +4252,31 @@ function fileCredentialWarning(): Record<string, unknown> {
 }
 
 function readConfig(argv: string[]): Record<string, unknown> {
-  return readCliConfiguration(resolveConfigPath(argv));
+  return accountRoute?.config ?? readCliConfiguration(resolveConfigPath(argv));
 }
 
 function writeConfig(argv: string[], config: Record<string, unknown>): void {
-  const path = resolveConfigPath(argv);
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
-  chmodSync(path, 0o600);
+  writePrivateConfiguration(resolveConfigPath(argv), config);
+}
+
+function writePrivateConfiguration(path: string, config: Record<string, unknown>, onlyIfMissing = false): void {
+  const parent = dirname(path), temporary = join(parent, '.' + randomUUID() + '.tmp');
+  mkdirSync(parent, {recursive: true, mode: 0o700});
+  try {
+    if (!lstatSync(path).isFile()) throw directoryError();
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+  const fd = openSync(temporary, 'wx', 0o600);
+  try {
+    try { writeFileSync(fd, JSON.stringify(config, null, 2) + '\n'); fsyncSync(fd); } finally { closeSync(fd); }
+    if (onlyIfMissing) linkSync(temporary, path);
+    else renameSync(temporary, path);
+  } finally {
+    try { unlinkSync(temporary); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+  }
 }
 
 function resolveConfigPath(argv: string[]): string {
+  if (accountRoute) return accountRoute.configFile;
   return resolve(valueAfter(argv, '--config') ?? process.env.PROMPTFRAME_CONFIG ?? join(os.homedir(), '.promptframe', 'component-authoring.json'));
 }
 
@@ -4247,7 +4406,7 @@ function displayNameFromComponentId(componentId: string): string {
 }
 
 async function fetchJson(url: string, init: RequestInit, code: string, guarded = false): Promise<Record<string, unknown>> {
-  const response = await fetch(url, init);
+  const response = await fetch(url, accountRoute ? {...init, redirect: 'error'} : init);
   const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
   if (!response.ok || payload.success === false) {
     if (guarded) {
@@ -4454,7 +4613,8 @@ async function runDevServer(dir: string, commandLine: string[]): Promise<void> {
   const child = spawn(commandName, commandArgs, {
     cwd: dir,
     stdio: 'inherit',
-    env: process.env,
+    env: accountRoute ? {...process.env, PROMPTFRAME_ACCOUNT: accountKey(accountRoute.identity),
+      PROMPTFRAME_CONFIG: accountRoute.configFile, PROMPTFRAME_API_BASE: accountRoute.endpoint} : process.env,
   });
   const exitCode = await new Promise<number>((resolve) => {
     child.on('close', (code) => resolve(code ?? 0));
@@ -5570,6 +5730,10 @@ Commands:
     --token <token>                  Verify and store an already issued CLI/CI token
     --with-assets                   Explicitly request asset.read in the normal browser authorization
   whoami                            Show the current PromptFrame CLI identity
+  accounts list                     List stored and expired Creation/CLI grants by verified identity
+  accounts refresh [--config file]  Register an existing CLI credential from its original configuration
+  accounts verify --account <key>   Verify the selected CLI grant with its platform
+    --account <identityKey>          Use one account for this operation; --reference-id selects a particular grant
   logout                            Revoke the current CLI token and clear local config
   discovery                         Fetch platform endpoint and self-service capabilities
   init [dir]                        Write secret-free .promptframerc project context

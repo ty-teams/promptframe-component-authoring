@@ -17,9 +17,11 @@ import {
 // Each spawned CLI sees only this test's local config and explicit endpoints.
 // Personal credentials/config must never turn an offline fixture into a live read.
 const testConfigRoot=await mkdtemp(path.join(os.tmpdir(),'promptframe-cli-suite-config-'));
-const isolatedKeys=['PROMPTFRAME_CONFIG','PROMPTFRAME_API_BASE','REMOTION_MEDIA_API_BASE','PROMPTFRAME_CLI_TOKEN','PROMPTFRAME_CI_TOKEN'];
+const isolatedKeys=['PROMPTFRAME_CONFIG','PROMPTFRAME_API_BASE','REMOTION_MEDIA_API_BASE','PROMPTFRAME_CLI_TOKEN','PROMPTFRAME_CI_TOKEN',
+  'XDG_CONFIG_HOME','PROMPTFRAME_ACCOUNT','PROMPTFRAME_ACCOUNT_DIRECTORY','PROMPTFRAME_AUTH_TOKEN'];
 const originalEnv=Object.fromEntries(isolatedKeys.map(key=>[key,process.env[key]]));
 for(const key of isolatedKeys)delete process.env[key];process.env.PROMPTFRAME_CONFIG=path.join(testConfigRoot,'config.json');
+process.env.XDG_CONFIG_HOME=testConfigRoot;
 after(async()=>{for(const key of isolatedKeys){if(originalEnv[key]===undefined)delete process.env[key];else process.env[key]=originalEnv[key];}await rm(testConfigRoot,{recursive:true,force:true});});
 const execFileAsync = promisify(execFile);
 const PROMPTFRAME_ACTIVE_AUTHORING_PACKAGE_VERSIONS = PROMPTFRAME_AUTHORING_STANDARD_RELEASE.recommendedAuthoringPackages;
@@ -543,6 +545,7 @@ test('login completes browser device code flow without printing the token secret
     assert.deepEqual(calls.map((call) => call.url), [
       '/cli/auth/device/start',
       '/cli/auth/device/poll',
+      '/cli/auth/whoami',
     ]);
 
     const saved = JSON.parse(await readFile(configPath, 'utf8'));

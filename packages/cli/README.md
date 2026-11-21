@@ -95,7 +95,27 @@ The upload-to-publish lifecycle has multiple gates. `upload` returning success m
 
 `setup-ci --provider github` writes `.github/workflows/promptframe-component.yml` for a component project. Pull requests run check-only diagnostics and GitHub annotations; `main` and release-style tag pushes upload with `${{ secrets.PROMPTFRAME_CI_TOKEN }}` against `${{ vars.PROMPTFRAME_API_BASE }}`. Add those values in GitHub repository settings. Do not paste the CI token into the workflow, README, issue, or component source.
 
+<a id="shared-account-directory"></a>
+
+### 两个客户端共用本机账号目录
+
+先查看 `promptframe --help` 是否列出 `accounts`。支持该命令的版本可用下列操作。CLI 和 Creation 各自保管自己的凭据，按平台验证的账号合并展示。
+
+```bash
+promptframe accounts list --json
+promptframe accounts refresh --config "$CLI_CONFIG" --json
+promptframe accounts verify --account "$IDENTITY_KEY" --json
+promptframe upload ./my-component --account "$IDENTITY_KEY" --json
+```
+
+普通登录会登记平台确认的账号。已有配置可用 `accounts refresh` 登记，凭据的有效期沿用原值。列表中的 `stored` 表示本机登记过；当下是否有效可以用 `verify` 查询。CLI 授权缺失时，用同一个 `--account` 发起设备登录，浏览器批准和后续上传都核对目标账号。同一账号有多份 CLI 授权时，可从该行选择 `referenceId` 并传 `--reference-id`。
+
+在支持本机账号选择的创作 MCP 中，导演通过 `promptframe_local_accounts` 查询，再通过 `promptframe_local_select_account` 选择。普通 shell 没有这次 MCP 请求的宿主身份，导演把返回的 `identityKey` 传入 CLI 即可。一次 shell 调用也可以用环境变量 `PROMPTFRAME_ACCOUNT` 表达同一选择。两个 Agent 可以在同一目录独立使用各自的账号。跨进程持久选择归能验证当前会话的宿主管理，shell 的作品 `--session-id` 只表示作品会话。
+
+目录记录授权引用和观察时间。只有原凭据文件的属主、权限和内容与引用匹配，且平台确认了目标账号，CLI 才使用它。无法验证原生 Windows 的文件 ACL 时，目录操作会报告不可用。原有独立配置仍可按下文的 `--expected-identity` 指定目标。
+
 <a id="target-account"></a>
+
 ### 给已选定的账号登录或上传
 
 需要把组件交给指定账号时，在该账号已验证的上下文中取 `accountIdentity`，将原 JSON 对象作为 `--expected-identity` 的值传给本次命令。兼容服务的 `whoami --json` 提供该字段。已连接的创作宿主可用服务端确认的 `platformDigest`、`accountDigest` 和合同版本 `promptframe-account-identity/v1` 组成同一对象。两个账号即便都叫「默认项目」，其账号摘要也各自独立。应先从**要操作的目标**取得摘要，只从待验上传凭证再取一遍会失去这项核对的意义。

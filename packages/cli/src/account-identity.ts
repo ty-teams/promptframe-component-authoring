@@ -10,7 +10,7 @@ export interface AccountIdentity {
   accountDigest: string;
 }
 
-function identity(value: unknown): AccountIdentity | undefined {
+export function readAccountIdentity(value: unknown): AccountIdentity | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return;
   const row = value as Record<string, unknown>;
   if (Object.keys(row).length !== 3 || row.contractVersion !== contractVersion
@@ -23,7 +23,7 @@ export function parseExpectedIdentity(input: string | undefined): AccountIdentit
   let row: unknown;
   try { row = input && input.length <= 512 ? JSON.parse(input) : undefined; }
   catch { /* Invalid input gets the same public diagnostic. */ }
-  const parsed = identity(row);
+  const parsed = readAccountIdentity(row);
   if (!parsed) throw accountError('cli.auth.identity_invalid');
   return parsed;
 }
@@ -82,7 +82,7 @@ export async function readBoundCredential(
   });
   if (response.status === 401) throw accountError('cli.auth.login_required');
   if (!response.ok || body.success === false) throw identityResponseError(body.errorCode) ?? accountError('cli.auth.identity_check_unavailable');
-  const actual = identity(body.accountIdentity);
+  const actual = readAccountIdentity(body.accountIdentity);
   if (!actual) throw accountError('cli.auth.identity_binding_unsupported');
   if (actual.platformDigest !== expected.platformDigest) throw accountError('cli.auth.platform_mismatch');
   if (actual.accountDigest !== expected.accountDigest) throw accountError('cli.auth.account_mismatch');

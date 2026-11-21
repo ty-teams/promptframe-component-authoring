@@ -8,6 +8,9 @@ import { collectPromptFrameResourceReferences, assertSelfContainedGlb, PROMPTFRA
 import { normalizePublicResourcePath } from './public-resource-path.js';
 import { evaluatePromptFrameSchemaSource } from '@promptframe/contracts/schema-evaluator';
 import { cliBearerToken, readCliConfiguration } from './configuration.js';
+import { accountsRoot, identityFromKey } from './account-directory.js';
+import { resolveAccountRoute } from './account-routing.js';
+import { PromptFrameCliError } from './cli-error.js';
 import { capturePreviewResourceFile, previewResourcePropPath, readPreviewResourceDraft,previewResourceFileMatchesSlot as localFileMatches,
   samePreviewResourceFile,type PreviewResourceSelection } from './preview-resource-draft.js';
 
@@ -16,6 +19,7 @@ const maximumBytes = 16 * 1024 * 1024;
 type Grant = { reference: string; status: string; code?: string; url?: string; contentType?: string; sizeBytes?: number; sha256?: string; expiresAt?: string };
 
 function safeCode(error: unknown): string {
+  if (error instanceof PromptFrameCliError) return error.code;
   const code = error instanceof Error ? error.message : '';
   return /^(?:preview\.resource\.|cli\.auth\.)[a-z0-9_.]{1,100}$/u.test(code) ? code : 'preview.resource.unavailable';
 }
@@ -111,7 +115,11 @@ export function selectionSlot(root: string, selection: PreviewResourceSelection)
 export async function resolvePreviewResourceGrant(root: string, selection: PreviewResourceSelection, slot: ComponentResourceSlot,
   options: { signal?: AbortSignal; fetch?: typeof fetch; env?: NodeJS.ProcessEnv } = {}): Promise<Grant> {
   const env = options.env ?? process.env;
-  const configuration = readCliConfiguration(resolve(env.PROMPTFRAME_CONFIG ?? join(homedir(), '.promptframe', 'component-authoring.json')));
+  const configFile = resolve(env.PROMPTFRAME_CONFIG ?? join(homedir(), '.promptframe', 'component-authoring.json'));
+  const configuredEndpoint = env.PROMPTFRAME_API_BASE ?? env.REMOTION_MEDIA_API_BASE;
+  const account = env.PROMPTFRAME_ACCOUNT ? await resolveAccountRoute({identity: identityFromKey(env.PROMPTFRAME_ACCOUNT),
+    defaultFile: configFile, configFile: env.PROMPTFRAME_CONFIG, endpoint: configuredEndpoint?.replace(/\/+$/, ''), root: accountsRoot(env)}) : undefined;
+  const configuration = account?.config ?? readCliConfiguration(configFile);
   const credential = configuration.credential as Record<string, unknown> | undefined;
   const endpointValue = env.PROMPTFRAME_API_BASE ?? env.REMOTION_MEDIA_API_BASE ?? configuration.endpoint ?? credential?.endpoint;
   if (typeof endpointValue !== 'string') throw Error('preview.resource.endpoint_required');
@@ -119,7 +127,7 @@ export async function resolvePreviewResourceGrant(root: string, selection: Previ
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash
     || !['/api', '/api-proxy'].includes(url.pathname)) throw Error('preview.resource.endpoint_invalid');
   const token = cliBearerToken({ endpoint, configuration,
-    explicit: env.PROMPTFRAME_CI_TOKEN ?? env.PROMPTFRAME_CLI_TOKEN ?? env.PROMPTFRAME_AUTH_TOKEN });
+    explicit: account ? undefined : env.PROMPTFRAME_CI_TOKEN ?? env.PROMPTFRAME_CLI_TOKEN ?? env.PROMPTFRAME_AUTH_TOKEN });
   if (!token) throw Error('cli.auth.login_required');
   const context = readJson(join(root, '.promptframerc'));
   if (typeof context.projectId !== 'string' || !selection.reference || !selection.sessionId) throw Error('preview.resource.scope_required');
