@@ -192,7 +192,7 @@ A candidate tag builds and tests the whole workspace, packs all four final unpub
 
 Candidate-aware platform endpoints expose a deployment `candidate` stage separately from the immutable package release digest. A compatible CLI reports `standard.release.promoting`, exact cohort versions, and platform release responsibility until the stable receipt is complete; it must not present that state as stable/current completion. Historical recovery creates a new versioned cohort and repeats this path instead of rewinding dist-tags.
 
-版本与兼容性：运行 `promptframe standard --json` 查看所安装CLI携带的离线发行元数据，运行 `promptframe check .` 核对平台标准和各包最低版本。已生成项目的package.json声明其实际依赖，推荐组合变化不会要求所有包同步升版；保留pnpm workspace root lockfile evidence及正常安全检查。
+项目安装版本由包管理器和锁文件确定。运行 `promptframe standard --json` 查看 CLI 随包的离线发行标识；带目标平台运行 `promptframe check . --endpoint "$PROMPTFRAME_API_BASE" --json` 核对在线标准和最低版本。向已选定的账号交付时可查看[指定账号的登录与上传](packages/cli/README.md#target-account)。
 
 Before publishing, the platform repo should verify the local authoring source through its `pnpm authoring:link-local` gate. After publishing, it should switch back with `pnpm authoring:use-registry` and verify the real npm packages from `https://registry.npmjs.org/`; npm mirrors can lag new versions.
 

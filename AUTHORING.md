@@ -49,6 +49,8 @@ npx --no-install promptframe package . --workspace-component @demo/part-a --out 
 
 在有清单的工作区根，`upload .` 会依次上传所有已登记组件，每个组件有独立构建号。只交付 A 时，上传也用同一个 `--workspace-component @demo/part-a`，或上传刚生成的 `part-a.zip`。A 引用共享文件时要从工作区根选择 A。进 A 的子目录按普通单组件打包，只能使用该组件根内的源码。小型随包资源放在该组件的 `public/`，作品私有素材通过已声明的素材槽传入。试改代码、对照两版 GLB 或跟原声改节奏，可运行[三个改稿示例](examples/director-revisions/README.md)。
 
+从已选账号的创作会话上传时，可把其已验证身份交给兼容的 CLI，使浏览器批准与文件发送均绑定这次选择。见[指定账号的登录与上传](packages/cli/README.md#target-account)。
+
 <a id="restore-source"></a>
 ### 找回已上传的那一版源码
 

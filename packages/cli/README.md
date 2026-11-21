@@ -10,7 +10,7 @@ PromptFrame component authoring CLI.
 
 Use it to inspect the public component standard, check component folders, validate manifests, inspect the local preview envelope, package source archives, upload components, check build status, rebuild evidence indexes, and rerun layout/security probes.
 
-版本与兼容性：运行 `promptframe standard --json` 查看所安装CLI携带的离线发行元数据，运行 `promptframe check .` 核对平台标准和各包最低版本。已生成项目的package.json声明其实际依赖，推荐组合变化不会要求所有包同步升版；保留pnpm workspace root lockfile evidence及正常安全检查。
+运行 `promptframe check . --endpoint "$PROMPTFRAME_API_BASE" --json` 可比较平台标准和各包最低版本。离线 `standard` 读取本机发行资料。项目实际依赖可从包管理器和锁文件核对。
 
 ```bash
 npm install -D @promptframe/cli
@@ -94,6 +94,18 @@ The upload-to-publish lifecycle has multiple gates. `upload` returning success m
 `package` excludes raw package-manager lockfiles from the public source zip, but when a root lockfile exists it adds `promptframe-lockfile-evidence.json`. The receipt contains only file names, sizes, and SHA-256 hashes so the platform can audit lockfile presence without exposing registry URLs or the full dependency tree in the source archive.
 
 `setup-ci --provider github` writes `.github/workflows/promptframe-component.yml` for a component project. Pull requests run check-only diagnostics and GitHub annotations; `main` and release-style tag pushes upload with `${{ secrets.PROMPTFRAME_CI_TOKEN }}` against `${{ vars.PROMPTFRAME_API_BASE }}`. Add those values in GitHub repository settings. Do not paste the CI token into the workflow, README, issue, or component source.
+
+<a id="target-account"></a>
+### 给已选定的账号登录或上传
+
+需要把组件交给指定账号时，在该账号已验证的上下文中取 `accountIdentity`，将原 JSON 对象作为 `--expected-identity` 的值传给本次命令。兼容服务的 `whoami --json` 提供该字段。已连接的创作宿主可用服务端确认的 `platformDigest`、`accountDigest` 和合同版本 `promptframe-account-identity/v1` 组成同一对象。两个账号即便都叫「默认项目」，其账号摘要也各自独立。应先从**要操作的目标**取得摘要，只从待验上传凭证再取一遍会失去这项核对的意义。
+
+```bash
+npx --no-install promptframe login --endpoint "$PROMPTFRAME_API_BASE" --expected-identity "$TARGET_IDENTITY" --json
+npx --no-install promptframe upload ./component.zip --endpoint "$PROMPTFRAME_API_BASE" --expected-identity "$TARGET_IDENTITY" --json
+```
+
+本机帮助须列出 `--expected-identity`，目标平台的 `cli/discovery` 须声明 `accountIdentityBinding`。匹配且权限足够的原授权返回 `reused: true` 和原有效期。需要首次授权时，浏览器批准页会核对所选身份。上传前会用同一份实际凭证核对账号和权限，再发送源包。收到 `cli.auth.account_mismatch` 时选择目标账号自己的 `--config`，或给该账号选择单独的配置执行登录。收到 `cli.auth.identity_binding_unsupported` 时等待目标平台支持此合同，保留原操作的账号条件。
 
 ### 按版本申请公开
 

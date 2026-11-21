@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
+import { PromptFrameCliError } from './cli-error.js';
+import {
+  accountError, EXPECTED_IDENTITY_HEADER, identityResponseError, parseExpectedIdentity,
+  readBoundCredential, requireAccountBinding, type AccountIdentity,
+} from './account-identity.js';
 import { normalizePublicResourcePath } from './public-resource-path.js';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -153,6 +158,12 @@ const VALIDATE_CHECKED_RULE_IDS: PublicPolicyRuleId[] = [
 type PublicResourceReportStatus = 'empty' | 'accepted' | 'blocked';
 type UploadProgressPhase = 'archive' | 'package' | 'standard' | 'upload' | 'accepted';
 
+interface UploadAuthorization {
+  headers: Record<string, string>;
+  summary?: Record<string, string>;
+  expected?: AccountIdentity;
+}
+
 interface PublicResourceReport {
   contractVersion: typeof COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION;
   policyVersion: typeof PROMPTFRAME_PUBLIC_RESOURCE_POLICY.policyVersion;
@@ -232,17 +243,6 @@ interface PromptFrameProjectContext {
   workspaceConfig?: string;
 }
 
-class PromptFrameCliError extends Error {
-  constructor(
-    message: string,
-    public readonly code: string,
-    public readonly exitCode = 1,
-    public readonly repairHint?: string,
-  ) {
-    super(message);
-  }
-}
-
 async function run(name: string, argv: string[]): Promise<void> {
   if (name === 'review-clip') {
     if (argv.includes('--help') || argv.includes('-h')) help();
@@ -255,7 +255,7 @@ async function run(name: string, argv: string[]): Promise<void> {
   const valueOptions = new Set([
     '--allowed-upload-target', '--asset-ref', '--auth-permissions', '--auth-roles',
     '--component-id', '--component-path', '--config', '--cursor', '--description',
-    '--display-name', '--endpoint', '--expires-at', '--file', '--host', '--id',
+    '--display-name', '--endpoint', '--expected-identity', '--expires-at', '--file', '--host', '--id',
     '--idle-timeout', '--level', '--limit', '--name', '--out', '--page-size',
     '--poll-interval-seconds', '--port', '--project-context', '--project-id',
     '--project-namespace', '--prop', '--provider', '--provider-kind', '--provider-name',
@@ -285,6 +285,9 @@ async function run(name: string, argv: string[]): Promise<void> {
     return;
   }
   if(hasFlag(ownArgs,'--wait')&&name!=='status')fail('--wait is supported only by status.','cli.option.unsupported',2);
+  if (name !== 'login' && name !== 'upload' && ownArgs.some(arg => arg.split('=', 1)[0] === '--expected-identity')) {
+    fail('--expected-identity is supported by login and upload.', 'cli.option.unsupported', 2);
+  }
   if (name !== 'status' && ownArgs.some(arg => ['--zip', '--source-sha256'].includes(arg.split('=', 1)[0]!))) {
     fail('--zip and --source-sha256 are supported only by status.', 'cli.option.unsupported', 2);
   }
@@ -1072,10 +1075,11 @@ async function uploadComponent(argv: string[]): Promise<void> {
   );
   const prepared = prepareComponentUpload(input, uploadTarget, valueAfter(argv, '--out'));
   const endpoint = resolveEndpoint('upload', argv);
+  const authorization = await captureUploadAuthorization(endpoint, argv, uploadTarget);
   reportUploadProgress(argv, 'standard', 'Checking platform component standard.');
-  const remoteStandard = await assertRemoteStandardFreshness(endpoint, argv, [prepared.artifact.out]);
+  const remoteStandard = await assertRemoteStandardFreshness(endpoint, authorization, uploadTarget, [prepared.artifact.out]);
   assertSourceLayoutSupported(prepared.artifact, remoteStandard);
-  const output = await uploadPreparedComponent(input, argv, endpoint, uploadTarget, prepared);
+  const output = await uploadPreparedComponent(input, argv, endpoint, uploadTarget, prepared, authorization);
   reportUploadProgress(argv, 'accepted', 'Platform accepted upload.');
   if (hasFlag(argv, '--json')) {
     printJson(output);
@@ -1115,12 +1119,14 @@ async function uploadWorkspace(
     };
   });
   const endpoint = resolveEndpoint('upload', argv);
+  const authorization = await captureUploadAuthorization(endpoint, argv, uploadTarget);
   reportUploadProgress(argv, 'standard', 'Checking platform component standard.');
-  const remoteStandard = await assertRemoteStandardFreshness(endpoint, argv, preparedUploads.map(item => item.prepared.artifact.out));
+  const archives = preparedUploads.map(item => item.prepared.artifact.out);
+  const remoteStandard = await assertRemoteStandardFreshness(endpoint, authorization, uploadTarget, archives);
   for (const item of preparedUploads) assertSourceLayoutSupported(item.prepared.artifact, remoteStandard);
   const uploads = [];
   for (const item of preparedUploads) {
-    uploads.push(await uploadPreparedComponent(item.input, argv, endpoint, uploadTarget, item.prepared));
+    uploads.push(await uploadPreparedComponent(item.input, argv, endpoint, uploadTarget, item.prepared, authorization));
   }
   reportUploadProgress(argv, 'accepted', 'Platform accepted workspace upload.');
   const output = {
@@ -1133,7 +1139,7 @@ async function uploadWorkspace(
     },
     uploadTarget,
     uploads,
-    auth: describeAuthForEndpoint(endpoint, argv),
+    auth: authorization.summary,
     diagnostic: diagnostic('upload.workspace.completed', 'info', 'Workspace component uploads accepted by platform.'),
   };
   if (hasFlag(argv, '--json')) {
@@ -1183,6 +1189,7 @@ async function uploadPreparedComponent(
   endpoint: string,
   uploadTarget: AuthoringUploadTarget,
   prepared: PreparedComponentUpload,
+  authorization: UploadAuthorization,
 ): Promise<Record<string, unknown>> {
   const { artifact, localReusability, diagnostics } = prepared;
   const versionNotes = resolveVersionNotes(argv);
@@ -1195,14 +1202,16 @@ async function uploadPreparedComponent(
   const payload = await fetchJson(`${endpoint}/components/marketplace/upload`, {
     method: 'POST',
     body: form,
+    ...(authorization.expected && {redirect: 'error' as const}),
     headers: {
-      ...buildRemoteHeaders(endpoint, argv),
+      ...authorization.headers,
+      ...(authorization.expected && { [EXPECTED_IDENTITY_HEADER]: JSON.stringify(authorization.expected) }),
       ...buildSecurityPolicyHeaders(),
       ...buildSourceMetadataHeaders(input.source),
       ...buildVersionNotesHeaders(versionNotes),
       'x-promptframe-upload-target': uploadTarget,
     },
-  }, 'upload.http.failed').catch(error => {
+  }, 'upload.http.failed', Boolean(authorization.expected)).catch(error => {
     if (error instanceof PromptFrameCliError) throw error;
     fail('The upload response was not received. The original build may have been accepted.', 'upload.outcome_unconfirmed', 2, lookupHint);
   });
@@ -1217,7 +1226,7 @@ async function uploadPreparedComponent(
     endpoint,
     uploadTarget,
     jobId: getBuildId(payload),
-    auth: describeAuthForEndpoint(endpoint, argv),
+    auth: authorization.summary,
     ...(versionNotes ? { versionNotes } : {}),
     package: artifact,
     source: input.source,
@@ -1402,9 +1411,12 @@ function assertAuthoringZipPackageFreshness(path: string, target: AuthoringUploa
   fail(formatPackageFreshnessFailure(diagnostics, target), diagnostics[0]!.code);
 }
 
-async function assertRemoteStandardFreshness(endpoint: string, argv: string[], archives: readonly string[] = []): Promise<Record<string, unknown>> {
+async function assertRemoteStandardFreshness(
+  endpoint: string, authorization: UploadAuthorization, target: AuthoringUploadTarget, archives: readonly string[],
+): Promise<Record<string, unknown>> {
   const payload = await fetchJson(`${endpoint}/components/standard`, {
-    headers: buildRemoteHeaders(endpoint, argv),
+    headers: authorization.headers,
+    ...(authorization.expected && {redirect: 'error' as const}),
   }, 'standard.freshness.fetch_failed');
   const remoteSourceHash = extractRemoteStandardSourceHash(payload);
   if (!remoteSourceHash) {
@@ -1413,7 +1425,7 @@ async function assertRemoteStandardFreshness(endpoint: string, argv: string[], a
   const evaluation = evaluateRemoteStandardFreshness(payload, remoteSourceHash);
   if (evaluation.uploadBlocking) fail(evaluation.message, evaluation.code);
   if (evaluation.minPackageVersions) {
-    for (const archive of archives) assertAuthoringZipPackageFreshness(archive, resolveUploadTarget(argv), evaluation.minPackageVersions);
+    for (const archive of archives) assertAuthoringZipPackageFreshness(archive, target, evaluation.minPackageVersions);
   }
   return payload;
 }
@@ -2301,6 +2313,7 @@ function buildVersionNotesHeaders(versionNotes: string | undefined): Record<stri
 }
 
 const POSITIONAL_VALUE_FLAGS = new Set([
+  '--expected-identity',
   '--prop', '--file', '--asset-ref', '--studio-slot',
   '--allowed-upload-target',
   '--auth-permissions',
@@ -2540,20 +2553,40 @@ async function runProbe(argv: string[]): Promise<void> {
   }
 }
 
+function selectedAccount(argv: string[]): AccountIdentity | undefined {
+  const options = argv.filter(arg => arg.split('=', 1)[0] === '--expected-identity');
+  if (options.length === 0) return;
+  if (options.length !== 1) throw accountError('cli.auth.identity_invalid');
+  return parseExpectedIdentity(valueAfter(argv, '--expected-identity'));
+}
+
+function requestedLoginScopes(argv: string[]): string[] {
+  const requested = valuesAfter(argv, '--scope');
+  return [...new Set([...(requested.length ? requested : DEFAULT_CLI_LOGIN_SCOPES),
+    ...(hasFlag(argv, '--with-assets') ? ['asset.read'] : [])])];
+}
+
 async function login(argv: string[]): Promise<void> {
   const endpoint = resolveEndpoint('login', argv);
+  const expected = selectedAccount(argv);
+  if (expected) await requireAccountBinding(endpoint, expected);
   const tokenSecret = valueAfter(argv, '--token')
     ?? process.env.PROMPTFRAME_CLI_TOKEN
     ?? process.env.PROMPTFRAME_CI_TOKEN;
   if (!tokenSecret) {
-    await loginWithDeviceCode(endpoint, argv);
+    if (expected && await reuseBoundLogin(endpoint, argv, expected)) return;
+    await loginWithDeviceCode(endpoint, argv, expected);
     return;
   }
-  const whoamiPayload = await fetchJson(`${endpoint}/cli/auth/whoami`, {
+  const whoamiPayload = expected ? await readBoundCredential(endpoint, 'Bearer ' + tokenSecret, expected) : await fetchJson(`${endpoint}/cli/auth/whoami`, {
     headers: {
       authorization: `Bearer ${tokenSecret}`,
     },
   }, 'login.http.failed');
+  if (expected && (valuesAfter(argv, '--scope').length || hasFlag(argv, '--with-assets'))
+      && !requestedLoginScopes(argv).every(scope => arrayValue(whoamiPayload.scopes).includes(scope))) {
+    throw accountError('cli.auth.scope_missing');
+  }
   const credential = buildStoredCredential(endpoint, tokenSecret, whoamiPayload);
   const current = readConfig(argv);
   writeConfig(argv, {
@@ -2566,6 +2599,7 @@ async function login(argv: string[]): Promise<void> {
   const output = {
     command: 'login',
     endpoint,
+    ...(expected && {accountIdentity: expected}),
     credential: redactCredential(credential),
     storage: fileCredentialWarning(),
     diagnostic: diagnostic('login.completed', 'info', 'PromptFrame CLI credential stored locally.'),
@@ -2580,18 +2614,43 @@ async function login(argv: string[]): Promise<void> {
   console.log('Credential stored in local PromptFrame config with file permissions restricted to the current OS user.');
 }
 
-async function loginWithDeviceCode(endpoint: string, argv: string[]): Promise<void> {
+async function reuseBoundLogin(endpoint: string, argv: string[], expected: AccountIdentity): Promise<boolean> {
+  const stored = asRecord(readConfig(argv).credential);
+  const secret = stringValue(stored?.tokenSecret);
+  if (!secret || normalizeEndpoint(stringValue(stored?.endpoint) ?? '') !== endpoint) return false;
+  let verified: Record<string, unknown>;
+  try {
+    verified = await readBoundCredential(endpoint, 'Bearer ' + secret, expected);
+  } catch (error) {
+    if (error instanceof PromptFrameCliError && error.code === 'cli.auth.login_required') return false;
+    throw error;
+  }
+  if (!requestedLoginScopes(argv).every(scope => arrayValue(verified.scopes).includes(scope))) return false;
+  if (hasFlag(argv, '--json')) {
+    printJson({
+      command: 'login', endpoint, reused: true, accountIdentity: expected,
+      credential: redactCredential(buildStoredCredential(endpoint, secret, verified)),
+      diagnostic: diagnostic('login.completed', 'info', 'Reused the active credential for the selected account.'),
+    });
+  } else {
+    console.log('Reused the active credential for the selected account.');
+  }
+  return true;
+}
+
+async function loginWithDeviceCode(endpoint: string, argv: string[], expected?: AccountIdentity): Promise<void> {
   const startPayload = await fetchJson(`${endpoint}/cli/auth/device/start`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
+    ...(expected && {redirect: 'error' as const}),
     body: JSON.stringify({
       contractVersion: CLI_AUTH_CONTRACT_VERSION,
       endpoint,
-      clientName: `PromptFrame CLI on ${os.hostname()}`,
-      requestedScopes: [...new Set([...(valuesAfter(argv, '--scope').length ? valuesAfter(argv, '--scope') : DEFAULT_CLI_LOGIN_SCOPES),
-        ...(hasFlag(argv, '--with-assets') ? ['asset.read'] : [])])],
+      clientName: 'PromptFrame CLI',
+      requestedScopes: requestedLoginScopes(argv),
+      ...(expected && {expectedIdentity: expected}),
     }),
-  }, 'login.device_start.failed');
+  }, 'login.device_start.failed', Boolean(expected));
   const deviceCode = requiredPayloadString(startPayload, 'deviceCode', 'login.device_start.invalid');
   const device = redactDeviceStart(startPayload);
   if (hasFlag(argv, '--json')) {
@@ -2604,7 +2663,13 @@ async function loginWithDeviceCode(endpoint: string, argv: string[]): Promise<vo
     if (device.userCode) console.log(`Code: ${device.userCode}`);
     console.log('Waiting for browser approval...');
   }
-  const credential = await pollDeviceCredential(endpoint, deviceCode, startPayload, argv);
+  const received = await pollDeviceCredential(endpoint, deviceCode, startPayload, argv, Boolean(expected));
+  let credential = received;
+  if (expected) {
+    const verified = await readBoundCredential(endpoint, 'Bearer ' + received.tokenSecret, expected);
+    if (!requestedLoginScopes(argv).every(scope => arrayValue(verified.scopes).includes(scope))) throw accountError('cli.auth.scope_missing');
+    credential = buildStoredCredential(endpoint, received.tokenSecret, verified);
+  }
   const current = readConfig(argv);
   writeConfig(argv, {
     ...current,
@@ -2617,6 +2682,7 @@ async function loginWithDeviceCode(endpoint: string, argv: string[]): Promise<vo
     command: 'login',
     endpoint,
     device,
+    ...(expected && {accountIdentity: expected}),
     credential: redactCredential(credential),
     storage: fileCredentialWarning(),
     diagnostic: diagnostic('login.completed', 'info', 'PromptFrame CLI credential stored locally.'),
@@ -2636,6 +2702,7 @@ async function pollDeviceCredential(
   deviceCode: string,
   startPayload: Record<string, unknown>,
   argv: string[],
+  guarded: boolean,
 ): Promise<Record<string, string>> {
   const intervalSeconds = parsePositiveSeconds(
     valueAfter(argv, '--poll-interval-seconds'),
@@ -2647,12 +2714,13 @@ async function pollDeviceCredential(
   while (Date.now() <= deadline) {
     const pollPayload = await fetchJson(`${endpoint}/cli/auth/device/poll`, {
       method: 'POST',
+      ...(guarded && {redirect: 'error' as const}),
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         contractVersion: CLI_AUTH_CONTRACT_VERSION,
         deviceCode,
       }),
-    }, 'login.device_poll.failed');
+    }, 'login.device_poll.failed', guarded);
     const status = stringValue(pollPayload.status);
     if (status === 'approved') return buildStoredCredentialFromDevice(endpoint, pollPayload);
     if (status === 'pending') {
@@ -3816,9 +3884,9 @@ function buildContextHeaders(argv: string[]): Record<string, string> {
 function buildRemoteHeaders(
   endpoint: string,
   argv: string[],
-  options: { requireAuth?: boolean } = {},
+  options: { requireAuth?: boolean; config?: Record<string, unknown> } = {},
 ): Record<string, string> {
-  const bearerToken = resolveBearerToken(endpoint, argv);
+  const bearerToken = resolveBearerToken(endpoint, argv, options.config);
   if (bearerToken) {
     return {
       authorization: `Bearer ${bearerToken}`,
@@ -3855,25 +3923,33 @@ function buildSecurityPolicyHeaders(): Record<string, string> {
   };
 }
 
-function resolveBearerToken(endpoint: string, argv: string[]): string | undefined {
+function resolveBearerToken(endpoint: string, argv: string[], config = readConfig(argv)): string | undefined {
   const explicit = valueAfter(argv, '--token')
     ?? process.env.PROMPTFRAME_CI_TOKEN
     ?? process.env.PROMPTFRAME_CLI_TOKEN
     ?? process.env.PROMPTFRAME_AUTH_TOKEN;
-  try { return cliBearerToken({ endpoint, explicit, configuration: readConfig(argv) }); }
+  try { return cliBearerToken({ endpoint, explicit, configuration: config }); }
   catch { return fail('Stored PromptFrame CLI credential is expired. Run promptframe login again.', 'cli.auth.token_expired', 2); }
 }
 
-function describeAuthForEndpoint(endpoint: string, argv: string[]): Record<string, string> | undefined {
-  const credential = asRecord(readConfig(argv).credential);
-  if (credential && normalizeEndpoint(stringValue(credential.endpoint) ?? '') === normalizeEndpoint(endpoint)) {
-    return compactRecord({
-      tokenId: stringValue(credential.tokenId),
-      tokenKind: stringValue(credential.tokenKind),
-      expiresAt: stringValue(credential.expiresAt),
-      source: 'stored',
-    });
+async function captureUploadAuthorization(endpoint: string, argv: string[], target: AuthoringUploadTarget): Promise<UploadAuthorization> {
+  const expected = selectedAccount(argv);
+  const config = readConfig(argv);
+  if (expected) await requireAccountBinding(endpoint, expected);
+  const headers = buildRemoteHeaders(endpoint, argv, { config });
+  const summary = describeAuthForEndpoint(endpoint, argv, config);
+  if (expected) {
+    const verified = await readBoundCredential(endpoint, headers.authorization, expected);
+    const allowedTargets = verified.allowedUploadTargets;
+    if (!Array.isArray(allowedTargets) || !Array.isArray(verified.scopes)) throw accountError('cli.auth.identity_check_unavailable');
+    if (!verified.scopes.includes('component.upload') || (allowedTargets.length > 0 && !allowedTargets.includes(target))) {
+      throw accountError('cli.auth.scope_missing');
+    }
   }
+  return { headers, summary, expected };
+}
+
+function describeAuthForEndpoint(endpoint: string, argv: string[], config: Record<string, unknown>): Record<string, string> | undefined {
   if (valueAfter(argv, '--token')) {
     return { tokenKind: 'explicit', source: '--token' };
   }
@@ -3885,6 +3961,15 @@ function describeAuthForEndpoint(endpoint: string, argv: string[]): Record<strin
   }
   if (process.env.PROMPTFRAME_AUTH_TOKEN) {
     return { tokenKind: 'bearer', source: 'PROMPTFRAME_AUTH_TOKEN' };
+  }
+  const credential = asRecord(config.credential);
+  if (credential && normalizeEndpoint(stringValue(credential.endpoint) ?? '') === normalizeEndpoint(endpoint)) {
+    return compactRecord({
+      tokenId: stringValue(credential.tokenId),
+      tokenKind: stringValue(credential.tokenKind),
+      expiresAt: stringValue(credential.expiresAt),
+      source: 'stored',
+    });
   }
   return undefined;
 }
@@ -4161,10 +4246,15 @@ function displayNameFromComponentId(componentId: string): string {
     .join(' ');
 }
 
-async function fetchJson(url: string, init: RequestInit, code: string): Promise<Record<string, unknown>> {
+async function fetchJson(url: string, init: RequestInit, code: string, guarded = false): Promise<Record<string, unknown>> {
   const response = await fetch(url, init);
   const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
   if (!response.ok || payload.success === false) {
+    if (guarded) {
+      const known = identityResponseError(payload.errorCode);
+      if (known) throw known;
+      fail(`Platform request failed: HTTP ${response.status}.`, code);
+    }
     fail(stringValue(payload.error) ?? `${url} failed: HTTP ${response.status}`, code);
   }
   return payload;
@@ -5496,7 +5586,8 @@ Endpoint resolution:
   The public CLI embeds no production/private endpoint defaults.
 Auth context:
   promptframe login, PROMPTFRAME_CI_TOKEN, or PROMPTFRAME_CLI_TOKEN for formal endpoints.
-  login without --token prints a one-time browser URL/code and never prints the token secret.
+  login/upload --expected-identity <json> binds this operation to the selected account on compatible platforms.
+  Targeted login reuses a matching active credential with the requested scopes. A fresh device login prints a one-time browser URL/code.
   --auth-roles / --auth-permissions are local/dev-only smoke helpers.
 `);
 }

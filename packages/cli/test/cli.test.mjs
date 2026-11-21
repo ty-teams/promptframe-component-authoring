@@ -1893,6 +1893,197 @@ test('check auto-detects a workspace root and checks configured components', asy
   }
 });
 
+function fixtureIdentity(label, platform = 'platform') {
+  const digest = value => 'sha256:' + createHash('sha256').update(value).digest('hex');
+  return {
+    contractVersion: 'promptframe-account-identity/v1',
+    platformDigest: digest(platform),
+    accountDigest: digest(label),
+  };
+}
+
+async function targetedFixture(t, overrides = {}) {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'promptframe-targeted-account-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const config = path.join(root, 'config.json');
+  const component = path.join(root, 'component');
+  await writeFixtureComponent(component);
+  const identityA = fixtureIdentity('A');
+  const state = {
+    starts: [], uploads: [], calls: [], polls: 0, unsupported: false, approved: 'A',
+    scopes: ['component.status.read', 'component.upload'], ...overrides,
+  };
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const credential = id => ({
+    endpoint: server.url, tokenSecret: 'fixture-' + id, tokenId: 'session-' + id,
+    tokenKind: 'human', tenantId: 'test-tenant', projectId: 'same-project', expiresAt,
+  });
+  const store = id => writeFile(config, JSON.stringify({ endpoint: server.url, credential: credential(id) }));
+  const server = await createServer(async (req, res) => {
+    state.calls.push(req.url);
+    const authorization = req.headers.authorization;
+    if (req.url === '/cli/discovery') {
+      assert.equal(authorization, undefined);
+      const binding = {
+        contractVersion: identityA.contractVersion,
+        platformDigest: identityA.platformDigest,
+        deviceStartField: 'expectedIdentity',
+        uploadHeader: state.uploadHeader ?? 'X-PromptFrame-Expected-Identity',
+      };
+      return writeJson(res, { accountIdentityBinding: state.unsupported ? undefined : binding });
+    }
+    if (req.url === '/cli/auth/whoami') {
+      assert.deepEqual(JSON.parse(req.headers['x-promptframe-expected-identity']), identityA);
+      const id = authorization === 'Bearer fixture-A' ? 'A' : 'B';
+      // Also exercise the client's own comparison when the server returns the observed identity.
+      return writeJson(res, {
+        ...credential(id), tokenSecret: undefined, accountIdentity: fixtureIdentity(id), revoked: false,
+        principal: { tenantId: 'test-tenant', userId: id, projectId: 'same-project' },
+        scopes: state.scopes, allowedUploadTargets: ['project_private_generation'],
+      });
+    }
+    if (req.url === '/cli/auth/device/start') {
+      state.starts.push(JSON.parse((await readRequestBody(req)).toString()));
+      return writeJson(res, {
+        deviceCode: 'fixture-device', userCode: 'fixture-code', verificationUri: server.url + '/cli/device',
+      });
+    }
+    if (req.url === '/cli/auth/device/poll') {
+      state.polls++;
+      return writeJson(res, { status: 'approved', credential: credential(state.approved) });
+    }
+    if (req.url === '/components/standard') {
+      if (state.changeConfig) await store('B');
+      return writeJson(res, { success: true, sourceHash: COMPONENT_STANDARD_SOURCE_HASH });
+    }
+    assert.equal(req.url, '/components/marketplace/upload');
+    const body = await readRequestBody(req);
+    state.uploads.push({ authorization, bytes: body.length, expected: req.headers['x-promptframe-expected-identity'] });
+    if (state.rejectUpload) {
+      res.statusCode = 403;
+      return writeJson(res, { success: false, errorCode: 'cli.auth.account_mismatch' });
+    }
+    writeJson(res, { success: true, buildId: 'fixture-build' });
+  });
+  t.after(() => server.close());
+  const run = (args, expected = identityA) => execFileAsync(process.execPath, [
+    cliPath, ...args, '--expected-identity', typeof expected === 'string' ? expected : JSON.stringify(expected),
+    '--endpoint', server.url, '--config', config, '--json',
+  ], { env: { PATH: process.env.PATH, HOME: root } });
+  return { config, component, identityA, expiresAt, state, store, run };
+}
+
+function targetedError(code) {
+  return error => {
+    const lines = parseStderrJsonLines(error.stderr);
+    assert.equal(lines.at(-1).diagnostic.code, code);
+    assert.doesNotMatch(error.stdout + error.stderr, /fixture-(A|B|device)\b/u);
+    return true;
+  };
+}
+
+test('targeted login reuses its existing personal grant and the upload sends exactly one matching archive', async t => {
+  const f = await targetedFixture(t, { changeConfig: true });
+  await f.store('A');
+  const before = await readFile(f.config, 'utf8');
+  const login = JSON.parse((await f.run(['login'])).stdout);
+  assert.equal(login.reused, true);
+  assert.equal(login.credential.expiresAt, f.expiresAt);
+  assert.deepEqual(login.accountIdentity, f.identityA);
+  assert.equal(await readFile(f.config, 'utf8'), before);
+  const result = JSON.parse((await f.run(['upload', f.component])).stdout);
+  assert.equal(result.jobId, 'fixture-build');
+  assert.equal(f.state.starts.length, 0);
+  assert.equal(f.state.uploads.length, 1);
+  assert.equal(f.state.uploads[0].authorization, 'Bearer fixture-A');
+  assert.deepEqual(JSON.parse(f.state.uploads[0].expected), f.identityA);
+  assert.ok(f.state.uploads[0].bytes > 0);
+  assert.equal(result.auth.tokenId, 'session-A');
+});
+
+test('targeted login and upload reject the other valid account in the same project before any ZIP transfer', async t => {
+  const f = await targetedFixture(t);
+  await f.store('B');
+  const before = await readFile(f.config, 'utf8');
+  for (const args of [['login'], ['login', '--token', 'fixture-B'], ['upload', f.component]]) {
+    await assert.rejects(() => f.run(args), targetedError('cli.auth.account_mismatch'));
+  }
+  assert.equal(await readFile(f.config, 'utf8'), before);
+  assert.equal(f.state.starts.length, 0);
+  assert.equal(f.state.uploads.length, 0);
+  assert.ok(!f.state.calls.includes('/components/standard'));
+});
+
+test('targeted operations stop on old platforms, another platform or malformed identity without sending credentials', async t => {
+  const f = await targetedFixture(t, { unsupported: true });
+  await f.store('A');
+  for (const args of [['login'], ['upload', f.component]]) {
+    await assert.rejects(() => f.run(args), targetedError('cli.auth.identity_binding_unsupported'));
+  }
+  f.state.unsupported = false;
+  await assert.rejects(() => f.run(['upload', f.component], fixtureIdentity('A', 'other')), targetedError('cli.auth.platform_mismatch'));
+  f.state.uploadHeader = 'different-header';
+  await assert.rejects(() => f.run(['upload', f.component]), targetedError('cli.auth.identity_binding_unsupported'));
+  await assert.rejects(() => f.run(['login'], {}), targetedError('cli.auth.identity_invalid'));
+  await assert.rejects(() => f.run(['login'], ''), targetedError('cli.auth.identity_invalid'));
+  assert.deepEqual(f.state.calls, Array(4).fill('/cli/discovery'));
+});
+
+test('new device login carries the intended account and verifies the issued credential before saving it', async t => {
+  const f = await targetedFixture(t, { approved: 'B' });
+  await assert.rejects(() => f.run(['login']), targetedError('cli.auth.account_mismatch'));
+  await assert.rejects(() => stat(f.config), { code: 'ENOENT' });
+  f.state.approved = 'A';
+  const result = JSON.parse((await f.run(['login'])).stdout);
+  assert.deepEqual(result.accountIdentity, f.identityA);
+  assert.equal(JSON.parse(await readFile(f.config, 'utf8')).credential.tokenId, 'session-A');
+  assert.equal(f.state.starts.length, 2);
+  for (const start of f.state.starts) assert.deepEqual(start.expectedIdentity, f.identityA);
+  assert.equal(f.state.polls, 2);
+});
+
+test('targeted upload checks scope and retains a definitive server rejection without resubmission', async t => {
+  const f = await targetedFixture(t, { scopes: ['component.status.read'] });
+  await f.store('A');
+  await assert.rejects(() => f.run(['upload', f.component]), targetedError('cli.auth.scope_missing'));
+  assert.equal(f.state.uploads.length, 0);
+  f.state.scopes.push('component.upload');
+  f.state.rejectUpload = true;
+  await assert.rejects(() => f.run(['upload', f.component]), targetedError('cli.auth.account_mismatch'));
+  assert.equal(f.state.uploads.length, 1);
+});
+
+test('an upload keeps the selected credential and its receipt when another process changes the config', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'promptframe-upload-account-'));
+  t.after(() => rm(root, {recursive: true, force: true}));
+  const config = path.join(root, 'config.json');
+  const component = path.join(root, 'component');
+  await writeFixtureComponent(component);
+  const headers = [];
+  const select = (id) => writeFile(config, JSON.stringify({
+    endpoint: server.url,
+    credential: {endpoint: server.url, tokenSecret: 'fixture-'+id, tokenId: id, tokenKind: 'human'},
+  }));
+  const server = await createServer(async (req, res) => {
+    headers.push(req.headers.authorization);
+    if (req.url === '/components/standard') {
+      await select('b');
+      return writeJson(res, {success: true, sourceHash: COMPONENT_STANDARD_SOURCE_HASH});
+    }
+    assert.equal(req.url, '/components/marketplace/upload');
+    assert.ok((await readRequestBody(req)).length > 0);
+    writeJson(res, {success: true, buildId: 'original', status: 'queued'});
+  });
+  t.after(() => server.close());
+  await select('a');
+  const {stdout} = await execFileAsync(process.execPath,
+    [cliPath, 'upload', component, '--endpoint', server.url, '--config', config, '--json'],
+    {env: {PATH: process.env.PATH, HOME: root}});
+  assert.deepEqual(headers, ['Bearer fixture-a', 'Bearer fixture-a']);
+  assert.equal(JSON.parse(stdout).auth.tokenId, 'a');
+  assert.equal(JSON.parse(await readFile(config, 'utf8')).credential.tokenId, 'b');
+});
+
 test('upload auto-detects a workspace root and uploads configured components', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-upload-workspace-root-'));
   const calls = [];

@@ -99,6 +99,8 @@ Use this section when the component is authored outside the PromptFrame platform
 
 ### Human first run
 
+导演已经选定账号时，从这个已验证的目标取得平台和账号摘要，并按[指定账号的登录与上传](https://github.com/ty-teams/promptframe-component-authoring/blob/main/packages/cli/README.md#target-account)传给兼容的 CLI。先检查本机命令和平台能力；已有匹配授权可复用。两个账号有同名项目时也要用目标账号的身份核对。
+
 ```bash
 npx -y create-promptframe-component@latest ./my-component --name my-component --display-name "My Component"
 cd my-component
