@@ -142,6 +142,8 @@ export function PreviewPropsPanel() {
 
 `@promptframe/component-kit/preview-react` is the public UI contract for preview props inspection. It renders stable `data-preview-props-*` selectors, scalar controls, enum/color controls, nested object/array editors, read-only states, missing-description warnings, and fail-closed Advanced JSON parsing. Host products may pass adapters such as `renderResourcePicker` and `renderToolbarActions`, but platform-only permissions, resource governance, Auth0/session state, storage deletion, and review workflow actions must stay in the host surface.
 
+可选字段未设置时显示“设置值”，不展开或写入不存在的子字段。显式设置后才能编辑；“移除此值”会省略对应属性，组件沿原 schema 处理缺省值。`0`、空字符串、`false` 与 schema 允许的 `null` 各自保留；只有声明允许 `null` 的字段显示“设为 null”。`nullable` 本身不代表字段可省略。重置沿用传入的完整初始参数，查看表单不会修改参数。
+
 ```ts
 import { resolvePromptFrameStyle } from '@promptframe/component-kit/style';
 

@@ -102,8 +102,47 @@ test('PromptFramePreviewInspector preserves explicit null preview prop values', 
 
   const markup = renderToStaticMarkup(element);
   assert.match(markup, /&quot;nullable&quot;: null/);
-  assert.match(markup, />null<\/textarea>/);
+  assert.match(markup, /data-preview-props-null="nullable"/);
   assert.doesNotMatch(markup, /fallback/);
+  assert.doesNotMatch(markup, /data-preview-props-object-group="nullable"/);
+});
+
+test('preview inspector leaves optional nested objects absent until explicitly enabled', () => {
+  const schema = {shape:{cues:zodLike('ZodArray',{type:zodLike('ZodObject',{shape:()=>({
+    end:zodLike('ZodNumber'),
+    camera:zodLike('ZodOptional',{innerType:zodLike('ZodObject',{shape:()=>({
+      position:zodLike('ZodArray',{type:zodLike('ZodNumber')}),
+      fov:zodLike('ZodNumber',{checks:[{kind:'min',value:1}]}),
+    })})}),
+    annotation:zodLike('ZodOptional',{innerType:zodLike('ZodObject',{shape:()=>({
+      text:zodLike('ZodString',{checks:[{kind:'min',value:1}]}),
+    })})}),
+  })})})}};
+  const props={cues:[{end:0.33}]};
+  const controls=buildPromptFramePreviewControlsFromSchema({propsSchema:schema,defaultProps:props});
+  const markup=renderToStaticMarkup(React.createElement(PromptFramePreviewInspector,{controls,previewProps:props,locale:'en'}));
+  assert.doesNotMatch(markup,/data-preview-props-object-group="cues\[0\]\.camera"/);
+  assert.doesNotMatch(markup,/data-preview-props-field="cues\[0\]\.annotation\.text"/);
+  assert.doesNotMatch(markup,/data-preview-props-field-error/);
+  assert.match(markup,/data-preview-props-enable="cues\[0\]\.camera"/);
+  assert.deepEqual(props,{cues:[{end:0.33}]});
+});
+
+test('preview controls preserve required nullable fields and validate explicit zero, empty and null independently',()=>{
+  const controls=buildPromptFramePreviewControlsFromSchema({propsSchema:{shape:{
+    requiredNullable:zodLike('ZodNullable',{innerType:zodLike('ZodNumber')}),
+    optionalNullable:zodLike('ZodNullable',{innerType:zodLike('ZodOptional',{innerType:zodLike('ZodNumber')})}),
+  }},defaultProps:{requiredNullable:null}});
+  assert.equal(controls[0]?.required,true);
+  assert.deepEqual(controls[0]?.schema?.type,['number','null']);
+  assert.equal(controls[1]?.required,false);
+  const schema={type:'object' as const,required:['zero','empty','nullable'],properties:{
+    zero:{type:'number' as const,minimum:0},empty:{type:'string' as const},nullable:{type:['number' as const,'null' as const]},
+  }};
+  assert.deepEqual(parsePromptFramePreviewInspectorJsonDraft('{"zero":0,"empty":"","nullable":null}','object','en',schema),
+    {ok:true,value:{zero:0,empty:'',nullable:null}});
+  assert.equal(parsePromptFramePreviewInspectorJsonDraft('{"zero":0,"empty":""}','object','en',schema).ok,false);
+  assert.equal(parsePromptFramePreviewInspectorJsonDraft('{"zero":null,"empty":"","nullable":null}','object','en',schema).ok,false);
 });
 
 test('preview state reset restores props, size, timing, case name and locale as one snapshot', () => {

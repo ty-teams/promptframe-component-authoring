@@ -1,18 +1,18 @@
 {
   "schemaVersion": "promptframe-authoring-release-intent/v2",
-  "releaseId": "authoring-release-2026-11-21.3",
-  "artifactTag": "authoring-candidate-2026-11-21.3-r1",
+  "releaseId": "authoring-release-2026-11-21.4",
+  "artifactTag": "authoring-candidate-2026-11-21.4-r1",
   "registry": "https://registry.npmjs.org/",
-  "createdAt": "2026-11-21T11:05:13.888Z",
-  "expiresAt": "2026-11-25T11:05:13.888Z",
+  "createdAt": "2026-11-21T13:36:14.394Z",
+  "expiresAt": "2026-11-25T13:36:14.394Z",
   "packages": [
     {
-      "name": "@promptframe/cli",
-      "version": "0.1.91"
+      "name": "@promptframe/component-kit",
+      "version": "0.1.46"
     }
   ],
   "dependencies": {
-    "cli": [
+    "componentKit": [
       "contracts"
     ]
   },
@@ -23,15 +23,15 @@
       "integrity": "sha512-lNkLvzJ9KDO5Xv1rdWxEuBynKWV9pyVazhD3+tbSyZH8tiE+aVF7yAMyMJ2U3dwN/GjFWLo+cJgWC3jUnZpOcw=="
     },
     {
-      "name": "@promptframe/component-kit",
-      "version": "0.1.45",
-      "integrity": "sha512-upCS5m/OIiQ19yzZhnlz4H+4JpVn8gLzFNEF2BC9o4R2d5oMRMJ51qaDdGSRK6Jrk+AzLQIfMedXd2a2g9ekqw=="
-    },
-    {
       "name": "create-promptframe-component",
       "version": "0.1.73",
       "integrity": "sha512-uXtyMb/pgsImBd/qU0RvxV6WLJpoW9BxSvBM4Ap9e6o+BMPbFrdd2FNiyENUFWqSrqwtB3s33aH9nlB2AW9pQw=="
+    },
+    {
+      "name": "@promptframe/cli",
+      "version": "0.1.91",
+      "integrity": "sha512-UC6NfU+8y1NS+bAAhVGYShGJzu+Dfc5Nu9tAAp8tCDgNe4K153QWmd/pWPHSBYd0Ypn1DFoT/UBL/4wU+2oiuw=="
     }
   ],
-  "intentDigest": "sha256:4d1a6575adc2922fadde5c10a58247088b0d0e6766912ea279cfbfd945c0d9f8"
+  "intentDigest": "sha256:10c5fdccc655d4a244da5d61e8ba7a5462ff1dabd3e3e80a282ed64a27810181"
 }

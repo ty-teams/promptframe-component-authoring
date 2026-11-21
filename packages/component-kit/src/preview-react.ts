@@ -166,6 +166,7 @@ type SchemaValueEditorProps = {
   readOnly: boolean;
   locale: PromptFramePreviewLocale;
   onChange: (value: unknown) => void;
+  optional?: boolean;
 };
 
 export function buildPromptFramePreviewControlsFromSchema({
@@ -257,6 +258,10 @@ const messages = {
     object: 'object',
     readOnly: 'Preview props are read-only in this surface.',
     reset: 'Reset',
+    unset: 'Not set',
+    enable: 'Set value',
+    removeValue: 'Remove value',
+    setNull: 'Set to null',
   },
   zh: {
     addItem: '添加项',
@@ -274,6 +279,10 @@ const messages = {
     object: '对象',
     readOnly: '当前表面只能查看 props，不能直接修改。',
     reset: '重置默认值',
+    unset: '未设置',
+    enable: '设置值',
+    removeValue: '移除此值',
+    setNull: '设为 null',
   },
 } as const;
 
@@ -357,7 +366,10 @@ export function PromptFramePreviewInspector({
   const readOnly = !editable;
   const setControlValue = (key: string, value: unknown) => {
     if (readOnly || !onPreviewPropsChange) return;
-    onPreviewPropsChange({ ...previewProps, [key]: value });
+    const next = { ...previewProps };
+    if (value === undefined) delete next[key];
+    else next[key] = value;
+    onPreviewPropsChange(next);
   };
   const reset = () => {
     if (readOnly || !onPreviewPropsChange) return;
@@ -419,7 +431,7 @@ export function PromptFramePreviewInspector({
         React.createElement(ControlEditor, {
           key: control.key,
           control,
-          value: previewProps[control.key] !== undefined ? previewProps[control.key] : control.defaultValue,
+          value: previewProps[control.key],
           readOnly,
           locale,
           onChange: (value: unknown) => setControlValue(control.key, value),
@@ -748,7 +760,39 @@ export function PromptFramePreviewApp<TProps extends Record<string, unknown>>({
   );
 }
 
-function ControlEditor({
+function ControlEditor(input: Parameters<typeof ControlEditorValue>[0]): React.ReactElement {
+  return React.createElement(ValuePresenceEditor, {
+    ...input, path: input.control.key, schema: schemaFromControl(input.control),
+    optional: input.control.required === false, defaultValue: input.control.defaultValue,
+    label: controlLabel(input.control, input.locale), description: controlDescription(input.control, input.locale),
+  }, React.createElement(ControlEditorValue, input));
+}
+
+/** Absence and null are actual input states. Only an explicit action creates a value. */
+function ValuePresenceEditor({value, schema, optional, defaultValue, path, readOnly, locale, onChange, children, label, description}:
+  SchemaValueEditorProps & {defaultValue?: unknown; children?: React.ReactNode; label?: string; description?: string}): React.ReactElement {
+  const unset = value === undefined && optional;
+  const nullable = schema?.type === 'null' || Array.isArray(schema?.type) && schema.type.includes('null');
+  const button = (attribute: string, label: string, nextValue: () => unknown) => React.createElement('button', {
+    type: 'button', disabled: readOnly, [attribute]: path,
+    'aria-label': `${path} · ${label}`,
+    onClick: () => { if (!readOnly) onChange(nextValue()); }, style: inlineActionButtonStyle,
+  }, label);
+  return React.createElement('div', { 'data-preview-props-value': path },
+    unset || value === null ? React.createElement('div', { style: fieldShellStyle },
+      React.createElement('span', { style: fieldLabelStyle }, label ?? lastPathSegment(path)),
+      React.createElement('span', { [unset ? 'data-preview-props-unset' : 'data-preview-props-null']: path }, unset ? messages[locale].unset : 'null'),
+      description ? React.createElement('span', { style: descriptionStyle }, description) : null,
+      button('data-preview-props-enable', messages[locale].enable,
+        () => defaultValue !== undefined && defaultValue !== null ? cloneJsonValue(defaultValue) : createDefaultValueFromSchema(schema)),
+      !unset ? renderFieldError(path, validatePromptFramePreviewValue(value, schema)) : null,
+    ) : children,
+    optional && !unset ? button('data-preview-props-remove', messages[locale].removeValue, () => undefined) : null,
+    nullable && value !== null ? button('data-preview-props-set-null', messages[locale].setNull, () => null) : null,
+  );
+}
+
+function ControlEditorValue({
   control,
   value,
   readOnly,
@@ -786,7 +830,7 @@ function ControlEditor({
       renderDescription(description, control.key, locale),
       React.createElement(SchemaValueEditor, {
         schema,
-        value: value ?? createDefaultValueFromSchema(schema),
+        value,
         path: control.key,
         readOnly,
         locale,
@@ -836,7 +880,11 @@ function ControlEditor({
   );
 }
 
-function SchemaValueEditor({
+function SchemaValueEditor(input: SchemaValueEditorProps): React.ReactElement {
+  return React.createElement(ValuePresenceEditor, input, React.createElement(SchemaValueEditorValue, input));
+}
+
+function SchemaValueEditorValue({
   schema,
   value,
   path,
@@ -923,11 +971,17 @@ function SchemaValueEditor({
           return React.createElement(SchemaValueEditor, {
             key,
             schema: childSchema,
-            value: record[key] ?? createDefaultValueFromSchema(childSchema),
+            value: record[key],
+            optional: !(schema?.required ?? []).includes(key),
             path: childPath,
             readOnly,
             locale,
-            onChange: (nextValue) => onChange({ ...record, [key]: nextValue }),
+            onChange: (nextValue) => {
+              const next = { ...record };
+              if (nextValue === undefined) delete next[key];
+              else next[key] = nextValue;
+              onChange(next);
+            },
           });
         }),
       renderFieldError(path, validatePromptFramePreviewValue(record, schema)),
@@ -1176,7 +1230,8 @@ function validatePromptFramePreviewValue(
   if ('const' in schema && schema.const !== undefined && !isJsonEqual(schema.const, value)) {
     return `${path ? `${path} ` : ''}must match the const value.`;
   }
-  if (type && !schemaTypeMatches(value, type)) return `${path ? `${path} ` : ''}must be ${type}.`;
+  const types = Array.isArray(schema.type) ? schema.type : type ? [type] : [];
+  if (types.length && !types.some(candidate => schemaTypeMatches(value, candidate))) return `${path ? `${path} ` : ''}must be ${types.join(' or ')}.`;
   if (type === 'string' && typeof value === 'string') {
     if (schema.minLength !== undefined && value.length < schema.minLength) {
       return `${path ? `${path} ` : ''}must be at least ${schema.minLength} characters.`;
@@ -1321,6 +1376,8 @@ function zodLikeToPreviewJsonSchema(schemaLike: unknown, fallbackValue?: unknown
   const resourceSlot = promptFramePublicResourceSlotFromSchema(schemaLike) ?? promptFramePublicResourceSlotFromSchema(def);
   return schema ? {
     ...schema,
+    ...(zodLikeWrappers(schemaLike).some(name => name.includes('nullable')) && schema.type
+      ? {type: [...new Set([...(Array.isArray(schema.type) ? schema.type : [schema.type]), 'null' as const])]} : {}),
     ...(description ? { description } : {}),
     ...(resourceSlot ? { promptFrameResource: resourceSlot } : {}),
   } : undefined;
@@ -1338,11 +1395,25 @@ function zodLikeObjectShape(schemaLike: unknown): Record<string, unknown> {
 }
 
 function zodLikeFieldIsRequired(schemaLike: unknown): boolean {
-  const typeName = zodLikeTypeName(schemaLike);
-  if (typeName.includes('optional') || typeName.includes('default') || typeName.includes('catch') || typeName.includes('nullable')) {
-    return false;
+  return !zodLikeWrappers(schemaLike).some(name => name.includes('optional') || name.includes('default') || name.includes('catch'));
+}
+
+function zodLikeWrappers(schemaLike: unknown): string[] {
+  const names: string[] = [];
+  let current = schemaLike;
+  for (let depth = 0; depth < 20; depth++) {
+    const name = zodLikeTypeName(current), next = unwrapZodLikeSchemaOne(current);
+    names.push(name);
+    if (!next || next === current) break;
+    current = next;
   }
-  return true;
+  return names;
+}
+
+function unwrapZodLikeSchemaOne(schemaLike: unknown): unknown {
+  const def = zodLikeDef(schemaLike), name = zodLikeTypeName(schemaLike);
+  return ['default', 'optional', 'nullable', 'catch', 'effects', 'branded', 'readonly', 'promise'].some(wrapper => name.includes(wrapper))
+    ? def?.innerType ?? def?.schema ?? def?.type : undefined;
 }
 
 function unwrapZodLikeSchema(schemaLike: unknown): unknown {
@@ -1422,13 +1493,16 @@ function recordFromMaybe(value: unknown): Record<string, unknown> {
 
 function createDefaultValueFromSchema(schema?: PromptFramePreviewJsonSchemaLike): unknown {
   const type = primarySchemaType(schema);
+  if (schema?.const !== undefined) return cloneJsonValue(schema.const);
+  if (schema?.enum?.length) return cloneJsonValue(schema.enum[0]);
   if (type === 'array') return [];
   if (type === 'object') {
-    return Object.fromEntries(Object.entries(schema?.properties ?? {}).map(([key, child]) => [key, createDefaultValueFromSchema(child)]));
+    return Object.fromEntries(Object.entries(schema?.properties ?? {}).filter(([key]) => schema?.required?.includes(key))
+      .map(([key, child]) => [key, createDefaultValueFromSchema(child)]));
   }
+  if (type === 'null') return null;
   if (type === 'boolean') return false;
   if (type === 'number' || type === 'integer') return 0;
-  if (schema?.enum?.length) return schema.enum[0];
   return '';
 }
 
