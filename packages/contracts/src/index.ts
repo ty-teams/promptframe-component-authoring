@@ -12,6 +12,7 @@ import { componentPublicResourceKindSchema } from './resource-slots.js';
 export * from './resource-slots.js';
 export * from './model-resource.js';
 export * from './component-preview.js';
+export * from './component-showcase.js';
 
 export {
   COMPONENT_SECURITY_POLICY_DIGEST_VERSION,
