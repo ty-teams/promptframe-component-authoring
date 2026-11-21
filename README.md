@@ -102,7 +102,7 @@ This writes `.github/workflows/promptframe-component.yml`. Pull requests run `pr
 
 ## Repository Layouts
 
-第一次接手工程，先核对已安装 CLI 的发行标识，再按组件是否共用源码选择目录和上传方式。手册给出了 A、B 共用主题而 C 独立的清单，以及如何从 Studio 或 MCP 找回本人上传的某一版。见[作者决策表](AUTHORING.md#authoring-decisions)和[历史源码恢复](AUTHORING.md#restore-source)。
+第一次接手工程，先核对已安装 CLI 的发行标识，再按组件是否共用源码选择目录和上传方式。多个组件共用工作区根锁文件（pnpm workspace root lockfile）时，将 `pnpm-lock.yaml` 留在工作区根目录即可。手册给出了 A、B 共用主题而 C 独立的清单，以及如何从 Studio 或 MCP 找回本人上传的某一版。见[作者决策表](AUTHORING.md#authoring-decisions)和[历史源码恢复](AUTHORING.md#restore-source)。
 
 PromptFrame supports two repository styles. Use the simple one unless you have a real multi-component team workflow.
 
