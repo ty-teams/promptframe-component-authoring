@@ -31,7 +31,19 @@ pnpm --dir components/diagram dev
 
 **委托。** 同一机位转过同样角度，比较方块和尖顶轮廓。使用 `fixtures/blue.glb` 和 `fixtures/gold.glb`。本例的模型组件专用于这两个纯色、无贴图的网格。导演也可以用自己有权且声明了模型槽的正式组件。
 
-将蓝色样本复制为开发目录中的 `selected.glb`。在生成的工作区运行以下命令，文件路径改为该选定文件的实际路径。
+### 在当前镜头直接试模型
+
+CLI 0.1.89 起，可使用目标 Studio 页已声明的模型槽。在 `studio_preview` 读取目标作品及页面。目标连接报告 `studioSlotFiles: true` 并且所选节点的 `modelSlots` 中有 `fileTarget` 时，可直接使用这个值。市场或项目组件使用已锁定的版本，本地组件使用该页已加载的开发版本。
+
+```sh
+promptframe resource set "$CONNECTION_DIR" --studio-slot "$FILE_TARGET" --file "$SELECTED_GLB" --watch
+```
+
+`CONNECTION_DIR` 是现有开发连接的根目录。如果只有本机模型，可从一个空目录运行 `promptframe dev . --resources-only --studio-origin "$STUDIO_ORIGIN"`，在目标页建立开发连接，然后从同一目录选文件。选定文件的回执给出 `connectionId`、`resourceId` 和 `sha256`。在该页读回同一条资源，使用 `bind_model_resource` 绑定当前节点和参数，再从 Studio 采目标帧。相同路径的有效更新会产生新摘要，重新选另一个文件后按新资源标识绑定。页面或组件更换后重读目标槽。清理时先在页面清除绑定，再用 `promptframe resource clear "$CONNECTION_DIR" --studio-slot "$FILE_TARGET"` 停止提供文件。采用最终版时沿素材上传及作品保存流程登记。
+
+### 使用示例附带的组件工作区
+
+示例固定的 CLI 0.1.88 可按组件参数选文件。将蓝色样本复制为开发目录中的 `selected.glb`。在生成的工作区运行以下命令，文件路径改为该选定文件的实际路径。
 
 ```sh
 pnpm exec promptframe resource set ./components/model --prop /model --file "$SELECTED_GLB" --watch

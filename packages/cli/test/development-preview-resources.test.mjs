@@ -139,3 +139,55 @@ test('the existing authenticated dev HTTP/SSE surface observes two model revisio
   }finally{abort.abort();if(server)await server.close();await rm(f.root,{recursive:true,force:true});}
   await assert.rejects(fetch(server.url+'/__promptframe/registry',{signal:AbortSignal.timeout(2000)}));
 });
+
+test('a file-only owner serves the requested page, watches the selected GLB and clears it without a project', async()=>{
+  const {randomUUID}=await import('node:crypto');
+  const {spawn,execFile}=await import('node:child_process');
+  const {promisify}=await import('node:util');
+  const {createInterface}=await import('node:readline');
+  const {once}=await import('node:events');
+  const {fileURLToPath}=await import('node:url');
+  const root=await mkdtemp(join(tmpdir(),'pf-slot-owner-')), origin='https://studio.example';
+  const cli=fileURLToPath(new URL('../dist/index.js',import.meta.url));
+  const child=spawn(process.execPath,[cli,'dev',root,'--resources-only','--studio-origin',origin],{stdio:['ignore','pipe','pipe']});
+  const done=once(child,'exit');
+  const timer=setTimeout(()=>child.kill(),25_000);
+  const lines=createInterface({input:child.stdout});
+  async function run(...args){return JSON.parse((await promisify(execFile)(process.execPath,[cli,'resource',...args])).stdout);}
+  try{
+    let raw='';
+    for await(const line of lines){raw+=line+'\n';try{JSON.parse(raw);break;}catch{}}
+    const connection=JSON.parse(raw),page=randomUUID(),other=randomUUID(),slot=page+'/'+randomUUID();
+    const headers={Origin:origin,Authorization:'Bearer '+connection.credential};
+    const query=(route,owner)=>fetch(connection.url+'/__promptframe/'+(owner?'pages/'+owner+'/':'')+route,{headers});
+    const registry=async owner=>(await query('registry',owner)).json();
+    const file=join(root,'model.glb'),a=glb('blue'),b=glb('gold');
+    await writeFile(file,a);
+    const receipt=await run('set',root,'--studio-slot',slot,'--file',file,'--watch');
+    assert.equal(receipt.platformWrites,0);assert.equal(receipt.sha256,hash(a));assert.equal(receipt.fileTarget,slot);
+    assert.equal(receipt.connectionId,connection.connectionId);
+    const state=await registry(page),row=state.localResources[0];
+    assert.equal(state.studioSlotFiles,true);assert.deepEqual(state.modules,[]);assert.equal(row.resourceId,receipt.resourceId);
+    assert(!JSON.stringify(state).includes(root));assert(!('moduleId' in row));
+    const route=r=>'local-resources/'+r.resourceId+'/'+r.sha256.slice(7);
+    for(const wrong of [undefined,other]){
+      assert.deepEqual((await registry(wrong)).localResources,[]);
+      assert.equal((await query(route(row),wrong)).status,409);
+    }
+    assert.deepEqual(Buffer.from(await(await query(route(row),page)).arrayBuffer()),a);
+    await writeFile(file+'.new',b);await rename(file+'.new',file);
+    const second=(await registry(page)).localResources[0];
+    assert.equal(second.resourceId,row.resourceId);assert.equal(second.sha256,hash(b));assert.equal(second.expiresAt,row.expiresAt);
+    assert.equal((await query(route(row),page)).status,409);
+    assert.deepEqual(Buffer.from(await(await query(route(second),page)).arrayBuffer()),b);
+    const invalid=join(root,'bad.glb');await writeFile(invalid,'bad');
+    await assert.rejects(run('set',root,'--studio-slot',slot,'--file',invalid));
+    await assert.rejects(run('clear',root,'--studio-slot='));
+    await assert.rejects(run('set',root,'--studio-slot='+slot,'--prop=/model','--file',file));
+    assert.equal((await registry(page)).localResources[0].sha256,hash(b));
+    assert.equal((await run('clear',root,'--studio-slot',slot)).cleared,true);
+    assert.deepEqual((await registry(page)).localResources,[]);
+  } finally{
+    clearTimeout(timer);lines.close();child.kill();await done;await rm(root,{recursive:true,force:true});
+  }
+});

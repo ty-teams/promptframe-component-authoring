@@ -2,7 +2,7 @@ import {createHash,randomBytes} from 'node:crypto';
 import {constants,chmodSync,closeSync,existsSync,fsyncSync,lstatSync,mkdirSync,openSync,readFileSync,realpathSync,renameSync,unlinkSync,writeFileSync} from 'node:fs';
 import {createConnection,createServer,type Server} from 'node:net';
 import {execFileSync} from 'node:child_process';
-import {join} from 'node:path';
+import {isAbsolute,join} from 'node:path';
 import {tmpdir} from 'node:os';
 
 type State={version:1;connectionId:string;port?:number};
@@ -58,13 +58,22 @@ function ownerAt(path:string,rootDigest:string):Owner|null{
 function same(a:Owner,b:Owner){return a.instanceId===b.instanceId&&a.pid===b.pid&&a.birth===b.birth&&a.rootDigest===b.rootDigest;}
 function removeOwned(path:string,owner:Owner){const current=ownerAt(path,owner.rootDigest);if(current&&same(current,owner))unlinkSync(path);}
 
-async function command(owner:Owner,action:'inspect'|'stop'|'replace'){
-  return new Promise<Owner>((resolve,reject)=>{
+export type StudioFileCommand = {action:'select_file';target:string;path:string;watch:boolean}|{action:'clear_file';target:string};
+async function command(owner:Owner,action:'inspect'|'stop'|'replace'|StudioFileCommand){
+  return new Promise<Owner & {file?:Record<string,unknown>;error?:string}>((resolve,reject)=>{
     const socket=createConnection(endpoint(owner));let raw='';const timer=setTimeout(()=>socket.destroy(Error('development.owner.control_unconfirmed')),3000);
-    socket.setEncoding('utf8');socket.once('connect',()=>socket.end(JSON.stringify({action,instanceId:owner.instanceId})+'\n'));
+    socket.setEncoding('utf8');socket.once('connect',()=>socket.end(JSON.stringify({...(typeof action==='string'?{action}:action),instanceId:owner.instanceId})+'\n'));
     socket.on('data',chunk=>{raw+=chunk;if(raw.length>4096)socket.destroy(Error('development.owner.control_invalid'));});
     socket.once('error',reject);socket.once('close',()=>{clearTimeout(timer);try{const result=JSON.parse(raw);if(!same(result,owner)||result.connectionId!==owner.connectionId)throw Error();resolve(result);}catch{reject(Error('development.owner.control_unconfirmed'));}});
   });
+}
+export async function changeStudioFile(root:string,input:StudioFileCommand){
+  const p=paths(root),owner=ownerAt(p.lock,p.rootDigest);
+  if(!owner||birth(owner.pid)!==owner.birth)throw Error('development.owner.not_running');
+  const result=await command(owner,input);
+  if(result.error)throw Error(result.error);
+  if(!result.file)throw Error('development.owner.control_unconfirmed');
+  return {connectionId:owner.connectionId,...result.file};
 }
 /** Same CLI process, filesystem-local owner control. The Studio HTTP surface
  * remains GET-only, and stop never signals a numeric PID. */
@@ -83,7 +92,7 @@ export async function stopDevelopmentOwner(root:string,reason:'stop'|'replace'='
   }
   throw Error('development.owner.close_unconfirmed');
 }
-export async function acquireDevelopmentOwner(root:string,onStop:(reason:'stop'|'replace'|'fatal')=>void){
+export async function acquireDevelopmentOwner(root:string,onStop:(reason:'stop'|'replace'|'fatal')=>void,onFile?:(input:StudioFileCommand)=>Record<string,unknown>){
   const p=paths(root,true);let state:State;
   if(!existsSync(p.state)){
     try{write(p.state,{version:1,connectionId:randomBytes(16).toString('hex')});}
@@ -96,10 +105,21 @@ export async function acquireDevelopmentOwner(root:string,onStop:(reason:'stop'|
   let closing=false;const sockets=new Set<import('node:net').Socket>();let control:Server|undefined;
   try{
     control=createServer({allowHalfOpen:true},socket=>{
-      sockets.add(socket);socket.once('close',()=>sockets.delete(socket));socket.setTimeout(3000,()=>socket.destroy());socket.setEncoding('utf8');let raw='';
+      sockets.add(socket);socket.once('close',()=>sockets.delete(socket));socket.setTimeout(3000,()=>socket.destroy());socket.setEncoding('utf8');let raw='',handled=false;
       socket.on('data',chunk=>{
-        raw+=chunk;if(raw.length>1024){socket.destroy();return;}if(!raw.endsWith('\n'))return;
-        try{const input=JSON.parse(raw);if(input.instanceId!==owner.instanceId||!['inspect','stop','replace'].includes(input.action))throw Error();
+        if(handled)return;
+        raw+=chunk;if(raw.length>8192){socket.destroy();return;}if(!raw.endsWith('\n'))return;
+        handled=true;
+        try{const input=JSON.parse(raw);if(input.instanceId!==owner.instanceId)throw Error();
+          if(input.action==='select_file'||input.action==='clear_file'){
+            if(!onFile||closing||typeof input.target!=='string'||input.target.length>80)throw Error();
+            if(input.action==='select_file'&&(typeof input.path!=='string'||!isAbsolute(input.path)||input.path.length>4096||typeof input.watch!=='boolean'))throw Error();
+            try{socket.end(JSON.stringify({...owner,file:onFile(input)}));}
+            catch(error){const code=error instanceof Error?error.message:'';
+              socket.end(JSON.stringify({...owner,error:/^(?:preview[.]resource|model|development[.]owner)[.][a-z0-9_.]+$/u.test(code)?code:'preview.resource.file_unavailable'}));}
+            return;
+          }
+          if(!['inspect','stop','replace'].includes(input.action))throw Error();
           socket.end(JSON.stringify(owner));if(input.action!=='inspect'&&!closing){closing=true;onStop(input.action);}
         }catch{socket.destroy();}
       });

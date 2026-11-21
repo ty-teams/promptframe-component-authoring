@@ -123,7 +123,7 @@ promptframe resource clear .
 
 本人明确选择的 PNG、JPEG、WebP 或自包含 GLB 文件最大 16MiB，并受槽声明的种类、MIME 和大小限制。图片不能选入仅模型槽，模型也不能选入仅图片槽。CLI 记录原文件身份和 SHA，不复制原件；每次读取重新核对。选择存入 ignored 的 `.promptframe/local-previews/resources.json`，不会改公开 `preview-props.json`，打包固定排除此目录。选择最多 16 项，24 小时后不再提供读取；`resource clear` 只移除受管选择记录，不删除原始文件。没有后台清理进程。
 
-GLB 可显式加 `--watch`：
+已有目标镜头和授权连接时，从 `studio_preview` 读取所选节点的 `fileTarget` 和连接的 `studioSlotFiles`。支持该能力的页面可配合 CLI 0.1.89 使用 `promptframe resource set <连接根目录> --studio-slot <fileTarget> --file <GLB> --watch`。只有模型文件时，可从空目录运行 `promptframe dev . --resources-only --studio-origin "$STUDIO_ORIGIN"`。选文件、绑定、按摘要采帧及清除的完整步骤见[当前镜头试模型](https://github.com/ty-teams/promptframe-component-authoring/tree/main/examples/director-revisions#在当前镜头直接试模型)。
 
 ```bash
 promptframe resource set ./components/model-shot --prop /model --file ./selected.glb --watch

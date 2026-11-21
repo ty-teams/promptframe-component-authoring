@@ -258,13 +258,13 @@ async function run(name: string, argv: string[]): Promise<void> {
     '--idle-timeout', '--level', '--limit', '--name', '--out', '--page-size',
     '--poll-interval-seconds', '--port', '--project-context', '--project-id',
     '--project-namespace', '--prop', '--provider', '--provider-kind', '--provider-name',
-    '--reason', '--release-notes', '--scope', '--session-id', '--status', '--studio-origin', '--target',
+    '--reason', '--release-notes', '--scope', '--session-id', '--status', '--studio-origin', '--studio-slot', '--target',
     '--request-id',
     '--tenant-id', '--timeout-seconds', '--token', '--token-id', '--upload-target',
     '--user-id', '--version-notes', '--workspace-component', '--workspace-config',
   ]);
   const flagOptions = new Set([
-    '--apply', '--check-latest', '--dry-run', '--fail-on-build-failed', '--force', '--watch',
+    '--apply', '--check-latest', '--dry-run', '--fail-on-build-failed', '--force', '--watch', '--resources-only',
     '--help', '-h', '--json', '--replace', '--show', '--strict', '--upgrade',
     '--wait', '--with-assets', '--workspace', '--write-local-report',
   ]);
@@ -307,7 +307,7 @@ async function run(name: string, argv: string[]): Promise<void> {
       preview(argv);
       break;
     case 'resource':
-      resourceCommand(argv);
+      await resourceCommand(argv);
       break;
     case 'dev':
       await dev(argv);
@@ -743,6 +743,7 @@ async function dev(argv: string[]): Promise<void> {
     const {stopDevelopmentOwner}=await import('./development-owner.js');
     printJson({command:'dev.stop',...await stopDevelopmentOwner(root)});return;
   }
+  if(hasFlag(argv,'--resources-only')){await devWorkspace(resolve(componentPathArg(argv)??'.'),argv);return;}
   const workspaceRoot = autoWorkspaceRoot(argv);
   if (workspaceRoot) { await devWorkspace(workspaceRoot, argv); return; }
   if(hasFlag(argv,'--replace')&&!hasFlag(argv,'--dry-run')){
@@ -800,8 +801,21 @@ async function dev(argv: string[]): Promise<void> {
   await runDevServer(dir, devCommand);
 }
 
-function resourceCommand(argv: string[]): void {
+async function resourceCommand(argv: string[]): Promise<void> {
   const [action, directory] = positionalArgs(argv), root = resolve(directory ?? '.');
+  const supplied=(flag:string)=>argv.some(arg=>arg===flag||arg.startsWith(flag+'='));
+  if(supplied('--studio-slot')){
+    const target=valueAfter(argv,'--studio-slot'),file=valueAfter(argv,'--file');
+    const {studioFileTargetPattern}=await import('./development-preview-resources.js');
+    if(!target||!studioFileTargetPattern.test(target)||!['set','clear'].includes(action)
+      ||(action==='set')!==Boolean(file)||supplied('--asset-ref')||supplied('--prop')
+      ||(action==='clear'&&hasFlag(argv,'--watch')))
+      fail('Use resource set <connection-dir> --studio-slot <fileTarget> --file <GLB>, or resource clear with that target.', 'preview.resource.target_invalid',2);
+    const {changeStudioFile}=await import('./development-owner.js');
+    const result=await changeStudioFile(root,action==='set'?{action:'select_file',target,path:resolve(file!),watch:hasFlag(argv,'--watch')}:{action:'clear_file',target});
+    printJson({command:'resource.'+action,status:action==='set'?'selected':'cleared',...result,platformWrites:0});
+    return;
+  }
   if (action === 'clear') {
     clearPreviewResourceDraft(root);
     printJson({ command: 'resource.clear', status: 'cleared', originalFilesDeleted: 0 }); return;
@@ -857,10 +871,11 @@ async function devWorkspace(root: string, argv: string[]): Promise<void> {
   if(!Number.isFinite(idleMinutes)||idleMinutes<0||!Number.isSafeInteger(idleMinutes*60_000))
     fail('--idle-timeout must be non-negative minutes; 0 disables idle exit.','dev.workspace.idle_timeout_invalid',2);
   if(hasFlag(argv,'--replace')&&!hasFlag(argv,'--dry-run')){const {stopDevelopmentOwner}=await import('./development-owner.js');await stopDevelopmentOwner(root,'replace');}
-  const workspace=readWorkspaceConfig(root);
+  const fileOnly=hasFlag(argv,'--resources-only');
+  const workspace=fileOnly?{components:[]}:readWorkspaceConfig(root);
   if(hasFlag(argv,'--json')&&!hasFlag(argv,'--dry-run'))fail('dev --json requires --dry-run.','dev.json_requires_dry_run');
   if(hasFlag(argv,'--dry-run')){
-    printJson({command:'dev.workspace',workspace:workspaceSummary(root),modules:workspace.components,host,port:port??'24000-24999',
+    printJson({command:'dev.workspace',workspace:fileOnly?{resourcesOnly:true}:workspaceSummary(root),modules:workspace.components,host,port:port??'24000-24999',
       studioOrigin,idleTimeoutMinutes:idleMinutes,status:'declared',checked:false,playerLoaded:false});return;
   }
   const {startDevelopmentWorkspace}=await import('./development-workspace.js');
@@ -869,8 +884,12 @@ async function devWorkspace(root: string, argv: string[]): Promise<void> {
   const signal=()=>stop('signal');process.once('SIGINT',signal);process.once('SIGTERM',signal);
   let owner:Awaited<ReturnType<typeof acquireDevelopmentOwner>>|undefined;
   try{
-    owner=await acquireDevelopmentOwner(root,stop);
-    const server=await startDevelopmentWorkspace({root,modules:workspace.components,studioOrigin,host,
+    let active:Awaited<ReturnType<typeof startDevelopmentWorkspace>>|undefined;
+    owner=await acquireDevelopmentOwner(root,stop,command=>{
+      if(!active)throw Error('development.owner.not_running');
+      return active.changeFile(command);
+    });
+    const server=active=await startDevelopmentWorkspace({root,modules:workspace.components,studioOrigin,host,
       connectionId:owner.connectionId,port:port??owner.preferredPort,portFallback:port===undefined,idleTimeoutMs:idleMinutes*60_000});
     try{
       owner.recordPort(Number(new URL(server.url).port));
@@ -2270,7 +2289,7 @@ function buildVersionNotesHeaders(versionNotes: string | undefined): Record<stri
 }
 
 const POSITIONAL_VALUE_FLAGS = new Set([
-  '--prop', '--file', '--asset-ref',
+  '--prop', '--file', '--asset-ref', '--studio-slot',
   '--allowed-upload-target',
   '--auth-permissions',
   '--auth-roles',
@@ -5356,6 +5375,9 @@ Commands:
   resource set <dir>               Select a private local preview resource (--prop /field, --file path [--watch for GLB] OR --asset-ref ref --session-id id)
   resource status|clear <dir>      Inspect or clear private preview selections; original files are retained
   dev <dir>                        Start a local preview or workspace checked-module connection
+  resource set <dir> --studio-slot <fileTarget> --file <GLB> [--watch]
+  resource clear <dir> --studio-slot <fileTarget>
+  dev <dir> --resources-only --studio-origin <origin>   Connect selected files without a component workspace
     --studio-origin <origin>        Required for a multi-component workspace
     --idle-timeout <minutes>        Workspace idle exit (default 30; 0 disables)
     --port <port>                   Workspace default range 24000–24999; single component default 5173

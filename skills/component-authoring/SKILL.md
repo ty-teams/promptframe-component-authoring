@@ -22,6 +22,8 @@ The CodingAI must not read PromptFrame internal platform source, agent board, RE
 
 需要在原字幕上改画面、试两版模型或跟原声调切点时，可阅读[脚手架改稿示例](../../examples/director-revisions/README.md)。每例都有可运行输入、参考画面和适用条件。
 
+给已有镜头试自包含 GLB 时，先读目标 Studio 页的模型槽和连接能力。见[在当前镜头直接试模型](../../examples/director-revisions/README.md#在当前镜头直接试模型)。已锁定的组件也可配合这个选择入口。
+
 - [rules/timing-ssot.md](rules/timing-ssot.md): deterministic frame timing and duration adaptation.
 - [rules/search-metadata.md](rules/search-metadata.md): how metadata, schema, source evidence, visual evidence, and feedback affect component search.
 - [rules/schema-recipes.md](rules/schema-recipes.md): schema patterns for metrics, comparisons, funnels, and deltas.

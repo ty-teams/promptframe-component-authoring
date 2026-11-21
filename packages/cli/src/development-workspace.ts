@@ -11,7 +11,7 @@ import { PROMPTFRAME_PUBLIC_STANDARD_POLICY } from '@promptframe/contracts';
 import { isComponentSourcePathIgnored, selectComponentSourceFiles } from './component-file-selection.js';
 import {captureComponentWorkspaceSource,readSharedSourceWorkspace} from './workspace-source.js';
 import {capturePnpmWorkspaceLock} from './workspace-lockfile.js';
-import {DevelopmentPreviewResources} from './development-preview-resources.js';
+import {DevelopmentPreviewResources,studioFilePagePattern} from './development-preview-resources.js';
 
 const limits = { maximumFiles: 2048, maximumBytes: 16 * 1024 * 1024 };
 const lockfiles = ['package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'bun.lockb'];
@@ -93,7 +93,7 @@ export async function startDevelopmentWorkspace(options: {
   if (!['127.0.0.1', '::1'].includes(host) || !Number.isSafeInteger(port) || port < 0 || port > 65535) {
     throw new Error('development.connection.invalid_address');
   }
-  if (!options.modules.length || options.modules.length > 32) throw new Error('development.registry.module_limit');
+  if (options.modules.length > 32) throw new Error('development.registry.module_limit');
   const modules = new Map(options.modules.map(module => [module.id, Object.freeze({ ...module })]));
   for (const module of modules.values()) {
     if (typeof module.id !== 'string' || !module.id.trim() || module.id.length > 256 || /[\u0000-\u001f]/u.test(module.id)) {
@@ -108,7 +108,7 @@ export async function startDevelopmentWorkspace(options: {
   if(!/^[a-f0-9]{32}$/u.test(connectionId)||!Number.isSafeInteger(idleTimeoutMs)||idleTimeoutMs<0||!Number.isSafeInteger(heartbeatMs)||heartbeatMs<1)throw Error('development.connection.invalid_lifecycle');
   const lifecycle={mode:'until_stopped' as const,idleTimeoutSeconds:idleTimeoutMs/1000,heartbeatSeconds:heartbeatMs/1000};
   let lastActivity=performance.now(),activeRequests=0;
-  const controller = new AbortController(), listeners = new Set<ServerResponse>();
+  const controller = new AbortController(), listeners = new Map<ServerResponse,string|undefined>();
   const pending = new Set<string>(), resident = new Map<string, number>();
   let pumping: Promise<void> | undefined, checkingId: string | undefined;
   let closed = false, expectedHost = '', responseBytes = 0, watcherDiagnostic: string | undefined;
@@ -116,8 +116,8 @@ export async function startDevelopmentWorkspace(options: {
   const localResources=new DevelopmentPreviewResources(root,[...modules.values()],paths=>{
     const external=paths.filter(path=>{const name=relative(root,path);return name==='..'||name.startsWith('..'+sep)||isAbsolute(name);});
     const current=new Set(external);
-    for(const path of selectedPaths)if(!current.has(path)){selectedPaths.delete(path);void vite.watcher.unwatch(path);}
-    for(const path of external)if(!selectedPaths.has(path)){selectedPaths.add(path);vite.watcher.add(path);}
+    for(const path of selectedPaths)if(!current.has(path)){selectedPaths.delete(path);void vite?.watcher.unwatch(path);}
+    for(const path of external)if(!selectedPaths.has(path)){selectedPaths.add(path);vite?.watcher.add(path);}
   });
   const coordinator = new DevelopmentModuleCoordinator({ maximumModules: 32,
     capture(id) {
@@ -134,8 +134,8 @@ export async function startDevelopmentWorkspace(options: {
       return built;
     },
   });
-  const registry = () => ({ contractVersion: 'promptframe-development.v2', connectionId,
-    lifecycle, watcherDiagnostic, localResources:localResources.snapshot(), modules: [...modules.keys()].map(id => {
+  const registry = (pageId?:string) => ({ contractVersion: 'promptframe-development.v2', connectionId,
+    lifecycle, watcherDiagnostic, studioSlotFiles:true, localResources:localResources.snapshot(Date.now(),pageId), modules: [...modules.keys()].map(id => {
       const state = coordinator.state(id), receipt = coordinator.buildReceipt(id);
       const checking = pending.has(id) || checkingId === id;
       return { moduleId: id, status: checking ? 'checking' : state?.status ?? 'checking',
@@ -146,8 +146,8 @@ export async function startDevelopmentWorkspace(options: {
         } } : {}) };
     }) });
   const notify = () => {
-    const data = `event: registry\ndata: ${JSON.stringify(registry())}\n\n`;
-    for (const listener of listeners) {
+    for (const [listener,pageId] of listeners) {
+      const data = `event: registry\ndata: ${JSON.stringify(registry(pageId))}\n\n`;
       try { if (!listener.write(data)) listener.destroy(); } catch { listener.destroy(); }
     }
   };
@@ -217,19 +217,22 @@ export async function startDevelopmentWorkspace(options: {
     lastActivity=performance.now();activeRequests++;let releasedActivity=false;
     const activityDone=()=>{if(!releasedActivity){releasedActivity=true;activeRequests--;lastActivity=performance.now();}};
     response.once('finish',activityDone);response.once('close',activityDone);
-    if (request.url === '/__promptframe/registry') { observe(); return json(response, 200, registry()); }
-    if (request.url === '/__promptframe/events') {
+    let path=request.url,pageId:string|undefined;
+    const scoped=/^\/__promptframe\/pages\/([^/]+)\/(registry|events|local-resources\/[a-f0-9]{64}\/[a-f0-9]{64})$/u.exec(path);
+    if(scoped&&studioFilePagePattern.test(scoped[1]!)){pageId=scoped[1];path='/__promptframe/'+scoped[2];}
+    if (path === '/__promptframe/registry') { observe(); return json(response, 200, registry(pageId)); }
+    if (path === '/__promptframe/events') {
       if (listeners.size >= 8) return reject(503, 'development.connection.observer_limit');
       observe();
       response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' });
-      listeners.add(response); response.on('close', () => {listeners.delete(response);lastActivity=performance.now();});
+      listeners.set(response,pageId); response.on('close', () => {listeners.delete(response);lastActivity=performance.now();});
       response.on('error', () => response.destroy());
-      response.write(`event: registry\ndata: ${JSON.stringify(registry())}\n\n`); return;
+      response.write(`event: registry\ndata: ${JSON.stringify(registry(pageId))}\n\n`); return;
     }
-    const resourceMatch=/^\/__promptframe\/local-resources\/([a-f0-9]{64})\/([a-f0-9]{64})$/u.exec(request.url);
+    const resourceMatch=/^\/__promptframe\/local-resources\/([a-f0-9]{64})\/([a-f0-9]{64})$/u.exec(path);
     if(resourceMatch){
       localResources.observe();
-      const resource=localResources.read(resourceMatch[1]!,'sha256:'+resourceMatch[2]!);
+      const resource=localResources.read(resourceMatch[1]!,'sha256:'+resourceMatch[2]!,Date.now(),pageId);
       if(!resource)return reject(409,'preview.resource.selection_changed');
       response.writeHead(200,{'Content-Type':resource.row.contentType,'Content-Length':resource.bytes.length,
         'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
@@ -262,11 +265,11 @@ export async function startDevelopmentWorkspace(options: {
   });
   http.maxConnections = 64; http.headersTimeout = 5000; http.requestTimeout = 5000; http.keepAliveTimeout = 3000;
   http.on('upgrade', (_request, socket) => socket.destroy());
-  const vite = await createViteServer({ root, configFile: false, envFile: false, publicDir: false,
+  const vite = modules.size ? await createViteServer({ root, configFile: false, envFile: false, publicDir: false,
     mode: 'development', appType: 'custom', logLevel: 'silent',
     server: { middlewareMode: true, hmr: false, ws: false,
       watch: { followSymlinks: false, ignored: ['**/node_modules/**', '**/dist/**', '**/.git/**', '**/.promptframe/**', '**/.component-packages/**'] } },
-  });
+  }) : undefined;
   const inheritedControls = new Map<string, Set<string>>();
   for (const [id, module] of modules) {
     if (lockfiles.some(name => existsSync(join(root, module.path, name)))) continue;
@@ -277,7 +280,7 @@ export async function startDevelopmentWorkspace(options: {
       }
     } catch { /* The ordinary checker reports the exact ownership/lock error. */ }
   }
-  if (inheritedControls.size) vite.watcher.add([...inheritedControls.keys()]);
+  if (inheritedControls.size) vite?.watcher.add([...inheritedControls.keys()]);
   const changed = (_event: string, path: string) => {
     if(localResources.observe())notify();
     const affected = inheritedControls.get(resolve(path));
@@ -302,8 +305,8 @@ export async function startDevelopmentWorkspace(options: {
       enqueue(id);
     }
   };
-  vite.watcher.on('all', changed);
-  vite.watcher.on('error', () => { watcherDiagnostic = 'development.workspace.watch_failed'; notify(); });
+  vite?.watcher.on('all', changed);
+  vite?.watcher.on('error', () => { watcherDiagnostic = 'development.workspace.watch_failed'; notify(); });
   try {
     await new Promise<void>((resolve, reject) => {
       const listen=(candidate:number,remaining:number)=>{
@@ -312,9 +315,9 @@ export async function startDevelopmentWorkspace(options: {
         http.once('error',failed);http.once('listening',ready);http.listen(candidate,host);
       };listen(port,options.portFallback?999:0);
     });
-  } catch (error) { await vite.close(); throw error; }
+  } catch (error) { await vite?.close(); throw error; }
   const address = http.address();
-  if (!address || typeof address === 'string') { await vite.close(); http.close(); throw new Error('development.connection.no_address'); }
+  if (!address || typeof address === 'string') { await vite?.close(); http.close(); throw new Error('development.connection.no_address'); }
   expectedHost = `${host === '::1' ? '[::1]' : host}:${address.port}`;
   for (const id of modules.keys()) enqueue(id);
   let closePromise:Promise<void>|undefined;
@@ -325,17 +328,17 @@ export async function startDevelopmentWorkspace(options: {
       closed=true;clearInterval(heartbeat);clearInterval(idle);clearInterval(resourceObserver);
       controller.abort(new Error('development.workspace.closed'));pending.clear();
       localResources.close();
-      for(const response of listeners)response.end();listeners.clear();
+      for(const response of listeners.keys())response.end();listeners.clear();
       const httpClosed=new Promise<void>((resolve,reject)=>http.close(error=>error?reject(error):resolve()));
       http.closeAllConnections();let firstError:unknown;
       try{await pumping;}catch(error){firstError=error;}
-      try{await vite.close();}catch(error){firstError??=error;}
+      try{await vite?.close();}catch(error){firstError??=error;}
       try{await httpClosed;}catch(error){firstError??=error;}
       resolveClosed({reason,failed:!!firstError});if(firstError)throw firstError;
     })();
   }
   const heartbeat=setInterval(()=>{
-    for(const response of listeners){try{if(!response.write(': heartbeat\n\n'))response.destroy();}catch{response.destroy();}}
+    for(const response of listeners.keys()){try{if(!response.write(': heartbeat\n\n'))response.destroy();}catch{response.destroy();}}
   },heartbeatMs);heartbeat.unref();
   // Filesystem events may merge consecutive writes. While an existing Studio
   // observes this connection, bounded stat checks also discover missed changes
@@ -348,6 +351,14 @@ export async function startDevelopmentWorkspace(options: {
     if(idleTimeoutMs&&!listeners.size&&!activeRequests&&performance.now()-lastActivity>=idleTimeoutMs)void close('idle').catch(()=>undefined);
   },Math.max(10,Math.min(1000,idleTimeoutMs||1000)));idle.unref();
   http.on('error',()=>{void close('fatal').catch(()=>undefined);});
-  return Object.freeze({connectionId,url:`http://${expectedHost}`,studioOrigin:origin.origin,
+  function changeFile(command:import('./development-owner.js').StudioFileCommand){
+    if(closed)throw Error('development.owner.not_running');
+    const result=command.action==='select_file'
+      ? localResources.selectTarget(command.target,command.path,command.watch)
+      : {fileTarget:command.target,cleared:localResources.clearTarget(command.target)};
+    notify();
+    return result;
+  }
+  return Object.freeze({connectionId,changeFile,url:`http://${expectedHost}`,studioOrigin:origin.origin,
     credential,lifecycle,closed:closedResult,close});
 }

@@ -1,6 +1,6 @@
 {
   "releaseVersion": "authoring-standard-release.v0.1.0",
-  "releaseId": "authoring-release-2026-11-17.3",
+  "releaseId": "authoring-release-2026-11-21.1",
   "contractsVersion": "promptframe-contracts.v0.1.0",
   "manifestSchemaVersion": "component-manifest.v0.1.0",
   "componentRefVersion": "component-ref.v0.1.0",
@@ -22,15 +22,15 @@
     },
     "componentKit": {
       "name": "@promptframe/component-kit",
-      "version": "0.1.42"
+      "version": "0.1.45"
     },
     "cli": {
       "name": "@promptframe/cli",
-      "version": "0.1.88"
+      "version": "0.1.89"
     },
     "createComponent": {
       "name": "create-promptframe-component",
-      "version": "0.1.71"
+      "version": "0.1.73"
     }
   },
   "minPackageVersions": {
@@ -41,14 +41,14 @@
   },
   "recommendedAuthoringPackages": {
     "contracts": "0.1.51",
-    "componentKit": "0.1.42",
-    "cli": "0.1.88",
-    "createComponent": "0.1.71"
+    "componentKit": "0.1.45",
+    "cli": "0.1.89",
+    "createComponent": "0.1.73"
   },
   "scaffoldTemplates": [
     {
       "name": "react-remotion",
-      "digest": "sha256:d6909a593c26214ca6a4cf3d6d6fc9eef14832eb517e2f95dacc8a1c2e46a205"
+      "digest": "sha256:9592a1357c70540fd65b8f4417f5084dbcc40fdad0e94991f7751fcc61e909b0"
     }
   ],
   "uploadTargets": [
@@ -75,5 +75,5 @@
       "deterministicGateMode": "fail_closed"
     }
   ],
-  "releaseDigest": "sha256:1399c2684a115a7ca079a9a4c707bb0fa957fba21890f89d5921948fef474a73"
+  "releaseDigest": "sha256:8c50429e254bd6cc12d382858f0b25fde7ebaf9e03d1bd54a0426326c34857cd"
 }
