@@ -1928,6 +1928,7 @@ async function targetedFixture(t, overrides = {}) {
         contractVersion: identityA.contractVersion,
         platformDigest: identityA.platformDigest,
         deviceStartField: 'expectedIdentity',
+        credentialIdentityField: state.credentialIdentityField ?? 'accountIdentity',
         uploadHeader: state.uploadHeader ?? 'X-PromptFrame-Expected-Identity',
       };
       return writeJson(res, { accountIdentityBinding: state.unsupported ? undefined : binding });
@@ -2024,9 +2025,12 @@ test('targeted operations stop on old platforms, another platform or malformed i
   await assert.rejects(() => f.run(['upload', f.component], fixtureIdentity('A', 'other')), targetedError('cli.auth.platform_mismatch'));
   f.state.uploadHeader = 'different-header';
   await assert.rejects(() => f.run(['upload', f.component]), targetedError('cli.auth.identity_binding_unsupported'));
+  delete f.state.uploadHeader;
+  f.state.credentialIdentityField = 'different-field';
+  await assert.rejects(() => f.run(['login']), targetedError('cli.auth.identity_binding_unsupported'));
   await assert.rejects(() => f.run(['login'], {}), targetedError('cli.auth.identity_invalid'));
   await assert.rejects(() => f.run(['login'], ''), targetedError('cli.auth.identity_invalid'));
-  assert.deepEqual(f.state.calls, Array(4).fill('/cli/discovery'));
+  assert.deepEqual(f.state.calls, Array(5).fill('/cli/discovery'));
 });
 
 test('new device login carries the intended account and verifies the issued credential before saving it', async t => {

@@ -65,6 +65,7 @@ export async function requireAccountBinding(endpoint: string, expected: AccountI
   const binding = body.accountIdentityBinding as Record<string, unknown> | undefined;
   if (!binding || binding.contractVersion !== contractVersion || typeof binding.platformDigest !== 'string'
       || !digest.test(binding.platformDigest) || binding.deviceStartField !== 'expectedIdentity'
+      || binding.credentialIdentityField !== 'accountIdentity'
       || typeof binding.uploadHeader !== 'string' || binding.uploadHeader.toLowerCase() !== EXPECTED_IDENTITY_HEADER.toLowerCase()) {
     throw accountError('cli.auth.identity_binding_unsupported');
   }
