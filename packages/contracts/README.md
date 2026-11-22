@@ -77,3 +77,9 @@ The helper requires no component-kit update and does not change the runtime gene
 `componentShowcaseSchema` 定义可选的 `defaultFrames` 和最多两个 `presets`。`resolveComponentShowcaseGroups` 以默认预览为底合并参数，生成准确的局部采样帧；对象递归合并，数组替换。调用方必须传入其正常预览使用的参数验证函数。`createComponentShowcasePropsValidator` 可校验公共静态 schema facts；资源授权、原渲染预算和组件运行期谓词继续由调用方处理。
 
 解析失败抛出 `ComponentShowcaseError`，包含稳定 `code` 和字段 `path`，不携带原参数正文。该 helper 不加载组件模块，不访问素材、网络或文件。
+
+## Schema 与预设的复用证据
+
+`@promptframe/contracts/reusability-evaluator` 提供 `evaluateSchemaReusability({ schemaSourceText, previewProps })`。它复用静态 schema 事实，列出可配置输入、可验证的默认或可省略输入，以及预设中类型与已知约束相符的输入。`previewProps` 是参数对象，不含外层预览尺寸和时长。
+
+CLI 与服务可以共用这份 `schema-reusability-evidence/v1` 事实。显示名、标签、源码注释和参数读取语法不参与计算。返回的 `score` 表示这组证据的覆盖情况，`allow`／`warn` 是提示；它不证明组件实际使用了参数，也不代替完整参数校验、素材授权、运行画面或公开审核。模型分析和后续运行观测应保留各自来源，不回写这组静态证据。

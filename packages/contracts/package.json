@@ -1,6 +1,6 @@
 {
   "name": "@promptframe/contracts",
-  "version": "0.1.52",
+  "version": "0.1.53",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -22,6 +22,10 @@
     "./schema-evaluator": {
       "import": "./dist/schema-evaluator.js",
       "types": "./dist/schema-evaluator.d.ts"
+    },
+    "./reusability-evaluator": {
+      "import": "./dist/reusability-evaluator.js",
+      "types": "./dist/reusability-evaluator.d.ts"
     },
     "./layout-evaluator": {
       "import": "./dist/layout-policy-evaluator.js",

@@ -1,5 +1,7 @@
 # @promptframe/cli
 
+`check` 和目录上传中的 `localReusability` 使用公共 schema／预设证据。名称、注释和等价参数读取方式不改变提示；缺少证据返回 warning，不单独阻止保存或替代服务端安全及公开审核。`score` 是该阶段的证据覆盖率，具体依据见 `signals`，不是画面质量或公开发布许可。
+
 在项目里运行 `npx --no-install promptframe standard --json`，按 `authoringStandardRelease.releaseId` 选择仓库同名标签，即可查到该 CLI 发行时的手册。持续维护的[作者决策表](https://github.com/ty-teams/promptframe-component-authoring/blob/main/AUTHORING.md#authoring-decisions)另列出本地工具、平台能力和历史源包的适用条件。
 
 `package` 和目录形式的 `upload` 使用所选组件目录及其子目录中的 `.gitignore`，支持嵌套覆盖、`!` 和目录规则；不读取组件目录外的 Git 配置。`node_modules`、`dist`、`.git`、`.promptframe`、`.component-packages` 仍固定排除。将本地出图和测试产物放在明确忽略的目录中。

@@ -2811,10 +2811,10 @@ test('check reports local reusability diagnostics for low-reuse marketplace auth
 
     assert.equal(check.localReusability.contractVersion, 'component-reusability.v0.1.0');
     assert.equal(check.localReusability.uploadTarget, 'marketplace_authoring');
-    assert.equal(check.localReusability.recommendation, 'manual_review');
+    assert.equal(check.localReusability.recommendation, 'warn');
     assert.ok(check.localReusability.score < 0.55);
     assert.ok(check.localReusability.signals.some((signal) => signal.id === 'propsRichness'));
-    assert.equal(check.diagnostics[0].code, 'component_market.reusability.marketplace_manual_review');
+    assert.equal(check.diagnostics[0].code, 'component_market.reusability.schema_advisory');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -3171,8 +3171,8 @@ test('directory upload returns local reusability diagnostics with the accepted p
 
     assert.equal(upload.command, 'upload');
     assert.equal(upload.jobId, 'build-reuse');
-    assert.equal(upload.localReusability.recommendation, 'manual_review');
-    assert.equal(upload.diagnostics[0].code, 'component_market.reusability.marketplace_manual_review');
+    assert.equal(upload.localReusability.recommendation, 'warn');
+    assert.equal(upload.diagnostics[0].code, 'component_market.reusability.schema_advisory');
   } finally {
     await server.close();
     await rm(dir, { recursive: true, force: true });

@@ -9,6 +9,16 @@ export function terminalLanguage(env: NodeJS.ProcessEnv = process.env): Terminal
 
 type Phrase = readonly [string, string];
 const phrases: Record<string, readonly Phrase[]> = {
+  'component_market.reusability.schema_advisory': [
+    ['Schema and preview reuse evidence is incomplete: coverage=', 'schema 与预览参数的复用证据不完整：coverage='],
+    ['. This advisory is not a security or publication decision.', '。此提示不是安全或公开发布结论。'],
+    ['Check configurable inputs, defaults and valid preview values for this version. Saving and public review retain their own contracts.',
+      '核对该版本的可变输入、默认值和有效预览参数；保存与公开审核仍执行各自合同。'],
+  ],
+  'component_market.reusability.accepted': [
+    ['Schema and preview reuse evidence observed: coverage=', '已核对 schema 与预览参数的复用证据：coverage='],
+    ['. Rendered behavior must be verified separately.', '；运行效果另行验证。'],
+  ],
   'standard.completed': [['Public PromptFrame component standard fetched.', '已读取公开 PromptFrame 组件标准。']],
   'doctor.completed': [['Component directory contains required authoring files.', '组件目录包含全部必需的创作文件。']],
   'doctor.required_files.missing': [['Missing required files: ', '缺少必需文件：']],
