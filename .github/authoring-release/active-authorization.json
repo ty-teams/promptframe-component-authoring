@@ -1,31 +1,26 @@
 {
   "schemaVersion": "promptframe-authoring-release-authorization/v2",
   "state": "publish_ready",
-  "releaseId": "authoring-release-2026-11-22.1",
-  "releaseTag": "authoring-release-2026-11-22.1",
-  "artifactTag": "authoring-candidate-2026-11-22.1-r1",
-  "sourceCommit": "4256f19976b9667d14575bca880e715541baee53",
-  "candidateManifestDigest": "sha256:eeb86c64f0b5620a904ec3fb7da5763886a4b4d6cd836a9f7d49c8302e72cf92",
-  "platformGateDigest": "sha256:084ad43702367e4aeddb3292984e81c93d029e435cce9dffa9ff942b706a2039",
-  "releaseDigest": "sha256:b125d8de535f0fc31cedb0df39b61bd5308e02118912369a4f895b147932b176",
+  "releaseId": "authoring-release-2026-11-22.2",
+  "releaseTag": "authoring-release-2026-11-22.2",
+  "artifactTag": "authoring-candidate-2026-11-22.2-r1",
+  "sourceCommit": "0fcad5f0e54aff6279ee9278eda89c3d9cf1e857",
+  "candidateManifestDigest": "sha256:e94a5fc4441c74cc57678971b98a456d53a9f4ae0f6e18118af34857930edf07",
+  "platformGateDigest": "sha256:0c1a6b81297662892b1094d9fc12f9b3cba1e38595767154bbf711afb95de9d9",
+  "releaseDigest": "sha256:affe46a89ecd43809cca752c42e18aac147a1f6dbcefcbfc384852761813c11a",
   "packages": [
     {
       "name": "@promptframe/contracts",
-      "version": "0.1.52",
-      "integrity": "sha512-4NLY+HMj1SVoZpMZzeu0aCti6oxN3ZXtoGrr4kxBGwdnhiesDEz6vY+DwSugOTnYeZ7IaqNex+AkyTZ0+2j2WA=="
+      "version": "0.1.53",
+      "integrity": "sha512-VWwi4TKehPbw32+FFNq3AoIvuz9GgkaPPkaTADudcdGSzfGjuvz6pc3H5PxykjAHd7sNh/6NodJ2LjVPjkyCgA=="
     },
     {
       "name": "@promptframe/cli",
-      "version": "0.1.92",
-      "integrity": "sha512-Evsknq+iF8fOgFmBTN/QT0gtGn9hg7tnj8o1pqla+xHUPrk6PtMY0bt/pdTX6K5ngX8rmcJO2XrFUYmFwdpu0g=="
-    },
-    {
-      "name": "create-promptframe-component",
-      "version": "0.1.74",
-      "integrity": "sha512-FQbQEYaFa2t/oFKBjHZ1k5O3IC9VyUIIdEy63UCcuBtnVxB9jWlf1NxhaD6TBzl4x+PWI/aqlFUZRbE208oAMA=="
+      "version": "0.1.93",
+      "integrity": "sha512-57w0pesoJP7lQgAIFPfQjT6kss2UHTAoVRbK6DXLFwmARGAvuYT41QVTmVE5+Q1gQmxdS0jDdHf2SeSG1Vg/ig=="
     }
   ],
-  "createdAt": "2026-11-21T18:53:29.655Z",
-  "expiresAt": "2026-11-25T18:21:56.581Z",
-  "authorizationDigest": "sha256:6a595142fb300fcb031b6221b15ebccd9d297b3f0f407cd31d52ed199fdeacd7"
+  "createdAt": "2026-11-22T06:06:46.564Z",
+  "expiresAt": "2026-11-26T06:01:29.010Z",
+  "authorizationDigest": "sha256:fddf03916df58d98ba75d5ee7ad419c06156143f6fa890852fd59cb8bab60c80"
 }
