@@ -1,26 +1,21 @@
 {
   "schemaVersion": "promptframe-authoring-release-authorization/v2",
   "state": "publish_ready",
-  "releaseId": "authoring-release-2026-11-22.2",
-  "releaseTag": "authoring-release-2026-11-22.2",
-  "artifactTag": "authoring-candidate-2026-11-22.2-r1",
-  "sourceCommit": "0fcad5f0e54aff6279ee9278eda89c3d9cf1e857",
-  "candidateManifestDigest": "sha256:e94a5fc4441c74cc57678971b98a456d53a9f4ae0f6e18118af34857930edf07",
-  "platformGateDigest": "sha256:0c1a6b81297662892b1094d9fc12f9b3cba1e38595767154bbf711afb95de9d9",
-  "releaseDigest": "sha256:affe46a89ecd43809cca752c42e18aac147a1f6dbcefcbfc384852761813c11a",
+  "releaseId": "authoring-release-2026-11-22.3",
+  "releaseTag": "authoring-release-2026-11-22.3",
+  "artifactTag": "authoring-candidate-2026-11-22.3-r1",
+  "sourceCommit": "01a61622dc85b99e2f4a02c50254c8a5278d607b",
+  "candidateManifestDigest": "sha256:cfe826521967b13b5e20daec15ad9ad2062e563275d7578a9985a6615f371877",
+  "platformGateDigest": "sha256:6b9e78ab04c36691f6171f5cfae1e4a6d43d4ad1dbdf00b93bd615a550eb9e9e",
+  "releaseDigest": "sha256:99d2ecf530ca4ea53b6dd7515fe0c071ff8eb52efe2769dcaeb894453a00f15a",
   "packages": [
     {
-      "name": "@promptframe/contracts",
-      "version": "0.1.53",
-      "integrity": "sha512-VWwi4TKehPbw32+FFNq3AoIvuz9GgkaPPkaTADudcdGSzfGjuvz6pc3H5PxykjAHd7sNh/6NodJ2LjVPjkyCgA=="
-    },
-    {
-      "name": "@promptframe/cli",
-      "version": "0.1.93",
-      "integrity": "sha512-57w0pesoJP7lQgAIFPfQjT6kss2UHTAoVRbK6DXLFwmARGAvuYT41QVTmVE5+Q1gQmxdS0jDdHf2SeSG1Vg/ig=="
+      "name": "@promptframe/component-kit",
+      "version": "0.1.47",
+      "integrity": "sha512-TPlWqzDrFw2gumPnAMbHOo9ldL4HD+TWRbdcJ9wKq/A0L/22L25/n5A4vUIffeVBhjCNQfiYXyDhCDxXIYb+6g=="
     }
   ],
-  "createdAt": "2026-11-22T06:06:46.564Z",
-  "expiresAt": "2026-11-26T06:01:29.010Z",
-  "authorizationDigest": "sha256:fddf03916df58d98ba75d5ee7ad419c06156143f6fa890852fd59cb8bab60c80"
+  "createdAt": "2026-11-22T07:29:59.911Z",
+  "expiresAt": "2026-11-26T07:18:14.256Z",
+  "authorizationDigest": "sha256:08605a7002eecce5f0fa697f4eb6b6335f9c86cdab8eeca10a58003fcf29e152"
 }
