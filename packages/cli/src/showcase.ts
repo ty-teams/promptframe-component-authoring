@@ -14,10 +14,22 @@ export function validateSourceShowcase(input: {
   fail: (message: string, code: string) => never;
 }) {
   const file = join(input.root, 'src/showcase.json');
-  if (!existsSync(file)) return;
+  return validateShowcasePreview({ ...input, declaration: existsSync(file) ? readFileSync(file, 'utf8') : undefined });
+}
+
+export function validateShowcasePreview(input: {
+  declaration?: string;
+  preview: ComponentShowcasePreview;
+  facts: PromptFrameSchemaFacts;
+  fail: (message: string, code: string) => never;
+}) {
+  // Old zero-prop sources may not declare a statically readable schema.
+  if (input.declaration === undefined && input.facts.status !== 'resolved') return;
   let source: unknown;
-  try { source = JSON.parse(readFileSync(file, 'utf8')); }
-  catch { return input.fail('src/showcase.json must contain valid JSON.', 'component.showcase.json_invalid'); }
+  if (input.declaration !== undefined) {
+    try { source = JSON.parse(input.declaration); }
+    catch { return input.fail('src/showcase.json must contain valid JSON.', 'component.showcase.json_invalid'); }
+  }
   const schema = { type: 'object', properties: input.facts.properties, required: input.facts.requiredPropKeys, additionalProperties: false };
   try {
     const validate = createComponentShowcasePropsValidator(schema);
@@ -28,8 +40,22 @@ export function validateSourceShowcase(input: {
       return effective;
     } });
   } catch (error) {
-    if (error instanceof ComponentShowcaseError)
-      return input.fail(`src/showcase.json ${error.path.join('.')}: ${error.code}.`, error.code);
-    throw error;
+    if (!(error instanceof ComponentShowcaseError)) throw error;
+    const isDefault = error.path[0] === 'props';
+    const file = isDefault ? 'src/preview-props.json' : 'src/showcase.json';
+    let message = error.code;
+    if (isDefault && error.code === 'component.showcase.props_invalid') {
+      const key = error.path[1];
+      const field = typeof key === 'string' ? input.facts.properties[key] : undefined;
+      message = 'Value does not match the declared parameter constraints';
+      if (typeof key === 'string' && field && error.path.length === 2) {
+        if (!Object.hasOwn(input.preview.props, key) && input.facts.requiredPropKeys.includes(key)) {
+          message = 'Required value is missing';
+        } else if (field.type) {
+          message = `Expected a value matching the declared ${field.type} parameter`;
+        }
+      }
+    }
+    return input.fail(`${file} ${error.path.join('.')}: ${message}.`, error.code);
   }
 }

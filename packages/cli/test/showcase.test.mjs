@@ -20,9 +20,16 @@ async function withSource(source, run) {
     return await run(root);
   } finally { await rm(root, { recursive: true, force: true }); }
 }
-test('absent optional declaration keeps the legacy check path; a supplied declaration validates every merged group', async () => {
+test('default preview and optional overrides use the same parameter contract', async () => {
   assert.equal(facts.status, 'resolved');
-  await withSource(undefined, root => assert.equal(validateSourceShowcase({ root, preview, facts, fail }), undefined));
+  for (const source of [undefined, {}]) await withSource(source, root => {
+    const [group] = validateSourceShowcase({ root, preview, facts, fail });
+    assert.equal(group.props.count, 18);
+    for (const props of [{}, { title: 42 }]) {
+      assert.throws(() => validateSourceShowcase({ root, preview: { ...preview, props }, facts, fail }),
+        error => error.code === 'component.showcase.props_invalid' && error.message.includes('src/preview-props.json props.title'));
+    }
+  });
   await withSource({ presets: [{ id: 'fast', label: 'Faster', propsOverride: { count: 12, mode: 'fast' } }] }, root => {
     const result = validateSourceShowcase({ root, preview, facts, fail });
     assert.equal(result.length, 2); assert.equal(result[0].props.count, 18); assert.equal(result[0].props.mode, 'slow');

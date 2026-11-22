@@ -253,7 +253,7 @@ CLI按自身运行依赖检查软件最低版本，按项目或上传归档的�
 
 ## 可选展示预设
 
-`src/preview-props.json` 是默认展示。可增加 `src/showcase.json`，为默认组指定采样帧，并添加最多两个参数预设；脚手架的 `examples/showcase.json` 提供可复制的例子。未提供此文件的组件保持默认组。
+`src/preview-props.json` 是默认展示。即使没有额外展示预设，CLI 也会按组件声明检查默认预览的必填参数、类型和取值；已有合法默认值的参数可以省略。可增加 `src/showcase.json`，为默认组指定采样帧，并添加最多两个参数预设；脚手架的 `examples/showcase.json` 提供可复制的例子。未提供此文件的组件保持默认组。
 
 ```json
 {"defaultFrames":[0,24,48,71,95,119],"presets":[{"id":"faster","label":"数字提前到位","propsOverride":{"countDuration":18}}]}

@@ -46,7 +46,7 @@ import {COMPONENT_SOURCE_LAYOUT_FILE, COMPONENT_SOURCE_LAYOUT_VERSION, component
 import {componentSourceImportSpecifiers,componentSourceRequestCandidates} from '@promptframe/contracts/source-layout-evaluator';
 import {reviewClip} from './review-clip.js';
 import {BuildStatusReadError,waitForOriginalBuild,type BuildWaitState} from './build-status-wait.js';
-import { validateSourceShowcase } from './showcase.js';
+import { validateShowcasePreview, validateSourceShowcase } from './showcase.js';
 import {
   COMPONENT_MANIFEST_SCHEMA_VERSION,
   COMPONENT_PUBLIC_RESOURCES_CONTRACT_VERSION,
@@ -4790,11 +4790,11 @@ function normalizeLegacyManifest(input: Record<string, unknown>): Record<string,
 
 function packageZipForUpload(path: string, uploadTarget: AuthoringUploadTarget): ComponentPackageArtifact {
   assertAuthoringZipPackageFreshness(path, uploadTarget);
-  assertZipPropsHaveDescriptions(path);
+  validateZipPreviewParameters(path);
   return packageArtifactFromZip(path);
 }
 
-function assertZipPropsHaveDescriptions(path: string): void {
+function validateZipPreviewParameters(path: string): void {
   const zip = readFileSync(path);
   const layout = readZipComponentSourceLayout(zip);
   const manifestEntry = readZipEntry(zip, layout
@@ -4814,6 +4814,16 @@ function assertZipPropsHaveDescriptions(path: string): void {
   assertStaticSchemaResolved(facts, manifest.entry.propsSchemaPath);
   assertActionSlotsMatchSchema(manifest, facts);
   assertStaticPropsHaveDescriptions(facts, manifest.entry.propsSchemaPath);
+  const sourceEntry = (relative: string) => readZipEntry(zip, name => layout
+    ? name === componentSourceEntryPath(layout, relative) : isComponentSourceZipEntry(name, relative));
+  const previewBytes = sourceEntry('src/preview-props.json');
+  if (!previewBytes) fail('Missing src/preview-props.json.', 'doctor.required_files.missing');
+  let preview: Record<string, unknown> | undefined;
+  try { preview = asRecord(JSON.parse(previewBytes.toString('utf8'))) ?? undefined; }
+  catch { fail('src/preview-props.json must contain valid JSON.', 'component_standard.preview.object'); }
+  assertPreviewEnvelope(preview, 'src/preview-props.json', fail);
+  validateShowcasePreview({ declaration: sourceEntry('src/showcase.json')?.toString('utf8'),
+    preview: preview as unknown as import('@promptframe/contracts').ComponentShowcasePreview, facts, fail });
 }
 
 function packageArtifactFromZip(path: string): ComponentPackageArtifact {

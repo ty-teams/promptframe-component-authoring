@@ -2889,6 +2889,10 @@ test('validate and check report unknown private style props as authoring diagnos
       'export type ComponentProps = z.infer<typeof propsSchema>;',
     ].join('\n'));
 
+    const previewFile = path.join(componentDir, 'src/preview-props.json');
+    const preview = JSON.parse(await readFile(previewFile, 'utf8'));
+    await writeFile(previewFile, JSON.stringify({ ...preview, props: { ...preview.props, title: 'Title' } }));
+
     const validate = JSON.parse((await execFileAsync('node', [
       cliPath,
       'validate',
