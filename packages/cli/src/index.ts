@@ -11,6 +11,7 @@ import { accountKey, accountsRoot, directoryError, forgetCliCredential, identity
   readPrivateAccountFile, validEndpoint } from './account-directory.js';
 import { recordObservation, resolveAccountRoute, sameIdentity, separateCredentialFile, type AccountRoute } from './account-routing.js';
 import { CLIENT_OBSERVATION_HEADER, clientObservation, readDisplayIdentity } from './client-observation.js';
+import {componentUploadWorkTarget,assertComponentUploadWorkConfirmed,COMPONENT_UPLOAD_WORK_HEADER,type ComponentUploadWork} from './component-upload-work.js';
 import { normalizePublicResourcePath } from './public-resource-path.js';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -175,6 +176,7 @@ interface UploadAuthorization {
   summary?: Record<string, string>;
   expected?: AccountIdentity;
   observation?: string;
+  work?:ComponentUploadWork;
 }
 
 interface PublicResourceReport {
@@ -1245,6 +1247,16 @@ async function uploadPreparedComponent(
   const versionNotes = resolveVersionNotes(argv);
   const file = readFileSync(artifact.out);
   const sourceSha256 = sha256Buffer(file);
+  const workTarget=authorization.work?componentUploadWorkTarget(authorization.work,sourceSha256):undefined;
+  const workHeaders:Record<string,string>=workTarget?{'x-request-id':workTarget.operationId,'x-project-id':workTarget.projectId,
+    [COMPONENT_UPLOAD_WORK_HEADER]:JSON.stringify(workTarget)}:{};
+  if(workTarget){
+    const confirmation=await fetchJson(`${endpoint}/components/marketplace/upload-work-target`,{
+      method:'GET',redirect:'error',headers:{...authorization.headers,...workHeaders,
+        ...(authorization.expected?{[EXPECTED_IDENTITY_HEADER]:JSON.stringify(authorization.expected)}:{})},
+    },'upload.work_target.failed',Boolean(authorization.expected));
+    assertComponentUploadWorkConfirmed(confirmation,workTarget);
+  }
   const lookupHint = `Read the original submission with promptframe status --source-sha256 ${sourceSha256} --target ${uploadTarget} using the same account and endpoint.`;
   const form = new FormData();
   form.set('file', new Blob([new Uint8Array(file)], { type: 'application/zip' }), basename(artifact.out));
@@ -1252,9 +1264,10 @@ async function uploadPreparedComponent(
   const payload = await fetchJson(`${endpoint}/components/marketplace/upload`, {
     method: 'POST',
     body: form,
-    ...((authorization.expected || authorization.observation) && {redirect: 'error' as const}),
+    ...((workTarget || authorization.expected || authorization.observation) && {redirect: 'error' as const}),
     headers: {
       ...authorization.headers,
+      ...workHeaders,
       ...(authorization.observation && { [CLIENT_OBSERVATION_HEADER]: authorization.observation }),
       ...(authorization.expected && { [EXPECTED_IDENTITY_HEADER]: JSON.stringify(authorization.expected) }),
       ...buildSecurityPolicyHeaders(),
@@ -4106,7 +4119,11 @@ async function captureUploadAuthorization(endpoint: string, argv: string[], targ
   } else if (headers.authorization) {
     verified = await readDisplayIdentity(endpoint, {authorization: headers.authorization});
   }
-  return { headers, summary, expected, observation: clientObservation(verified, resolveConfigPath(argv)) };
+  const sessionId=valueAfter(argv,'--session-id');
+  const work=sessionId?{sessionId,projectId:valueAfter(argv,'--project-id')??readProjectContext(argv)?.projectId
+    ??stringValue(config.projectId)??'',intentId:valueAfter(argv,'--request-id')??randomUUID()}:undefined;
+  if(work)componentUploadWorkTarget(work,'sha256:'+'0'.repeat(64));
+  return { headers, summary, expected, observation: clientObservation(verified, resolveConfigPath(argv)),...(work?{work}:{}) };
 }
 
 function describeAuthForEndpoint(endpoint: string, argv: string[], config: Record<string, unknown>): Record<string, string> | undefined {
@@ -5743,7 +5760,8 @@ Commands:
     --fail-on-build-failed         Exit nonzero when platform build status is failed/cancelled
   reindex <buildId>                Rebuild component search/evidence indexes
   public-request <buildId>         Request review of this exact ready version, without another upload
-    --request-id <id>              Replay one explicit review intent; --reason supplies its audit reason
+    --request-id <id>              Freeze one upload or public-review intent; --reason supplies the review reason
+    --session-id <id>              Associate upload with the exact current work; independent project upload omits it
   probe <buildId> --level <level>  Rerun component layout/security probe
   login --endpoint <url>             Start browser login code flow and store a CLI token
     --token <token>                  Verify and store an already issued CLI/CI token

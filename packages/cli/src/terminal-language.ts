@@ -9,6 +9,16 @@ export function terminalLanguage(env: NodeJS.ProcessEnv = process.env): Terminal
 
 type Phrase = readonly [string, string];
 const phrases: Record<string, readonly Phrase[]> = {
+  'upload.work_target.invalid': [
+    ['A component upload for a work needs its exact project and session.', '为作品上传组件时需要准确的项目与作品会话。'],
+    ['Use the current work projectId and sessionId; omit --session-id for an independent project upload.',
+      '使用当前作品的 projectId 和 sessionId；独立项目上传不附 --session-id。'],
+  ],
+  'upload.work_target.unconfirmed': [
+    ['The platform did not confirm the original work upload target. No source archive was sent.', '平台未确认原作品上传目标，没有发送源码归档。'],
+    ['Check the original work and account. Do not silently fall back to a project-only upload.',
+      '检查原作品与账号，不能静默改成普通项目上传。'],
+  ],
   'component_market.reusability.schema_advisory': [
     ['Schema and preview reuse evidence is incomplete: coverage=', 'schema 与预览参数的复用证据不完整：coverage='],
     ['. This advisory is not a security or publication decision.', '。此提示不是安全或公开发布结论。'],

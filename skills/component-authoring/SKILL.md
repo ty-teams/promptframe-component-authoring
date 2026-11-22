@@ -121,6 +121,8 @@ npx promptframe status <buildId> --endpoint <promptframe-api-base> --json
 
 Upload targets are authorization lanes. `marketplace_authoring` is the reusable marketplace lane; `project_private_generation` is for project-scoped private generation. A scoped token may be allowed to upload only to specific targets, and the platform enforces that limit.
 
+为当前已配对的作品创作时，从当前导演会话读取并沿用准确 `projectId`、`sessionId`，直接在上传命令附上 `--project-id <projectId> --session-id <sessionId>`，无需用户重新提供。项目已由正常 `init` 写入时可复用该项目，不能按同名作品或最近文件猜会话。CLI 先以冻结的同一凭据核作品目标，平台再在读取 ZIP 前独立核权；失败不退为普通上传。普通项目上传与 CI 不附作品参数。受理活动和构建可用、作品采用及公开发布分别判断；结果未知只查原操作/构建，不重发归档。
+
 Upload success only means the platform received the source package and started build admission. The component is not public until platform diagnostics, evidence readiness, preview/probe checks, review policy, and publish readiness say so. Use `status --json`, `reindex --json`, and `probe --json` rather than guessing from a single upload response.
 
 ### GitHub Actions automation
