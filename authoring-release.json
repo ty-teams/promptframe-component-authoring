@@ -1,6 +1,6 @@
 {
   "releaseVersion": "authoring-standard-release.v0.1.0",
-  "releaseId": "authoring-release-2026-11-22.2",
+  "releaseId": "authoring-release-2026-11-22.3",
   "contractsVersion": "promptframe-contracts.v0.1.0",
   "manifestSchemaVersion": "component-manifest.v0.1.0",
   "componentRefVersion": "component-ref.v0.1.0",
@@ -22,7 +22,7 @@
     },
     "componentKit": {
       "name": "@promptframe/component-kit",
-      "version": "0.1.46"
+      "version": "0.1.47"
     },
     "cli": {
       "name": "@promptframe/cli",
@@ -41,7 +41,7 @@
   },
   "recommendedAuthoringPackages": {
     "contracts": "0.1.53",
-    "componentKit": "0.1.46",
+    "componentKit": "0.1.47",
     "cli": "0.1.93",
     "createComponent": "0.1.74"
   },
@@ -75,5 +75,5 @@
       "deterministicGateMode": "fail_closed"
     }
   ],
-  "releaseDigest": "sha256:4ce489769a2b0893217bdfee9ad76f2046ca98352a518ccf2b202c813b2ba009"
+  "releaseDigest": "sha256:bd0b95f2a5e0d2411eb1ecf841170f0ed0e5354aa0620e2f346c4977fab95169"
 }

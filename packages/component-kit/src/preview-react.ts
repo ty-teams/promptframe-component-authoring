@@ -179,7 +179,7 @@ export function buildPromptFramePreviewControlsFromSchema({
   return keys.map((key) => {
     const value = defaultProps[key];
     const schema = zodLikeToPreviewJsonSchema(shape[key], value) ?? schemaFromValue(value) ?? { type: 'string' };
-    const type = previewControlTypeFromSchema(key, schema, value);
+    const type = previewControlTypeFromSchema(schema);
     return {
       key,
       type,
@@ -992,7 +992,7 @@ function SchemaValueEditorValue({
     { style: fieldShellStyle },
     React.createElement('span', { style: fieldLabelStyle }, lastPathSegment(path)),
     renderScalarInput({
-      kind: scalarKindFromSchema(schema, value),
+      kind: scalarKindFromSchema(schema),
       path,
       value,
       readOnly,
@@ -1117,21 +1117,30 @@ function renderScalarInput({
     });
   }
   if (kind === 'color') {
+    // Display normalization does not change schema.format validation or the stored literal.
+    const pickerValue=typeof value==='string'&&/^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value)
+      ?value.length===4?'#'+value.slice(1).split('').map(char=>char+char).join(''):value.slice(0,7)
+      :undefined;
     return React.createElement('span', { style: colorFieldStyle },
       React.createElement('span', {
         'data-preview-props-color-swatch': path,
         style: {
           ...colorSwatchStyle,
-          background: typeof value === 'string' ? value : '#000000',
+          backgroundColor: typeof value === 'string' ? value : undefined,
         },
       }),
-      React.createElement('input', {
+      pickerValue?React.createElement('input', {
         type: 'color',
-        value: typeof value === 'string' && isHexColor(value) ? value : '#000000',
+        value: pickerValue,
         disabled: readOnly,
         'data-preview-props-field': path,
-        onChange: (event: unknown) => onChange(eventValue(event)),
+        onChange: (event: unknown) => onChange(eventValue(event)+(typeof value==='string'&&value.length===9?value.slice(7):'')),
         style: inputStyle,
+      }):null,
+      React.createElement('input', {
+        type:'text',value:typeof value==='string'?value:'',readOnly,disabled:readOnly,
+        'data-preview-props-color-text':path,
+        onChange:(event:unknown)=>onChange(eventValue(event)),style:inputStyle,
       }),
     );
   }
@@ -1311,9 +1320,7 @@ function schemaFromValue(value: unknown): PromptFramePreviewJsonSchemaLike | und
 }
 
 function previewControlTypeFromSchema(
-  key: string,
   schema: PromptFramePreviewJsonSchemaLike,
-  value: unknown,
 ): PromptFramePreviewControlType {
   if (schema.enum?.length) return 'enum';
   const type = primarySchemaType(schema);
@@ -1321,7 +1328,7 @@ function previewControlTypeFromSchema(
   if (type === 'object') return 'object';
   if (type === 'boolean') return 'boolean';
   if (type === 'number' || type === 'integer') return 'number';
-  if (typeof value === 'string' && /color|colour|accent|background/i.test(key) && isHexColor(value)) return 'color';
+  if (type==='string'&&schema.format==='color') return 'color';
   return 'text';
 }
 
@@ -1520,12 +1527,12 @@ function inferSchemaTypeFromValue(value: unknown): PromptFramePreviewJsonSchemaT
   return 'string';
 }
 
-function scalarKindFromSchema(schema: PromptFramePreviewJsonSchemaLike | undefined, value: unknown): PromptFramePreviewControlType {
+function scalarKindFromSchema(schema: PromptFramePreviewJsonSchemaLike | undefined): PromptFramePreviewControlType {
   if (schema?.enum?.length) return 'enum';
   const type = primarySchemaType(schema);
   if (type === 'boolean') return 'boolean';
   if (type === 'number' || type === 'integer') return 'number';
-  if (typeof value === 'string' && isHexColor(value)) return 'color';
+  if (type==='string'&&schema?.format==='color') return 'color';
   return 'text';
 }
 

@@ -144,6 +144,8 @@ export function PreviewPropsPanel() {
 
 可选字段未设置时显示“设置值”，不展开或写入不存在的子字段。显式设置后才能编辑；“移除此值”会省略对应属性，组件沿原 schema 处理缺省值。`0`、空字符串、`false` 与 schema 允许的 `null` 各自保留；只有声明允许 `null` 的字段显示“设为 null”。`nullable` 本身不代表字段可省略。重置沿用传入的完整初始参数，查看表单不会修改参数。
 
+控件类型以 schema 声明为准，字段名称和当前值不会把普通字符串变成颜色。枚举保留选择框；颜色由 `format: 'color'` 或宿主显式传入的颜色控件声明启用。颜色文本保留原始值，无法交给浏览器颜色选择器的值仍可用文本编辑，不自动替换为黑色。控件展示不改变原 schema 的校验规则。
+
 ```ts
 import { resolvePromptFrameStyle } from '@promptframe/component-kit/style';
 
