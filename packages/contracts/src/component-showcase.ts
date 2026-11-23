@@ -35,7 +35,12 @@ export interface ComponentShowcaseGroup extends ComponentShowcasePreview {
 /** Compile the published, static JSON schema facts without loading a component.
  * Resource authorization and component runtime predicates remain with the caller. */
 export function createComponentShowcasePropsValidator(schema: unknown) {
-  const validator = staticSchema(schema, []);
+  let validator:z.ZodTypeAny;
+  try{validator=staticSchema(schema,[]);}
+  catch(error){
+    if(error instanceof ComponentShowcaseError)throw new ComponentShowcaseError(error.code,error.path,'schema');
+    throw error;
+  }
   return (props: Record<string, unknown>, path: Array<string | number>): Record<string, unknown> => {
     const result = validator.safeParse(props);
     if (!result.success) {
@@ -48,7 +53,7 @@ export function createComponentShowcasePropsValidator(schema: unknown) {
 }
 
 export class ComponentShowcaseError extends Error {
-  constructor(readonly code: string, readonly path: Array<string | number>) {
+  constructor(readonly code: string, readonly path: Array<string | number>,readonly source?:'schema') {
     super(`${code}: ${path.join('.')}`);
     this.name = 'ComponentShowcaseError';
   }
@@ -183,6 +188,10 @@ function staticSchema(value: unknown, path: Array<string | number>, depth = 0): 
     result = result.refine(item => values.some(allowed => JSON.stringify(allowed) === JSON.stringify(item)));
   }
   if (value.nullable === true) result = result.nullable();
-  if (Object.hasOwn(value, 'default')) result = result.default(() => cloneJson(value.default, path));
+  if (Object.hasOwn(value, 'default')) {
+    const fallback=cloneJson(value.default,[...path,'default']);
+    if(!result.safeParse(fallback).success)return fail('schema_default_invalid',[...path,'default']);
+    result = result.default(() => cloneJson(fallback,[...path,'default']));
+  }
   return result;
 }

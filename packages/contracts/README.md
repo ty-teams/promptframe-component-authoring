@@ -16,6 +16,12 @@ Key public exports:
 - `PROMPTFRAME_PUBLIC_SECURITY_POLICY_DIGEST`: deterministic release-cohort fingerprint for the public security policy.
 - `@promptframe/contracts/security-evaluator`: AST-aware evaluator for JS / TS / TSX source diagnostics.
 
+## Schema 默认值
+
+静态 schema 提取支持 JSON 字面量和由数值字面量组成的有限算术，包括括号、一元 `+`／`-` 以及 `+`、`-`、`*`、`/`、`%`、`**`，例如 `.default(16 / 9)`。各步结果必须有限，嵌套深度有界。提取器不执行函数调用、访问变量或运行作者源码；无法解析的默认值报告 `schema.default_unresolved`，不会生成 `default: undefined`。
+
+默认值仍须符合字段类型与范围。CLI 将 schema 错误定位到清单声明的 schema 文件，默认预览定位到 `src/preview-props.json`，展示预设定位到实际 `src/showcase.json` 的对应字段。有无展示配置不改变默认预览的校验要求。
+
 ## 布局源码检查
 
 Node 作者工具使用 `@promptframe/contracts/layout-evaluator` 的 `evaluatePromptFrameLayoutPolicy`。

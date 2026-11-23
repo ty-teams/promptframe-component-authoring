@@ -6,6 +6,26 @@ import {
 } from '../dist/schema-evaluator.js';
 import { promptFrameResourceSchema } from '../dist/index.js';
 
+test('finite arithmetic defaults are evaluated as numeric facts without loading author code',()=>{
+ const facts=evaluatePromptFrameSchemaSource(`import{z}from'zod';export const propsSchema=z.object({
+  imageAspect:z.number().min(.2).max(5).default(16 / 9),
+  spacing:z.number().default(-(2 + 3) * 4 / 2),
+  detail:z.object({x:z.number(),values:z.array(z.number())}).default({x:2 ** 3,values:[7 % 4,+2]}),
+ });`);
+ assert.equal(facts.status,'resolved');assert.equal(facts.properties.imageAspect.default,16/9);
+ assert.equal(facts.properties.spacing.default,-10);assert.deepEqual(facts.properties.detail.default,{x:8,values:[3,2]});
+ assert.deepEqual(facts.requiredPropKeys,[]);
+});
+
+test('unresolved numeric defaults never manufacture an undefined default or execute expressions',()=>{
+ for(const expression of ['16 / 0','0 / 0','10 ** 1000','getDefault()','globalThis.sideEffect()','Math.random()','16 + "9"']){
+  const facts=evaluatePromptFrameSchemaSource(`import{z}from'zod';export const propsSchema=z.object({imageAspect:z.number().default(${expression})});`);
+  assert.equal(Object.hasOwn(facts.properties.imageAspect,'default'),false,expression);
+  assert.equal(facts.status,'partial',expression);assert(facts.requiredPropKeys.includes('imageAspect'),expression);
+  assert(facts.diagnostics.some(row=>row.code==='schema.default_unresolved'&&row.propPath==='imageAspect'),expression);
+ }
+});
+
 test('resource slot schema and static facts carry the same bounded selection metadata', () => {
   const runtime = promptFrameResourceSchema({ kinds: ['image'], accept: ['image/*'] });
   const facts = evaluatePromptFrameSchemaSource(`

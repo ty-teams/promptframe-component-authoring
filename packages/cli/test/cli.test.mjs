@@ -5378,6 +5378,48 @@ test('package validates optional showcase frames and merged props before preserv
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+test('finite schema defaults reach upload preparation from directory and ZIP; invalid values send no HTTP',async()=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'promptframe-static-default-upload-')),component=path.join(dir,'component');
+ const calls=[];
+ const server=await createServer(async(req,res)=>{
+  const bytes=await readRequestBody(req);calls.push({path:req.url,method:req.method,bytes});
+  if(req.url==='/cli/auth/whoami')return writeJson(res,{success:true});
+  if(req.url==='/components/standard')return writeJson(res,{success:true,sourceVersion:'component-standard.v0.1.0',sourceHash:COMPONENT_STANDARD_SOURCE_HASH});
+  if(req.url==='/components/marketplace/upload'){res.statusCode=202;return writeJson(res,{success:true,jobId:'component_build_owned_default',status:'queued'});}
+  res.statusCode=404;writeJson(res,{});
+ });
+ try{
+  await writeFixtureComponent(component);
+  const schemaFile=path.join(component,'src/schema.ts'),previewFile=path.join(component,'src/preview-props.json');
+  const schema="import{z}from'zod';export const propsSchema=z.object({title:z.string().describe('Title'),imageAspect:z.number().min(.2).max(5).default(16 / 9).describe('Image aspect ratio')});";
+  await writeFile(schemaFile,schema);const original=JSON.parse(await readFile(previewFile,'utf8'));
+  const config=path.join(dir,'config.json');await writeFile(config,JSON.stringify({endpoint:server.url,credential:{endpoint:server.url,tokenSecret:'owned-fixture-token'}}));
+  for(const showcase of [false,true]){
+   if(showcase)await writeFile(path.join(component,'src/showcase.json'),JSON.stringify({presets:[{id:'wide',label:'Wide',propsOverride:{imageAspect:2}}]}));
+   await writeFile(previewFile,JSON.stringify({...original,props:{title:'Owned title'}}));
+   const archive=path.join(dir,showcase?'with-showcase.zip':'without-showcase.zip');
+   await execFileAsync(process.execPath,[cliPath,'package',component,'--out',archive,'--json']);
+   for(const input of [component,archive]){
+    const before=calls.length,result=await execFileAsync(process.execPath,[cliPath,'upload',input,'--config',config,'--json','--out',path.join(dir,'directory-upload.zip')]);
+    assert.equal(JSON.parse(result.stdout).jobId,'component_build_owned_default');
+    const uploads=calls.slice(before).filter(row=>row.path==='/components/marketplace/upload');assert.equal(uploads.length,1);
+    if(input===archive)assert(uploads[0].bytes.includes(await readFile(archive)),'the exact selected archive reaches the controlled receiver');
+   }
+   for(const props of [{title:'Owned',imageAspect:7},{title:'Owned',imageAspect:'wide'},{}]){
+    await writeFile(previewFile,JSON.stringify({...original,props}));const count=calls.length;
+    await assert.rejects(execFileAsync(process.execPath,[cliPath,'upload',component,'--config',config,'--json']),
+     error=>String(error.stderr).includes('src/preview-props.json')&&String(error.stderr).includes('component.showcase.props_invalid'));
+    assert.equal(calls.length,count,'invalid default preview stops before authentication or upload HTTP');
+   }
+   await writeFile(previewFile,JSON.stringify({...original,props:{title:'Owned'}}));
+   await writeFile(schemaFile,schema.replace('16 / 9','1 / 0'));const count=calls.length;
+   await assert.rejects(execFileAsync(process.execPath,[cliPath,'upload',component,'--config',config,'--json']),
+    error=>String(error.stderr).includes('src/schema.ts')&&String(error.stderr).includes('component_standard.props.schema_unresolved'));
+   assert.equal(calls.length,count);await writeFile(schemaFile,schema);
+  }
+ }finally{await server.close();await rm(dir,{recursive:true,force:true});}
+});
+
 async function writeFixtureComponent(componentDir) {
   await writeFileTree(componentDir, {
     'package.json': JSON.stringify({

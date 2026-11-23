@@ -43,7 +43,8 @@ export type PromptFrameSchemaDiagnosticCode =
   | 'schema.reference_cycle'
   | 'schema.reference_unresolved'
   | 'schema.wrapper_unresolved'
-  | 'schema.resource_slot_invalid';
+  | 'schema.resource_slot_invalid'
+  | 'schema.default_unresolved';
 
 export interface PromptFrameSchemaDiagnostic {
   code: PromptFrameSchemaDiagnosticCode;
@@ -187,7 +188,7 @@ function resolveSchemaExpression(expression: ts.Expression, context: ParseContex
   }
 
   const base = resolveSchemaExpression(receiver, context);
-  return applyZodMethod(base, method, current.arguments);
+  return applyZodMethod(base, method, current.arguments,context);
 }
 
 function resolveSchemaIdentifier(identifier: ts.Identifier, context: ParseContext): ResolvedSchema {
@@ -350,14 +351,23 @@ function applyZodMethod(
   base: ResolvedSchema,
   method: string,
   args: ts.NodeArray<ts.Expression>,
+  context:ParseContext,
 ): ResolvedSchema {
   const schema = { ...base.schema };
+  const diagnostics=[...base.diagnostics];
   const numericArg = args[0] ? readNumericLiteral(args[0]) : null;
   let required = base.required;
-  if (method === 'default' || method === 'optional' || method === 'nullish') {
+  if (method === 'optional' || method === 'nullish') {
     required = false;
   }
-  if (method === 'default' && args[0]) schema.default = readJsonLiteralValue(args[0]);
+  if(method==='default'){
+    const value=args[0]?readJsonLiteralValue(args[0]):undefined;
+    if(value===undefined){
+      delete schema.default;
+      diagnostics.push(diagnosticAt(context,args[0]??context.sourceFile,'schema.default_unresolved',
+        'Schema defaults must be static JSON values or finite literal arithmetic; author code is not executed.'));
+    }else{schema.default=value;required=false;}
+  }
   if (method === 'nullable' || method === 'nullish') schema.nullable = true;
   if (method === 'positive') schema.exclusiveMinimum = 0;
   if (method === 'nonnegative') schema.minimum = 0;
@@ -382,7 +392,7 @@ function applyZodMethod(
     if (schema.type === 'array') schema.minItems = schema.maxItems = Math.floor(numericArg);
   }
   if (method === 'url') schema.format = 'uri';
-  return { schema, required, diagnostics: base.diagnostics };
+  return { schema, required, diagnostics };
 }
 
 function isProvenTransparentSchemaWrapper(fn: ts.FunctionDeclaration): boolean {
@@ -560,12 +570,13 @@ function readNumericLiteral(expression: ts.Expression): number | null {
   return typeof value === 'number' ? value : null;
 }
 
-function readJsonLiteralValue(expression: ts.Expression): unknown {
+function readJsonLiteralValue(expression: ts.Expression,depth=0): unknown {
+  if(depth>32)return undefined;
   const current = unwrapExpression(expression);
-  const literal = readLiteralValue(current);
+  const literal = readLiteralValue(current,depth);
   if (literal !== undefined) return literal;
   if (ts.isArrayLiteralExpression(current)) {
-    const values = current.elements.map((item) => readJsonLiteralValue(item as ts.Expression));
+    const values = current.elements.map((item) => readJsonLiteralValue(item as ts.Expression,depth+1));
     return values.some((item) => item === undefined) ? undefined : values;
   }
   if (ts.isObjectLiteralExpression(current)) {
@@ -573,7 +584,7 @@ function readJsonLiteralValue(expression: ts.Expression): unknown {
     for (const property of current.properties) {
       if (!ts.isPropertyAssignment(property)) return undefined;
       const key = readPropertyName(property.name);
-      const value = readJsonLiteralValue(property.initializer);
+      const value = readJsonLiteralValue(property.initializer,depth+1);
       if (!key || value === undefined) return undefined;
       entries.push([key, value]);
     }
@@ -582,16 +593,32 @@ function readJsonLiteralValue(expression: ts.Expression): unknown {
   return undefined;
 }
 
-function readLiteralValue(expression: ts.Expression): unknown {
+function readLiteralValue(expression: ts.Expression,depth=0): unknown {
+  if(depth>32)return undefined;
   const current = unwrapExpression(expression);
   if (ts.isStringLiteralLike(current)) return current.text;
-  if (ts.isNumericLiteral(current)) return Number(current.text);
+  if (ts.isNumericLiteral(current)) {const value=Number(current.text);return Number.isFinite(value)?value:undefined;}
   if (current.kind === ts.SyntaxKind.TrueKeyword) return true;
   if (current.kind === ts.SyntaxKind.FalseKeyword) return false;
   if (current.kind === ts.SyntaxKind.NullKeyword) return null;
-  if (ts.isPrefixUnaryExpression(current) && current.operator === ts.SyntaxKind.MinusToken) {
-    const value = readLiteralValue(current.operand);
-    return typeof value === 'number' ? -value : undefined;
+  if (ts.isPrefixUnaryExpression(current) && [ts.SyntaxKind.MinusToken,ts.SyntaxKind.PlusToken].includes(current.operator)) {
+    const value = readLiteralValue(current.operand,depth+1);
+    return typeof value === 'number' ? current.operator===ts.SyntaxKind.MinusToken?-value:value : undefined;
+  }
+  if(ts.isBinaryExpression(current)){
+    const left=readLiteralValue(current.left,depth+1),right=readLiteralValue(current.right,depth+1);
+    if(typeof left!=='number'||typeof right!=='number')return undefined;
+    let value:number;
+    switch(current.operatorToken.kind){
+      case ts.SyntaxKind.PlusToken:value=left+right;break;
+      case ts.SyntaxKind.MinusToken:value=left-right;break;
+      case ts.SyntaxKind.AsteriskToken:value=left*right;break;
+      case ts.SyntaxKind.SlashToken:value=left/right;break;
+      case ts.SyntaxKind.PercentToken:value=left%right;break;
+      case ts.SyntaxKind.AsteriskAsteriskToken:value=left**right;break;
+      default:return undefined;
+    }
+    return Number.isFinite(value)?value:undefined;
   }
   return undefined;
 }

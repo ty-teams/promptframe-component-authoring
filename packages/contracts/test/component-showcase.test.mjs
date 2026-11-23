@@ -9,6 +9,15 @@ const schema = z.object({ title: z.string(), camera: z.object({ distance: z.numb
 const resolve = (showcase, value = preview) => resolveComponentShowcaseGroups({ preview: value, showcase, validateProps: props => schema.parse(props) });
 const rejects = (showcase, code, path) => assert.throws(() => resolve(showcase), error => error instanceof ComponentShowcaseError && error.code === code && error.path.join('.') === path);
 
+test('invalid static defaults retain schema provenance before validating preview or preset props',()=>{
+ for(const value of [undefined,Infinity,7,'wide']){
+  assert.throws(()=>createComponentShowcasePropsValidator({type:'object',properties:{imageAspect:{type:'number',minimum:.2,maximum:5,default:value}}}),
+   error=>error instanceof ComponentShowcaseError&&error.source==='schema'&&error.path[0]==='imageAspect');
+ }
+ const validate=createComponentShowcasePropsValidator({type:'object',properties:{imageAspect:{type:'number',minimum:.2,maximum:5,default:16/9}}});
+ assert.equal(validate({},['props']).imageAspect,16/9);
+});
+
 test('legacy preview supplies one default group and exact evenly spaced local frames', () => {
   const [group] = resolve(undefined);
   assert.equal(group.id, 'default');

@@ -11,6 +11,7 @@ export function validateSourceShowcase(input: {
   root: string;
   preview: ComponentShowcasePreview;
   facts: PromptFrameSchemaFacts;
+  schemaPath?:string;
   fail: (message: string, code: string) => never;
 }) {
   const file = join(input.root, 'src/showcase.json');
@@ -21,10 +22,16 @@ export function validateShowcasePreview(input: {
   declaration?: string;
   preview: ComponentShowcasePreview;
   facts: PromptFrameSchemaFacts;
+  schemaPath?:string;
   fail: (message: string, code: string) => never;
 }) {
   // Old zero-prop sources may not declare a statically readable schema.
-  if (input.declaration === undefined && input.facts.status !== 'resolved') return;
+  if(input.facts.status!=='resolved'){
+    const diagnostic=input.facts.diagnostics.find(row=>row.code!=='schema.props_schema_not_static');
+    if(input.declaration===undefined&&!diagnostic)return;
+    return input.fail(`${input.schemaPath??'src/schema.ts'} ${diagnostic?.propPath??'propsSchema'}: ${diagnostic?.message??'Schema is not statically resolved'}.`,
+      'component_standard.props.schema_unresolved');
+  }
   let source: unknown;
   if (input.declaration !== undefined) {
     try { source = JSON.parse(input.declaration); }
@@ -42,7 +49,7 @@ export function validateShowcasePreview(input: {
   } catch (error) {
     if (!(error instanceof ComponentShowcaseError)) throw error;
     const isDefault = error.path[0] === 'props';
-    const file = isDefault ? 'src/preview-props.json' : 'src/showcase.json';
+    const file = error.source==='schema'?(input.schemaPath??'src/schema.ts'):isDefault ? 'src/preview-props.json' : 'src/showcase.json';
     let message = error.code;
     if (isDefault && error.code === 'component.showcase.props_invalid') {
       const key = error.path[1];

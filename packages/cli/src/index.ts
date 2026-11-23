@@ -4480,7 +4480,7 @@ function validatePreviewProps(dir: string, manifest: ComponentManifest): void {
     'Private resource selections belong in resource set drafts; public preview props must use package examples.',
     'component_standard.preview.private_resource_reference');
   validateSourceShowcase({ root: dir, preview: preview as unknown as import('@promptframe/contracts').ComponentShowcasePreview,
-    facts: schemaFacts, fail });
+    facts: schemaFacts,schemaPath:manifest.entry.propsSchemaPath, fail });
 }
 
 function assertActionSlotsMatchSchema(manifest: ComponentManifest, facts: PromptFrameSchemaFacts): void {
@@ -4823,7 +4823,7 @@ function validateZipPreviewParameters(path: string): void {
   catch { fail('src/preview-props.json must contain valid JSON.', 'component_standard.preview.object'); }
   assertPreviewEnvelope(preview, 'src/preview-props.json', fail);
   validateShowcasePreview({ declaration: sourceEntry('src/showcase.json')?.toString('utf8'),
-    preview: preview as unknown as import('@promptframe/contracts').ComponentShowcasePreview, facts, fail });
+    preview: preview as unknown as import('@promptframe/contracts').ComponentShowcasePreview, facts,schemaPath:manifest.entry.propsSchemaPath, fail });
 }
 
 function packageArtifactFromZip(path: string): ComponentPackageArtifact {

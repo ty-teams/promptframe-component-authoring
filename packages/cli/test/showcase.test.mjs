@@ -38,6 +38,25 @@ test('default preview and optional overrides use the same parameter contract', a
     assert.deepEqual(result[0].frames, [0, 24, 48, 71, 95, 119]);
   });
 });
+
+test('static default errors belong to the declared schema, while preview and preset errors retain their own file',async()=>{
+ const facts=evaluatePromptFrameSchemaSource(`import{z}from'zod';export const propsSchema=z.object({imageAspect:z.number().min(.2).max(5).default(16 / 9)});`);
+ for(const source of [undefined,{}])await withSource(source,root=>{
+  const [group]=validateSourceShowcase({root,preview:{...preview,props:{}},facts,fail});assert.equal(group.props.imageAspect,16/9);
+  for(const value of [7,'wide'])assert.throws(()=>validateSourceShowcase({root,preview:{...preview,props:{imageAspect:value}},facts,fail}),
+   error=>error.message.includes('src/preview-props.json props.imageAspect'));
+  const unresolved=evaluatePromptFrameSchemaSource(`import{z}from'zod';export const propsSchema=z.object({imageAspect:z.number().default(1 / 0)});`);
+  assert.throws(()=>validateSourceShowcase({root,preview:{...preview,props:{}},facts:unresolved,schemaPath:'src/parameters.ts',fail}),
+   error=>error.message.includes('src/parameters.ts')&&!error.message.includes('src/showcase.json'));
+  const invalid=evaluatePromptFrameSchemaSource(`import{z}from'zod';export const propsSchema=z.object({imageAspect:z.number().min(.2).max(5).default(7)});`);
+  assert.throws(()=>validateSourceShowcase({root,preview:{...preview,props:{}},facts:invalid,schemaPath:'src/parameters.ts',fail}),
+   error=>error.code==='component.showcase.schema_default_invalid'&&error.message.includes('src/parameters.ts imageAspect.default'));
+ });
+ await withSource({presets:[{id:'bad',label:'Invalid preset',propsOverride:{imageAspect:7}}]},root=>{
+  assert.throws(()=>validateSourceShowcase({root,preview:{...preview,props:{}},facts,fail}),
+   error=>error.message.includes('src/showcase.json presets.0.propsOverride.imageAspect'));
+ });
+});
 test('nested constraints, enum, required values and unknown fields reject with the exact preset path', async () => {
   for (const [propsOverride, path] of [
     [{ count: 0 }, 'count'], [{ count: 1.5 }, 'count'], [{ mode: 'missing' }, 'mode'], [{ title: '' }, 'title'],
