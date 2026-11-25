@@ -274,11 +274,23 @@ promptframe dev . --studio-origin https://your-studio.example --replace
 promptframe dev stop .
 ```
 
-将启动时输出的完整 JSON 粘贴到同一浏览器主机的 Studio 开发连接面板。服务运行期间连接没有固定十分钟截止；没有推送连接且没有请求持续30分钟后正常退出，`--idle-timeout 0` 可关闭闲置退出。推送心跳默认为25秒。普通单组件 Vite 预览仍使用原5173入口。
+仅已接入 Creation MCP、且持有当前作品编辑权的 Agent，才可以通过 MCP 自助配置 Studio 开发连接。Creation MCP 首次接入仍由人在 Studio 生成创作 Token，再向本机 Creation `connect` 提供；已有有效安全凭据可以复用。开发连接配对不替代首次授权，也不获取作品编辑权。
 
-工作区默认端口为24000—24999，冲突时在段内选择并记住可用端口；`--port` 优先。`.promptframe/dev/` 保存本机连接ID、端口及实例锁，并自行忽略Git，不含连接凭据。重启后ID保持、凭据重新生成：在Studio重新粘贴一次新JSON即可继续使用同ID节点。旧随机ID的节点需要手动重新绑定一次。本地连接v2需要相容的Studio；旧v1连接仍遵守原有效期。
+主路径先调用 `studio_preview` 的 `read`，确认当前作品在线页的准确 `pageId`、版本和已生效来源。再让本机 CLI 持续运行，把普通标准输出写入桥所在机器、仅本人可读的临时文件，例如 POSIX：
 
-关闭开发面板不停止连接；切换账号或作品、关闭页面会断开。刷新页面后重新粘贴连接JSON。停止或替换仅操作本工作区的实际实例；无法确认实例退出时命令报错，不自动强制终止进程。
+```bash
+umask 077
+connectionFile="$(mktemp "${TMPDIR:-/tmp}/promptframe-dev.XXXXXX")"
+promptframe dev . --studio-origin https://your-studio.example > "$connectionFile" &
+```
+
+让 Agent 把这个文件的绝对路径作为 `connectionFile`，连同所选 `pageId` 和 `expectedVersion` 传给 `studio_preview(action="connect_development")`。Creation 桥在本机私密读取，不把连接凭据放进聊天、代码或 Git；不使用 `dev --json`，它仅在 `--dry-run` 时支持。命令受理后继续 `studio_preview.read`，分别核实际连接、构建接收和 Player 加载状态。文件由本机作者在不再需要配对时清理；停止服务用 `promptframe dev stop .`，不要凭 PID 猜测其他实例。
+
+没有这条 MCP 路径时，手工将启动 JSON 粘贴到 Studio 开发连接面板是备用方式，勿发送到聊天。仅支持原 localhost 模式；CLI 开发服务须与 Studio 浏览器在同一主机。服务运行期间没有固定十分钟截止；无推送客户端且无请求持续30分钟后正常退出，`--idle-timeout 0` 可关闭闲置退出，推送心跳默认25秒。普通单组件 Vite 预览保持5173入口。
+
+工作区默认端口为24000—24999，冲突时在段内选并记住可用端口，`--port` 优先。`.promptframe/dev/` 只保存本机连接ID、端口和实例锁并自行忽略Git，不保存连接凭据。服务重启会更换凭据，应重新输出私有文件、读取在线页与新版本并重新配对；稳定连接ID不代表旧凭据可继续使用。普通页面刷新后先重读实际页面和连接状态，需要时再校验或配对，不把旧页ID和版本用于新页面。
+
+关闭开发面板不停止连接；切换账号、作品或关闭页面会断开。浏览器对本地网络访问的许可仍单独处理；需要原生采帧时的标签页共享授权也独立，开发连接成功不表示已允许采帧，刷新不会恢复旧共享流。停止或替换仅操作本工作区的实际实例，无法确认退出时保留准确错误，不强制终止。
 
 上传组件后，用准确的正式 `componentRef` 替换作品节点引用并移除该节点的 `componentSource`。仅上传成功不会自动改变作品的选源。确认作品已使用正式引用且不再需要本地预览后，可执行 `promptframe dev stop .`。
 
