@@ -11,6 +11,14 @@ test('wait reads only the original build serially with backoff, then returns its
  assert.equal(result.state,'ready');assert.equal(result.reads,4);assert.equal(maxActive,1);assert.deepEqual(pauses,[500,1000,2000]);assert.deepEqual(result.componentRef,ref);assert.equal(result.buildId,buildId);
 });
 
+test('an old manual review does not end observation while the same build is queued or running again',async()=>{
+ let clock=0,reads=0;const states=['queued','running'];
+ const result=await waitForOriginalBuild({buildId,timeoutMs:10_000,now:()=>clock,sleep:async ms=>{clock+=ms;},read:async()=>{
+  const status=states[reads++];return status?{success:true,build:{buildId,status,securityReview:{decision:'manual_review'}}}:ready();
+ }});
+ assert.equal(result.state,'ready');assert.equal(result.reads,3);assert.equal(result.buildId,buildId);assert.deepEqual(result.componentRef,ref);
+});
+
 test('a terminal label or mismatched receipt is not a usable locked reference',()=>{
  for(const edit of [x=>{x.build.previewStatus='queued';},x=>{x.build.receipt.objectStore.status='failed';},x=>{delete x.build.receipt.objectStore;},x=>{x.build.receipt.bundleHash=h('d');},x=>{delete x.build.receipt.componentRef.schemaHash;},x=>{x.build.receipt.buildId='other';},x=>{x.build.componentId='@example/other';},x=>{x.build.securityReview.decision='manual_review';}]){const value=structuredClone(ready());edit(value);assert.equal(readyBuildReference(value.build),undefined);}
  const prerelease=structuredClone(ready());prerelease.build.version='1.0.0-beta.1+build.2';prerelease.build.receipt.componentRef.version=prerelease.build.version;assert.equal(readyBuildReference(prerelease.build)?.version,prerelease.build.version);
@@ -22,7 +30,7 @@ test('invalid budgets are rejected before any read and pre-cancelled observers r
 });
 
 test('failed, manual, unknown identity and denied observations stop without a new attempt',async()=>{
- for(const [payload,state,reason]of[[{build:{buildId,status:'failed'}},'failed','failed'],[{build:{buildId,status:'running',securityReview:{decision:'manual_review'}}},'action_required','manual_review'],[{build:{buildId,status:'succeeded',previewStatus:'failed'}},'action_required','preview_failed'],[{build:{buildId:'other',status:'running'}},'unconfirmed','build_identity_unconfirmed']]){
+ for(const [payload,state,reason]of[[{build:{buildId,status:'failed'}},'failed','failed'],[{build:{buildId,status:'failed',securityReview:{decision:'manual_review'}}},'action_required','manual_review'],[{build:{buildId,status:'failed',securityReview:{decision:'reject'}}},'failed','failed'],[{build:{buildId,status:'succeeded',previewStatus:'failed'}},'action_required','preview_failed'],[{build:{buildId:'other',status:'running'}},'unconfirmed','build_identity_unconfirmed']]){
   let reads=0;const r=await waitForOriginalBuild({buildId,timeoutMs:1000,read:async()=>{reads++;return payload;}});assert.equal(r.state,state);assert.equal(r.reason,reason);assert.equal(reads,1);assert.equal(r.componentRef,undefined);
  }
  const denied=await waitForOriginalBuild({buildId,timeoutMs:1000,read:async()=>{throw new BuildStatusReadError(403);}});assert.equal(denied.state,'unconfirmed');assert.equal(denied.reason,'status_read_denied');assert.equal(denied.httpStatus,403);
@@ -45,9 +53,16 @@ test('public CLI wait emits one final JSON, only original GETs, and a usable ref
  assert.deepEqual(s.requests,[1,2].map(()=>({method:'GET',path:'/components/marketplace/builds/'+buildId})));
 });
 
+test('public CLI waits through queued and running states with the retained review using only same-build GETs',async t=>{
+ const env=await isolated(t),states=['queued','running'],s=await serve((_req,res,count)=>json(res,count<=states.length?{success:true,build:{buildId,status:states[count-1],securityReview:{decision:'manual_review'}}}:ready()));t.after(s.close);
+ const r=await execute(process.execPath,[cli,'status',buildId,'--endpoint',s.url,'--wait','--timeout-seconds','5','--json'],{env});const out=JSON.parse(r.stdout);
+ assert.equal(out.wait.state,'ready');assert.equal(out.wait.reads,3);assert.equal(out.buildId,buildId);assert.deepEqual(out.componentRef,ref);
+ assert.deepEqual(s.requests,[1,2,3].map(()=>({method:'GET',path:'/components/marketplace/builds/'+buildId})));
+});
+
 test('CLI wait reports failure, manual action, timeout and HTTP refusal with nonzero exit',async t=>{
  const env=await isolated(t);
- for(const [response,state,exit,timeout]of[[{success:true,build:{buildId,status:'failed'}},'failed',1,'1'],[{success:true,build:{buildId,status:'running',securityReview:{decision:'manual_review'}}},'action_required',2,'1'],[{success:true,build:{buildId,status:'running'}},'timed_out',3,'0.1']]){
+ for(const [response,state,exit,timeout]of[[{success:true,build:{buildId,status:'failed'}},'failed',1,'1'],[{success:true,build:{buildId,status:'failed',securityReview:{decision:'manual_review'}}},'action_required',2,'1'],[{success:true,build:{buildId,status:'failed',securityReview:{decision:'reject'}}},'failed',1,'1'],[{success:true,build:{buildId,status:'running',securityReview:{decision:'manual_review'}}},'timed_out',3,'0.1']]){
   const s=await serve((_req,res)=>json(res,response));try{await assert.rejects(execute(process.execPath,[cli,'status',buildId,'--endpoint',s.url,'--wait','--timeout-seconds',timeout,'--json'],{env}),e=>{const out=JSON.parse(e.stdout);assert.equal(e.code,exit);assert.equal(out.wait.state,state);assert.equal(out.componentRef,undefined);assert.equal(out.buildId,buildId);return true;});assert(s.requests.every(x=>x.method==='GET'));}finally{await s.close();}
  }
  const s=await serve((_req,res)=>{res.statusCode=403;json(res,{error:'private diagnostic must not be copied'});});try{await assert.rejects(execute(process.execPath,[cli,'status',buildId,'--endpoint',s.url,'--wait','--json'],{env}),e=>{const out=JSON.parse(e.stdout);assert.equal(e.code,2);assert.equal(out.wait.reason,'status_read_denied');assert.equal(out.wait.httpStatus,403);assert.doesNotMatch(e.stdout+e.stderr,/private diagnostic/);return true;});}finally{await s.close();}

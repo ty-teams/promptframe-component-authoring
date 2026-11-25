@@ -55,7 +55,9 @@ export async function waitForOriginalBuild(input:{
    const status=typeof build.status==='string'?build.status:'unknown';
    if(!['queued','running','succeeded','failed','cancelled','canceled'].includes(status))return result('unconfirmed','build_status_unconfirmed');
    input.progress?.({buildId:input.buildId,status,reads});
-   if(record(build.securityReview)?.decision==='manual_review')return result('action_required','manual_review');
+   // A resumed build retains its previous report until the new review settles.
+   // The current queued/running state remains authoritative for observation.
+   if(!['queued','running'].includes(status)&&record(build.securityReview)?.decision==='manual_review')return result('action_required','manual_review');
    if(['failed','cancelled','canceled'].includes(status))return result('failed',status);
    if(record(build.securityReview)?.decision==='reject')return result('failed','security_rejected');
    if(build.previewStatus==='failed')return result('action_required','preview_failed');
