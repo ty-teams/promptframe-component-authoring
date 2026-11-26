@@ -1,21 +1,36 @@
 {
   "schemaVersion": "promptframe-authoring-release-authorization/v2",
   "state": "publish_ready",
-  "releaseId": "authoring-release-2026-11-25.1",
-  "releaseTag": "authoring-release-2026-11-25.1",
-  "artifactTag": "authoring-candidate-2026-11-25.1-r1",
-  "sourceCommit": "6146dc714dfac35d0b178ffbca3a3442e11e9ab7",
-  "candidateManifestDigest": "sha256:377e6510dace37928b92c685abffd5a7342bad2a0338ae1369fb9d7c2838cf7f",
-  "platformGateDigest": "sha256:22580b4ff8f7ce29b4b57fa7f07fbd6ca880e52505a450decf1acda151cd310a",
-  "releaseDigest": "sha256:1b1705b2b2b5a68d0659054908b5c205f84128bc766a2c46983c8a87128872df",
+  "releaseId": "authoring-release-2026-11-26.1",
+  "artifactTag": "authoring-candidate-2026-11-26.1-r1",
+  "releaseTag": "authoring-release-2026-11-26.1",
+  "sourceCommit": "4091cd74d72f295488f4c11c3a845e5d4857056c",
+  "candidateManifestDigest": "sha256:1cfe86f0e37fc595a4f08b0c55bae488bfdb6d98029734c92715fc118caa15d6",
+  "platformGateDigest": "sha256:d9ad15b5f37fd8caf8083b835b147bbeb27947a097c322377d297695f0995647",
+  "releaseDigest": "sha256:eb422ca7ddd1be5d7d66dd01137343c55029c12a62c5130f8a6e474b7de73b0a",
+  "createdAt": "2026-11-26T02:36:29.096Z",
+  "expiresAt": "2026-11-30T01:52:52.552Z",
   "packages": [
     {
+      "name": "@promptframe/contracts",
+      "version": "0.1.55",
+      "integrity": "sha512-NGVdPTaRPBe9wzCUCKkWAyp5MSVU3NnpG8rgIKDC2x/AmLbKL5uv0O/5tqmgLKjk+G0ZUIvDhlBHzwV1BKtnSw=="
+    },
+    {
+      "name": "@promptframe/component-kit",
+      "version": "0.1.48",
+      "integrity": "sha512-ZmYgFrl8q+0YMt+xuXWUGf57NYhIJLE+W/qQ0qpY6RY1l0kHYza7OZyu8jS6C5oQfbfkal/W2XJE0Al2Oq7kVA=="
+    },
+    {
       "name": "@promptframe/cli",
-      "version": "0.1.97",
-      "integrity": "sha512-a5lTY8HJdJ2epVOqqiNTKkQn69oYiDXQJmdyABn+KkN46aY9/JKHv3UB2wB+8ADPYidGgJWwIH0ZYZadL1aAqg=="
+      "version": "0.1.98",
+      "integrity": "sha512-8GPnwL7G2t/MGeJfXRXNevyQW/LhAL/chfhZLMGwBH8a/2XjURIFoj5rBddX0+uK1+shnGGfzAQiNVXB9bzFJA=="
+    },
+    {
+      "name": "create-promptframe-component",
+      "version": "0.1.75",
+      "integrity": "sha512-ZaG8aL04ahkDk+wv/NNyGfEmuHtbmN8SLbHUrgBvJ+73Tlg8/nD4sjRrtGMpLfVUf5v1GWjMYyrQxrSKc1FaMg=="
     }
   ],
-  "createdAt": "2026-11-25T13:35:29.042Z",
-  "expiresAt": "2026-11-29T13:29:08.136Z",
-  "authorizationDigest": "sha256:4018646e1a46722d74141d84a045e9965ffdafccff2828fd92ac293b2e60bdda"
+  "authorizationDigest": "sha256:03f04c536bdb61acc59f590c0c779600baa90c29250ee50d6eeb955b1a92e003"
 }
