@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  detectPromptFrameUnknownCustomStyleProps,
-  PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE,
   promptFrameStyleIntentSchema,
   PROMPTFRAME_STYLE_CONTRACT_VERSION,
 } from '../dist/index.js';
@@ -25,26 +23,4 @@ test('style intent contract accepts public authoring style controls', () => {
 
   assert.equal(intent.tone, 'tech');
   assert.equal(intent.brandTokens?.logoAssetId, 'asset://logo-123');
-});
-
-test('style prop policy detects root-level private style props without flagging styleIntent internals', () => {
-  const findings = detectPromptFrameUnknownCustomStyleProps([
-    'import { z } from "zod";',
-    'export const propsSchema = z.object({',
-    '  title: z.string(),',
-    '  theme: z.string().optional(),',
-    '  foregroundColor: z.string().optional(),',
-    '  styleIntent: z.object({',
-    '    accentColor: z.string().optional(),',
-    '    brandTokens: z.object({ primaryColor: z.string().optional() }).optional(),',
-    '  }).optional(),',
-    '});',
-  ].join('\n'));
-
-  assert.equal(PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.id, 'component.style.unknown_custom_style_prop');
-  assert.match(PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.repairHint, /styleIntent/);
-  assert.match(PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.repairHint, /resolvePromptFrameStyle/);
-  assert.match(PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.repairHint, /brandTokens\.primaryColor/);
-  assert.deepEqual(findings.map((finding) => finding.propName), ['foregroundColor', 'theme']);
-  assert.ok(findings.every((finding) => finding.ruleId === PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.id));
 });

@@ -18,7 +18,7 @@ npm install @promptframe/component-kit
 npm install -D @promptframe/cli create-promptframe-component
 ```
 
-The package provides version stamps, preview constraints, and deterministic timing helpers. Component projects can depend on it during authoring; finished components are packaged and uploaded with the PromptFrame CLI.
+The package provides version stamps, preview constraints, layout and resource helpers. Component projects can depend on it during authoring; finished components are packaged and uploaded with the PromptFrame CLI.
 
 Typical author flow:
 

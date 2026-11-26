@@ -12,8 +12,8 @@ const entryPrefix = '\0promptframe-entry:';
 const cssPrefix = '\0promptframe-css:';
 const externals = new Set(['react', 'react/jsx-runtime', 'react/jsx-dev-runtime',
   'react-dom', 'react-dom/client', 'remotion', 'zod', '@promptframe/component-kit', '@promptframe/contracts',
-  '@promptframe/component-kit/layout', '@promptframe/component-kit/timing',
-  '@promptframe/component-kit/style', '@promptframe/component-kit/standard',
+  '@promptframe/component-kit/layout',
+  '@promptframe/component-kit/standard',
   '@promptframe/component-kit/preview', '@promptframe/component-kit/model-react',
   '@remotion/noise', '@remotion/shapes', 'three',
   'three/addons/loaders/GLTFLoader.js', 'three/addons/environments/RoomEnvironment.js']);

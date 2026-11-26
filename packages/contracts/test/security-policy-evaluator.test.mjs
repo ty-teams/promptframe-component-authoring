@@ -136,13 +136,28 @@ test('AST evaluator blocks fps hardcoded timing in Remotion timing contexts', ()
   assert.ok(findings.length >= 3, `expected fps timing findings, got ${findings.length}`);
   assert.ok(findings.every((finding) => finding.action === 'manual_review'));
   assert.ok(findings.every((finding) => finding.severity === 'medium'));
-  assert.ok(findings.every((finding) => /secondsToFrames|createRevealPhases|createFillProgress/.test(finding.repairHint ?? '')));
+  assert.ok(findings.every((finding) => /Math\.round|interpolate|spring/.test(finding.repairHint ?? '')));
   assert.ok(findings.some((finding) => finding.trace?.some((item) => item.includes('interpolate'))));
   assert.ok(findings.some((finding) => finding.trace?.some((item) => item.includes('jsx'))));
   assert.ok(findings.some((finding) => finding.trace?.some((item) => item.includes('fps'))));
 });
 
-test('AST evaluator does not block visual constants or fps-aware helpers', () => {
+test('AST evaluator accepts native Remotion timing derived from the actual FPS', () => {
+  const source = `
+    import {interpolate, spring, useCurrentFrame, useVideoConfig} from 'remotion';
+    export default function Component() {
+      const frame = useCurrentFrame();
+      const {fps, durationInFrames} = useVideoConfig();
+      const enterEnd = Math.max(1, Math.min(durationInFrames - 1, Math.round(0.5 * fps)));
+      const opacity = interpolate(frame, [0, enterEnd], [0, 1], {extrapolateRight:'clamp'});
+      const progress = spring({frame, fps});
+      return <div style={{opacity, transform:'scale('+progress+')'}} />;
+    }
+  `;
+  assert.deepEqual(ruleIdsFor(source), []);
+});
+
+test('AST evaluator keeps existing fps-aware helper source readable for older components', () => {
   const source = `
     import { Sequence, useVideoConfig } from 'remotion';
     import { createFillProgress, createRevealPhases, secondsToFrames } from '@promptframe/component-kit/timing';

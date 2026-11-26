@@ -2871,7 +2871,7 @@ test('check warns marketplace authors when public metadata lacks bilingual cover
   }
 });
 
-test('validate and check report unknown private style props as authoring diagnostics', async () => {
+test('validate and check accept author-declared style props without the retired custom-style warning', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-style-props-'));
   try {
     const componentDir = path.join(dir, 'component');
@@ -2900,14 +2900,8 @@ test('validate and check report unknown private style props as authoring diagnos
       '--json',
     ])).stdout);
     assert.equal(validate.command, 'validate');
-    assert.ok(validate.checkedRuleIds.includes('component.style.unknown_custom_style_prop'));
-    assert.deepEqual(
-      validate.diagnostics
-        .filter((item) => item.code === 'component.style.unknown_custom_style_prop')
-        .map((item) => item.propName)
-        .sort(),
-      ['foregroundColor', 'theme'],
-    );
+    assert.equal(validate.checkedRuleIds.includes('component.style.unknown_custom_style_prop'),false);
+    assert.equal(validate.diagnostics.some(item=>item.code==='component.style.unknown_custom_style_prop'),false);
 
     const check = JSON.parse((await execFileAsync('node', [
       cliPath,
@@ -2924,11 +2918,7 @@ test('validate and check report unknown private style props as authoring diagnos
         PROMPTFRAME_CONFIG: path.join(dir, 'missing-config.json'),
       },
     })).stdout);
-    assert.ok(check.diagnostics.some((item) => (
-      item.code === 'component.style.unknown_custom_style_prop'
-      && item.severity === 'warning'
-      && item.message.includes('theme')
-    )));
+    assert.equal(check.diagnostics.some(item=>item.code==='component.style.unknown_custom_style_prop'),false);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -4211,7 +4201,6 @@ test('local standard, doctor, and validate expose stable JSON diagnostics', asyn
       'security.forbidden.browser_apis',
       'security.no_raw_remote_url_import',
       'package.no_parent_imports',
-      'component.style.unknown_custom_style_prop',
     ]);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -4257,7 +4246,6 @@ test('check and upgrade expose freshness and package floor diagnostics', async (
       'security.forbidden.browser_apis',
       'security.no_raw_remote_url_import',
       'package.no_parent_imports',
-      'component.style.unknown_custom_style_prop',
     ]);
 
     await writeFile(path.join(componentDir, 'package.json'), JSON.stringify({
@@ -5266,7 +5254,7 @@ test('validate rejects fps hardcoded timing instead of warning only', async () =
       ]),
       (error) => {
         assert.match(error.stderr, /runtime\.deterministic\.fps_hardcoded_timing/);
-        assert.match(error.stderr, /secondsToFrames|createRevealPhases|createFillProgress/);
+        assert.match(error.stderr, /Math\.round|interpolate|spring/);
         return true;
       },
     );

@@ -47,7 +47,7 @@ Use:
 
 Do not use Vue, Svelte, global scripts, raw HTML runtimes, runtime package installation, or remote ESM imports.
 
-For visual style, use the public style contract from `@promptframe/contracts` and helpers from `@promptframe/component-kit/style`. Do not invent private color/theme/style props that only one component understands; expose style intent through the shared contract or keep visual choices internal and deterministic.
+视觉参数由组件 schema 明确声明，组件在内部确定性处理颜色、排版与布局；公共风格意图数据合同仍可使用，不依赖独立 Kit 风格解析模块。
 
 ## Quickstart
 
@@ -249,7 +249,7 @@ component/
 - The generated controls expand object / array props into structured groups, fields, and array items by default; use `Advanced JSON` only as a fallback for bulk edits.
 - The local preview shell may generate bounded preview cases from `@promptframe/component-kit/preview`, apply only cases that pass `propsSchema.safeParse`, and export saved preview cases into `.promptframe/local-previews/` for author regression only; these files are not source-package evidence and do not replace `src/preview-props.json`.
 - `promptframe preview . --json` only verifies the local preview envelope from `src/preview-props.json`; it does not replace platform iframe preview, probes, or render evidence.
-- Animation timing must be fps-aware: convert wall-clock seconds with `secondsToFrames(seconds, fps)`, route frame ranges through `createDurationTimeline()` / `timeline.at()`, or use intent helpers such as `createRevealPhases()` and `createFillProgress()`. Local fps-adaptive diagnostics should compare 30fps and 60fps behavior, and local duration diagnostics should check 0.5x / 2x designed-duration behavior before upload.
+- Animation timing must be fps-aware: read the actual `fps` with `useVideoConfig()`, derive frames using `Math.round(seconds * fps)`, and pass absolute frame positions to Remotion `interpolate()` or `spring()`. Local fps-adaptive diagnostics should compare 30fps and 60fps behavior, and local duration diagnostics should check 0.5x / 2x designed-duration behavior before upload.
 - Animation must be frame-driven with the platform-compatible hooks and helpers exposed by the template.
 - Do not use CSS transitions/keyframes, timers, `Date.now()`, or `Math.random()`.
 - Use the template's media primitives rather than browser-native media tags.
@@ -265,7 +265,7 @@ When `promptframe validate --json` or platform admission returns one of these di
 - `scaffold.template.stale`: the generated shell metadata says this project came from an older `create-promptframe-component`; run `promptframe upgrade . --dry-run --check-latest --json`, then regenerate or manually port the latest scaffold shell changes.
 - `component_standard.source.no_math_random`: replace `Math.random()` with props, frame-derived values, or deterministic seeded helpers.
 - `code.eval`, `code.new_function`, `code.string_timer`: remove dynamic string execution; component logic must be deterministic TypeScript/React code.
-- `runtime.deterministic.fps_hardcoded_timing`: manual-review validation gate; replace hardcoded frame counts in timing contexts with `secondsToFrames(seconds, fps)`, `createDurationTimeline()` / `timeline.at()`, `createRevealPhases()`, or `createFillProgress()`.
+- `runtime.deterministic.fps_hardcoded_timing`: manual-review validation gate; read the actual `fps` using `useVideoConfig()`, derive frames with `Math.round(seconds * fps)`, and use absolute frame positions with Remotion `interpolate()` or `spring()`.
 - `network.raw_fetch`: remove raw `fetch`, XHR, WebSocket, EventSource, or Beacon calls unless the platform provides a mediated allowlisted API.
 - `prompt.injection_string`: remove comments, README text, or strings that ask the platform to ignore rules, rank the component first, auto-approve, or change admission behavior.
 - `network.remote_url`: move hardcoded remote assets into platform asset intake or props; do not bake remote URLs into component source.

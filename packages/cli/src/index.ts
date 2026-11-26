@@ -61,7 +61,6 @@ import {
   PROMPTFRAME_LAYOUT_POLICY_RULE_IDS,
   PROMPTFRAME_CONTRACTS_VERSION,
   PROMPTFRAME_PUBLIC_DEPENDENCY_POLICY,
-  detectPromptFrameUnknownCustomStyleProps,
   collectPromptFrameResourceReferences,
   validateComponentActionSlotSchemas,
   assertSelfContainedGlb,
@@ -165,7 +164,6 @@ const VALIDATE_CHECKED_RULE_IDS: PublicPolicyRuleId[] = [
   'security.forbidden.browser_apis',
   'security.no_raw_remote_url_import',
   'package.no_parent_imports',
-  'component.style.unknown_custom_style_prop',
 ];
 
 type PublicResourceReportStatus = 'empty' | 'accepted' | 'blocked';
@@ -485,7 +483,6 @@ function validate(argv: string[]): void {
   const dependencyPolicy = evaluateDirectoryDependencyPolicy(dir);
   const diagnostics = [
     ...layoutPolicyDiagnostics(dir, manifest),
-    ...stylePropDiagnostics(dir),
     ...securityPolicyWarningDiagnostics(dir),
     ...dependencyPolicy.diagnostics,
     ...publicResources.diagnostics,
@@ -608,7 +605,6 @@ function buildCheckOutput(
     ...reusabilityDiagnostics(localReusability),
     ...marketplaceMetadataLocaleDiagnostics(manifest, target),
     ...layoutPolicyDiagnostics(dir, manifest),
-    ...stylePropDiagnostics(dir),
     ...securityPolicyWarningDiagnostics(dir),
     ...dependencyPolicy.diagnostics,
     ...publicResources.diagnostics,
@@ -1228,7 +1224,6 @@ function prepareComponentUpload(
         ...reusabilityDiagnostics(localReusability),
         ...marketplaceMetadataLocaleDiagnostics(manifest, uploadTarget),
         ...layoutPolicyDiagnostics(input.dir, manifest),
-        ...stylePropDiagnostics(input.dir),
         ...(artifact.publicResources?.diagnostics ?? []),
       ]
     : undefined;
@@ -4612,17 +4607,6 @@ function collectLayoutPolicyTextFiles(
     .map((entry) => ({
       path: entry.name,
       sourceText: entry.data.toString('utf8'),
-    }));
-}
-
-function stylePropDiagnostics(dir: string): Array<LocalReusabilityDiagnostic & { propName: string }> {
-  return detectPromptFrameUnknownCustomStyleProps(readIfExists(join(dir, 'src/schema.ts')))
-    .map((finding) => ({
-      code: finding.ruleId,
-      severity: finding.severity,
-      message: finding.message,
-      repairHint: finding.repairHint,
-      propName: finding.propName,
     }));
 }
 

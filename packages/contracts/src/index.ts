@@ -616,8 +616,8 @@ export const PROMPTFRAME_PUBLIC_SECURITY_POLICY = {
       category: 'remotion_lifecycle',
       severity: 'medium',
       reason: 'Hardcoded frame counts can drift when a component is previewed or rendered at a different fps.',
-      recommendation: 'Use useVideoConfig().fps with secondsToFrames(seconds, fps), createDurationTimeline(), createRevealPhases(), createFillProgress(), or timeline.at() from @promptframe/component-kit/timing.',
-      repairHint: 'Replace hardcoded frame counts with secondsToFrames(seconds, fps), createRevealPhases(), createFillProgress(), or createDurationTimeline()/timeline.at() from @promptframe/component-kit/timing.',
+      recommendation: 'Use useVideoConfig().fps and absolute frames. Derive frame boundaries explicitly from seconds and fps, and use Remotion interpolate() or spring() for deterministic motion.',
+      repairHint: 'Read useVideoConfig().fps and derive frames with Math.round(seconds * fps); use absolute frame positions with Remotion interpolate() or spring().',
       docsPath: '/docs/component-authoring/security#runtime-deterministic-fps-hardcoded-timing',
     },
   ],
@@ -889,55 +889,7 @@ export const componentVisibilitySchema = z.enum([
 ]);
 export type ComponentVisibility = z.infer<typeof componentVisibilitySchema>;
 
-export const PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE = {
-  id: 'component.style.unknown_custom_style_prop',
-  stage: 'schema',
-  severity: 'warning',
-  message: 'Root-level private style props are not part of the public PromptFrame style contract.',
-  repairHint: 'Move visual style controls under styleIntent, for example styleIntent.accentColor or styleIntent.brandTokens.primaryColor, then render with resolvePromptFrameStyle() from @promptframe/component-kit/style instead of custom color/theme/style props.',
-} as const;
-
 export const PROMPTFRAME_STYLE_INTENT_ROOT_PROP_NAME = 'styleIntent' as const;
-
-export const PROMPTFRAME_PRIVATE_STYLE_ROOT_PROP_NAMES = [
-  'accentColor',
-  'backgroundColor',
-  'brandColor',
-  'borderColor',
-  'color',
-  'fontFamily',
-  'foregroundColor',
-  'primaryColor',
-  'secondaryColor',
-  'style',
-  'styles',
-  'surfaceColor',
-  'textColor',
-  'theme',
-  'themeName',
-] as const;
-
-export interface PromptFrameUnknownCustomStylePropFinding {
-  ruleId: typeof PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.id;
-  propName: string;
-  severity: typeof PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.severity;
-  message: string;
-  repairHint: typeof PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.repairHint;
-}
-
-export function detectPromptFrameUnknownCustomStyleProps(schemaSourceText: string): PromptFrameUnknownCustomStylePropFinding[] {
-  const privateProps = new Set<string>(PROMPTFRAME_PRIVATE_STYLE_ROOT_PROP_NAMES);
-  return extractPromptFrameRootPropKeys(schemaSourceText)
-    .filter((propName) => privateProps.has(propName))
-    .sort((left, right) => left.localeCompare(right))
-    .map((propName) => ({
-      ruleId: PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.id,
-      propName,
-      severity: PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.severity,
-      message: `${PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.message} prop=${propName}.`,
-      repairHint: PROMPTFRAME_UNKNOWN_CUSTOM_STYLE_PROP_RULE.repairHint,
-    }));
-}
 
 export function extractPromptFrameRootPropKeys(schemaSourceText: string): string[] {
   const body = extractPromptFrameRootZodObjectBody(schemaSourceText);
@@ -1362,7 +1314,6 @@ export const publicPolicyRuleIdSchema = z.enum([
   'package.no_parent_imports',
   'package.no_path_traversal',
   'evidence.schema_source_hash_present',
-  'component.style.unknown_custom_style_prop',
 ]);
 export type PublicPolicyRuleId = z.infer<typeof publicPolicyRuleIdSchema>;
 

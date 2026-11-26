@@ -66,7 +66,7 @@ npx promptframe status <buildId> --endpoint <promptframe-api-base>
 
 ## 风格协议
 
-风格意图应来自 `@promptframe/contracts` 的公共合同，并通过 `@promptframe/component-kit/style` helper 解析。不要给单个组件发明私有 `color` / `theme` / `style` props；如果必须暴露风格控制，优先复用 shared style intent，或者把视觉选择保持为组件内部确定性默认值。
+视觉参数由组件 schema 明确声明，组件在内部确定性处理颜色、排版与布局。公共风格意图数据合同仍可使用，不依赖独立 Kit 风格解析模块。
 
 ## 检索元数据
 
@@ -85,7 +85,7 @@ npx promptframe status <buildId> --endpoint <promptframe-api-base>
 脚手架生成时会写入 `.promptframe/scaffold.json`，记录 create 包版本、模板名、模板 digest 和创建时间。不要手工删这个文件；`doctor` / `check` 会用它提示旧壳子风险。
 
 - 不要使用 `eval`、`new Function`、字符串定时器、`node:fs`、`child_process`、`process.env`。
-- `runtime.deterministic.fps_hardcoded_timing` 是 manual-review 阻断规则；看到它时把硬编码帧数改成 `secondsToFrames(seconds, fps)`、`createDurationTimeline()` / `timeline.at()`、`createRevealPhases()` 或 `createFillProgress()`。
+- `runtime.deterministic.fps_hardcoded_timing` 是 manual-review 阻断规则；看到它时把硬编码帧数改成依据实际 `useVideoConfig().fps` 的 `Math.round(seconds * fps)`，并以绝对帧位置调用 Remotion `interpolate()` 或 `spring()`。
 - 不要直接使用 `fetch()` / XHR / WebSocket / Beacon。
 - 即使使用 `componentRuntime.fetchJson()`，也必须等待平台提供白名单配置；未配置时会进入 `manual_review`。
 - 不要读取 `localStorage` / `sessionStorage` / cookie；当前公开 CLI 会作为 `storage.browser_storage` 阻断。

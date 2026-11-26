@@ -36,8 +36,6 @@ test('component-kit exposes only public authoring entrypoints', () => {
     './preview-react',
     './runtime-fonts',
     './standard',
-    './style',
-    './timing',
   ]);
   assert.equal(packageJson.sideEffects, false);
   assert.deepEqual(packageJson.files, ['dist', 'README.md', 'fonts']);
@@ -70,4 +68,14 @@ test('component-kit local scripts build public contracts before importing them',
   assert.match(packageJson.scripts?.test ?? '', /pnpm --filter @promptframe\/contracts build &&/);
   assert.match(packageJson.scripts?.lint ?? '', /pnpm --filter @promptframe\/contracts build &&/);
   assert.match(packageJson.scripts?.build ?? '', /pnpm --filter @promptframe\/contracts build &&/);
+});
+
+test('retired author helpers are absent from package and root exports',async()=>{
+  assert.equal(packageJson.exports['./style' as keyof typeof packageJson.exports],undefined);
+  assert.equal(packageJson.exports['./timing' as keyof typeof packageJson.exports],undefined);
+  const root=await import('../src/index.js');
+  for(const name of ['resolvePromptFrameStyle','secondsToFrames','createDurationTimeline','getScaledSpringTiming','createRevealPhases','createFillProgress'])assert.equal(name in root,false,name);
+  for(const entry of ['style','timing'])await assert.rejects(import(packageJson.name+'/'+entry),{
+    code:'ERR_PACKAGE_PATH_NOT_EXPORTED',
+  });
 });

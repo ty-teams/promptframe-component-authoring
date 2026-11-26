@@ -105,11 +105,6 @@ const phrases: Record<string, readonly Phrase[]> = {
     ['External component CSS must not target global document selectors in ', '外部组件 CSS 不得使用文档全局选择器：'],
     ['Use CSS Module scoped class names inside the component boundary.', '在组件边界内使用 CSS Module 的局部类名。'],
   ],
-  'component.style.unknown_custom_style_prop': [
-    ['Root-level private style props are not part of the public PromptFrame style contract.', '根级私有样式 props 不属于公开 PromptFrame 样式合同。'],
-    ['Move visual style controls under styleIntent, for example styleIntent.accentColor or styleIntent.brandTokens.primaryColor, then render with resolvePromptFrameStyle() from @promptframe/component-kit/style instead of custom color/theme/style props.',
-      '将视觉样式放入 styleIntent，例如 styleIntent.accentColor 或 styleIntent.brandTokens.primaryColor，并用 @promptframe/component-kit/style 的 resolvePromptFrameStyle() 渲染，避免自定义根级 color/theme/style props。'],
-  ],
 };
 const layoutPhrases: readonly Phrase[] = [
   ['style defines fixed final width/height', '样式固定了最终宽高'],

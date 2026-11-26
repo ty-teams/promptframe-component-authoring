@@ -1,6 +1,6 @@
 {
   "name": "@promptframe/component-kit",
-  "version": "0.1.47",
+  "version": "0.1.48",
   "license": "MIT AND OFL-1.1",
   "type": "module",
   "sideEffects": false,
@@ -20,10 +20,6 @@
       "import": "./dist/standard.js",
       "types": "./dist/standard.d.ts"
     },
-    "./style": {
-      "import": "./dist/style.js",
-      "types": "./dist/style.d.ts"
-    },
     "./preview": {
       "import": "./dist/preview.js",
       "types": "./dist/preview.d.ts"
@@ -35,10 +31,6 @@
     "./layout": {
       "import": "./dist/layout.js",
       "types": "./dist/layout.d.ts"
-    },
-    "./timing": {
-      "import": "./dist/timing.js",
-      "types": "./dist/timing.d.ts"
     },
     "./model-react": {
       "import": "./dist/model-react.js",
@@ -71,14 +63,14 @@
   },
   "homepage": "https://github.com/ty-teams/promptframe-component-authoring#readme",
   "scripts": {
-    "build": "pnpm --filter @promptframe/contracts build && tsc",
+    "build": "pnpm --filter @promptframe/contracts build && pnpm clean && tsc",
     "lint": "pnpm --filter @promptframe/contracts build && tsc --noEmit",
     "test": "pnpm --filter @promptframe/contracts build && node --import tsx --test test/*.test.ts",
     "pack:dry-run": "pnpm build && npm pack --dry-run --json",
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@promptframe/contracts": "0.1.51"
+    "@promptframe/contracts": "0.1.55"
   },
   "peerDependencies": {
     "react": "^19.0.0",

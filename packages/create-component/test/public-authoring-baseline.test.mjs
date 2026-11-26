@@ -483,7 +483,8 @@ test('public authoring docs document fps-aware timing and the AST rule boundary'
   const componentKitReadme = await readFile(path.join(repoRoot, 'packages/component-kit/README.md'), 'utf8');
 
   for (const text of [timingRule, skill, componentKitReadme]) {
-    assert.match(text, /secondsToFrames/, text.slice(0, 80));
+    assert.match(text, /Math\.round\([^)]*fps/, text.slice(0, 80));
+    assert.doesNotMatch(text, /@promptframe\/component-kit\/(?:style|timing)/);
     assert.match(text, /fps-aware|fps 自适应|fps-aware timing/i, text.slice(0, 80));
     assert.match(text, /30fps[\s\S]*60fps|60fps[\s\S]*30fps/, text.slice(0, 80));
   }
@@ -492,7 +493,7 @@ test('public authoring docs document fps-aware timing and the AST rule boundary'
   assert.match(timingRule, /manual_review|validation gate|阻断/);
   assert.match(timingRule, /interpolate\(frame, \[30, 60\]/);
   assert.match(timingRule, /spring\(\{[\s\S]*fps: 30/);
-  assert.match(timingRule, /timeline\.at\(|secondsToFrames\(|createRevealPhases\(|createFillProgress\(/);
+  assert.match(timingRule, /interpolate\(\)|spring\(\)/);
 });
 
 test('public authoring docs describe the AI-first authoring boundary', async () => {
@@ -505,7 +506,8 @@ test('public authoring docs describe the AI-first authoring boundary', async () 
     assert.match(text, /CodingAI/, docPath);
     assert.match(text, /marketplace_authoring/, docPath);
     assert.match(text, /project_private_generation/, docPath);
-    assert.match(text, /@promptframe\/component-kit\/style/, docPath);
-    assert.match(text, /color.*theme.*style|style.*theme.*color/s, docPath);
+    assert.doesNotMatch(text, /@promptframe\/component-kit\/(?:style|timing)/, docPath);
+    assert.match(text, /schema/, docPath);
+    assert.match(text, /颜色.*排版.*布局/s, docPath);
   }
 });

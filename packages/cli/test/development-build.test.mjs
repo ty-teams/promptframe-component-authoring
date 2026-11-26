@@ -53,7 +53,7 @@ test('real Vite builds exactly the common-checked capture, without live files/co
     const paths = await developmentFixture(join(root, 'source'), 'first-checked-章节😀');
     await writeFile(join(root, 'source/src/index.ts'), 'export { default } from "./Component"; export { PropsSchema } from "./schema";\n'
       + 'export { createPromptFrameLayout } from "@promptframe/component-kit/layout";\n'
-      + 'export { secondsToFrames } from "@promptframe/component-kit/timing";');
+      + 'export { promptFramePublicResource } from "@promptframe/component-kit";');
     await writeFile(join(root, 'source/vite.config.ts'), 'throw new Error("workspace config must never execute");');
     paths.push('vite.config.ts');
     const capture = captureDevelopmentFiles(join(root, 'source'), paths, developmentLimits);
@@ -67,7 +67,7 @@ test('real Vite builds exactly the common-checked capture, without live files/co
     assert.ok(built.runtimeImports.includes('remotion'));
     assert.ok(built.runtimeImports.includes('zod'));
     assert.ok(built.runtimeImports.includes('@promptframe/component-kit/layout'));
-    assert.ok(built.runtimeImports.includes('@promptframe/component-kit/timing'));
+    assert.ok(built.runtimeImports.includes('@promptframe/component-kit'));
     assert.deepEqual(built.entries, { component: 'component.mjs', schema: 'schema.mjs', index: 'index.mjs' });
     assert.equal((await buildDevelopmentContents(capture, { temporaryParent: temporary })).artifacts.revision, built.artifacts.revision);
     const outputCopy = built.artifacts.readFiles(); outputCopy[0].bytes.fill(0);

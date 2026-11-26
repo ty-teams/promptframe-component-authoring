@@ -1,115 +1,48 @@
-# 组件市场时序 SSOT 规则
+# 组件的确定性时间与时长适配
 
-> 本文件是 PromptFrame 组件作者的公开时序规则，说明组件市场场景下如何保持确定性 frame-driven 动画和时长自适应。
+组件使用实际 FPS 和绝对帧位置计算画面。相同参数、帧位置和素材应得到相同结果，拖动和逐帧渲染不依赖之前播放过哪些帧。
 
-## 一句话结论
+## 时长与帧率
 
-组件市场组件必须和平台内置视频组件共用同一套时序心智：
-
-- `designedDurationRange` 是组件舒服播放的设计区间。
-- `durationFrames` 是本次使用场景给它的实际时长。
-- `fps` 是本次渲染的一秒多少帧；所有秒数、延迟、交错和弹簧 fps 都必须从 `fps` 或 timeline helper 推导，不能把 30fps 下的帧数写死。
-- 时间不足时快进压缩，时间富裕时播完后 hold。
-- 禁止因为组件想播更久，就让引擎层静默延长 Scene。
-
-## 市场组件必须声明什么
-
-`manifest.json` 必须包含：
+- `manifest.designedDurationRange` 声明设计时长区间，单位为帧。
+- `useVideoConfig().durationInFrames` 是本次画面的实际时长；组件不能静默延长场景。
+- 从 `useVideoConfig().fps` 读取帧率，以 `Math.round(seconds * fps)` 换算秒数。
+- 时间不足时按组件设计压缩关键动作；时间充裕时可保持最终状态。
+- 使用 Remotion 的 `interpolate()`、`spring()`、`Sequence` 或组件自身明确的帧换算，不要求独立 Kit 时序 helper。
+- 禁止用 CSS `transition`、`@keyframes`、计时器、`Date.now()` 或 `Math.random()` 推进视频时间。
 
 ```json
-{
-  "designedDurationRange": {
-    "min": 90,
-    "max": 180
-  }
-}
+{"designedDurationRange":{"min":90,"max":180}}
 ```
 
-这个字段进入三个地方：
-
-1. **搜索排序**：作为低权重 `duration fit` 信号。
-2. **默认预览**：平台生成 still/GIF/MP4 预览时限制最大帧数，避免恶意耗算力。
-3. **渲染诊断**：当实际场景给的时长极端不合理时，给 warning，而不是直接让组件消失。
-
-## 为什么不是硬过滤
-
-用户要 120 帧，组件推荐 90-180 帧，当然很匹配。用户要 240 帧，这个组件也可能可以用：动作按原速播完后 hold。用户只给 60 帧，它也可能可以用：动作会按 `DurationTimeline` 快进压缩。
-
-所以时长不能是主匹配条件。它只回答“这个组件在这个时长下是否舒服”，不回答“这个组件是否符合用户目的”。
-
-## 源码依赖如何保持 SSOT
-
-现状：
-
-- 内置组件的 `createDurationTimeline()` 位于 `packages/renderer/src/components/scene_templates/shared/DurationTimeline.ts`。
-- 市场脚手架不能直接 import 这个 renderer 内部路径，因为外部组件会独立打包、上传、验收。
-
-推荐演进：
-
-1. 抽出很小的 `@promptframe/component-kit` 包。
-2. 只放平台标准组件真正需要的轻量 API：
-   - `createDurationTimeline()`
-   - `scaledSpringProgress()` 或等价 helper
-   - manifest/schema 类型
-   - preview constraints 类型
-3. `react`、`remotion` 只作为 peer dependency（同伴依赖），不要把平台内部渲染实现打进组件包。
-4. 脚手架模板锁定 `component-kit` 版本，manifest 写入 `standardVersion` / `standardSourceHash`。
-5. 服务端 build admission 校验 `component-kit` 版本、manifest 标准版本和源码禁用项。
-
-这样 npm 包是可靠且轻量的；不建议让市场组件依赖平台内部 renderer，那会把内部实现、体积和破坏性升级都带给组件作者。
-
-组件市场 skill 必须明文引用项目级时序规则，并由模板 README 告诉组件作者：先按 manifest 的 `designedDurationRange`、`fps` 和 frame-driven 方式写确定性动画，不要引入 CSS 动画、计时器或真实时间。
-
-## fps-aware timing（fps 自适应）规则
-
-外部组件不能假设所有视频永远是 30fps。平台主干会使用 30fps / 60fps 这类受控帧率；组件如果写死 `30`、`45`、`60` 这样的“帧数时间点”，在 60fps 下会把 1 秒动作压成 0.5 秒。
-
-推荐写法：
+## fps-aware timing（fps 自适应）示例
 
 ```tsx
-import { interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
-import { createDurationTimeline, createRevealPhases, secondsToFrames } from '@promptframe/component-kit/timing';
+import {interpolate, useCurrentFrame, useVideoConfig} from 'remotion';
 
 export function Component() {
   const frame = useCurrentFrame();
-  const { fps, durationInFrames } = useVideoConfig();
-  const timeline = createDurationTimeline({ actualDuration: durationInFrames, designedDuration: secondsToFrames(4, fps) });
-  const reveal = createRevealPhases({ fps, timeline, enterSeconds: 0.5, revealSeconds: 1.5, exitSeconds: 3 });
-  const opacity = interpolate(frame, reveal.enterRange, [0, 1], { extrapolateRight: 'clamp' });
-  return <div style={{ opacity }} />;
+  const {fps, durationInFrames} = useVideoConfig();
+  const enterEnd = Math.max(1, Math.min(durationInFrames - 1, Math.round(0.5 * fps)));
+  const opacity = interpolate(frame, [0, enterEnd], [0, 1], {
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  });
+  return <div style={{opacity}} />;
 }
 ```
 
-不推荐写法：
+这些写法会把时间绑定到固定帧率，应按实际 FPS 修正：
 
 ```tsx
 interpolate(frame, [30, 60], [0, 1]);
-spring({ frame, fps: 30 });
+spring({frame, fps: 30});
 const visible = frame > 45;
 ```
 
-`createPreviewCaseMatrix()` 可用 `fpsPresets: [30, 60]` 生成本地 fps-adaptive diagnostics（fps 自适应诊断）case，用来比较同一个 props / aspect 在 30fps 和 60fps 下的节奏；也可用 `durationScalePresets: [0.5, 2]` 生成 designed-duration diagnostics，用来观察压缩与 hold 表现。当前 `src/preview-props.json` 仍受公开 preview policy 约束，且 `durationFrames` 必须落在 `manifest.designedDurationRange`；在公开标准允许 60fps 前，不要把 60fps local case 当成可上传的 source evidence。
+## 诊断与本地检查
 
-当前 AST 检测规则：
+`runtime.deterministic.fps_hardcoded_timing` 是 `manual_review` 校验门禁。CLI `validate --json` 会阻断，`check --json` 会报告同一规则；诊断提示读取实际 FPS、换算帧数并使用绝对帧位置。规则继续检查疑似硬编码的动画时间点，布局尺寸、数组长度和颜色常量沿原边界处理，不以是否导入某个 helper 判断组件质量。
 
-- Rule ID: `runtime.deterministic.fps_hardcoded_timing`
-- Action: `manual_review`；CLI `validate --json` 会阻断，`check --json` 会在 diagnostics 中报告，作者必须先改成 fps-aware timing。
-- 检测对象：`interpolate(frame, [30, 60], ...)`、`spring({ frame, fps: 30 })`、`frame > 45` / `frame < 90`、`<Sequence from={30} durationInFrames={60}>` 等疑似硬编码时间点。
-- 白名单：区间或比较表达式使用 `fps`、`secondsToFrames()`、`timeline.at()`、`timeline.frame()`、`createRevealPhases()`、`createFillProgress()`，或者是纯布局尺寸/数组长度/颜色常量时不报。
-- repairHint：Use `secondsToFrames(seconds, fps)`, `createRevealPhases()`, `createFillProgress()` or `createDurationTimeline()` / `timeline.at()` from `@promptframe/component-kit/timing`.
-- Fixture matrix：literal bad cases、comment/string false positives、`secondsToFrames` good cases、`timeline.at()` good cases、`spring({ fps })` good case、layout numeric constants good case.
+使用 `createPreviewCaseMatrix()` 的 `fpsPresets: [30, 60]` 比较 30fps / 60fps，并用 `durationScalePresets: [0.5, 2]` 检查时长压缩与保持。`src/preview-props.json` 仍受公开预览合同和 `manifest.designedDurationRange` 约束；默认预览最多30秒，本地60fps诊断不自动成为可上传的源码证据。
 
-## 上传验收应检查什么
-
-首期至少检查：
-
-- `manifest.json` 有合法 `designedDurationRange.min/max`。
-- `src/preview-props.json` 的 `durationFrames` 不超过30秒的帧数；声明范围超出此上限时按上限收窄。预览默认选择 `manifest.designedDurationRange.max`（单位为帧），并按 fps 最多播放30秒；不改变正式作品时长。
-- 组件源码使用 `useCurrentFrame()` / `useVideoConfig()`。
-- 没有 CSS `transition`、`@keyframes`、`Date.now()`、`Math.random()` 等非确定性路径。
-
-后续 `component-kit` 落地后追加：
-
-- 必须从 `@promptframe/component-kit` 引入时序 helper，禁止复制内部实现。
-- `designedDurationRange` / manifest / preview props 能被 `validate` 交叉校验。
-- CLI check / upload admission 如启用 fps-aware timing 规则，必须使用 AST evaluator，不使用正则扫描注释或字符串。
+组件工程固定依赖版本，使用 CLI 的标准读取和校验检查 manifest、schema、预览及依赖。Kit 的字体、GLB准备、布局和预览入口保持各自公开合同。已有锁定组件沿其准确版本读取、预览和渲染，不因新的作者示例而替换历史依赖。

@@ -132,15 +132,14 @@ test('layout/style output localizes real evaluator results and leaves source loc
       assert.notEqual(terminalDiagnostic(row, 'zh').message, row.message, row.code);
       assert.deepEqual(terminalDiagnostic(row, 'en'), row);
     }
-    const unknownStyle = {code: 'component.style.unknown_custom_style_prop', severity: 'warning',
-      message: 'Root-level private style props are not part of the public PromptFrame style contract.'};
-    assert.match(terminalDiagnostic(unknownStyle, 'zh').message, /私有样式/);
+    const unknownStyle = {code: 'future.rule', severity: 'warning', message: 'Unrecognized future diagnostic.'};
+    assert.deepEqual(terminalDiagnostic(unknownStyle, 'zh'), unknownStyle);
     const business = {diagnostic: unknownStyle, props: {color: 'red', message: unknownStyle.message}};
     const output = {diagnostic: fixed, diagnostics: rows, freshness: {diagnostic: unknownStyle}, data: business, manifest: business};
     const original = structuredClone(output), localized = terminalOutput(output, 'zh');
     assert.deepEqual(output, original); assert.deepEqual(localized.data, business); assert.deepEqual(localized.manifest, business);
     assert.deepEqual(localized.diagnostic, fixed);
-    assert.notEqual(localized.freshness.diagnostic.message, unknownStyle.message);
+    assert.equal(localized.freshness.diagnostic.message, unknownStyle.message);
     assert.deepEqual(terminalDiagnostic({code: 'future.rule', message: 'Unrecognized text'}, 'zh'), {code: 'future.rule', message: 'Unrecognized text'});
   } finally {await rm(dir, {recursive: true, force: true});}
 });

@@ -1,7 +1,7 @@
 {
   "releaseVersion": "authoring-standard-release.v0.1.0",
-  "releaseId": "authoring-release-2026-11-25.1",
-  "releaseDigest": "sha256:708ff2753d60ae5fe589cf2d65314ba8bc683c885013b2c603852e122a83702d",
+  "releaseId": "authoring-release-2026-11-26.1",
+  "releaseDigest": "sha256:da90dbc2cd837e3fdc6e4974030b7eb3bed9a5565b3f531a6fe27d890263c192",
   "contractsVersion": "promptframe-contracts.v0.1.0",
   "manifestSchemaVersion": "component-manifest.v0.1.0",
   "componentRefVersion": "component-ref.v0.1.0",
@@ -19,19 +19,19 @@
   "activePackageCohort": {
     "contracts": {
       "name": "@promptframe/contracts",
-      "version": "0.1.54"
+      "version": "0.1.55"
     },
     "componentKit": {
       "name": "@promptframe/component-kit",
-      "version": "0.1.47"
+      "version": "0.1.48"
     },
     "cli": {
       "name": "@promptframe/cli",
-      "version": "0.1.97"
+      "version": "0.1.98"
     },
     "createComponent": {
       "name": "create-promptframe-component",
-      "version": "0.1.74"
+      "version": "0.1.75"
     }
   },
   "minPackageVersions": {
@@ -41,15 +41,15 @@
     "createComponent": "0.1.47"
   },
   "recommendedAuthoringPackages": {
-    "contracts": "0.1.54",
-    "componentKit": "0.1.47",
-    "cli": "0.1.97",
-    "createComponent": "0.1.74"
+    "contracts": "0.1.55",
+    "componentKit": "0.1.48",
+    "cli": "0.1.98",
+    "createComponent": "0.1.75"
   },
   "scaffoldTemplates": [
     {
       "name": "react-remotion",
-      "digest": "sha256:225f670a1778cf9e970ad3477ed22c6a76b650625b54d1ed1c09ad43f7113f3c"
+      "digest": "sha256:fed39de89ab88810d4a8e19e900d8d066a76bfe47e99ccb5a5fa6966f51098b3"
     }
   ],
   "uploadTargets": [

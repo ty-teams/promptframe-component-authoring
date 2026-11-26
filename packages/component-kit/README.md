@@ -12,8 +12,6 @@ npm install @promptframe/component-kit
 - Preview constraints used by PromptFrame component tooling.
 - Bounded local preview case matrix helpers for aspect and default-props stress checks.
 - `public/` resource lookup helper for runtime-injected component resources with local-dev fallback.
-- Timing helpers for deterministic fps-aware timing and frame-driven animations.
-- Public style helpers backed by `@promptframe/contracts`.
 - Shared React preview props inspector for scaffold and platform preview surfaces.
 - Fixed Inter, Chinese and color emoji fonts with a shared readiness loader and [OFL licenses](fonts/README.md).
 
@@ -73,27 +71,22 @@ export const previewCases = createPreviewCaseMatrix({
 export const titleControl = describePromptFramePreviewPropControl(['title'], 'Quarterly revenue');
 ```
 
-```ts
-import {
-  createDurationTimeline,
-  createFillProgress,
-  createRevealPhases,
-  secondsToFrames,
-} from '@promptframe/component-kit/timing';
+动画使用 Remotion 的实际 `fps` 与绝对帧位置，保持 fps-aware timing；不依赖独立的 Kit 时序模块：
 
-const timeline = createDurationTimeline({
-  actualDuration: 180,
-  designedDuration: secondsToFrames(4, 30),
-});
-const reveal = createRevealPhases({
-  fps: 30,
-  timeline,
-  enterSeconds: 0.5,
-  revealSeconds: 1.5,
-  exitSeconds: 3,
-});
-const fill = createFillProgress({ durationFrames: timeline.actualDuration, startPercent: 0.25, endPercent: 0.75 });
+```tsx
+import {interpolate, useCurrentFrame, useVideoConfig} from 'remotion';
+
+export function Component() {
+  const frame = useCurrentFrame();
+  const {fps, durationInFrames} = useVideoConfig();
+  const enterEnd = Math.max(1, Math.min(durationInFrames - 1, Math.round(0.5 * fps)));
+  const opacity = interpolate(frame, [0, enterEnd], [0, 1], {
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  });
+  return <div style={{opacity}} />;
+}
 ```
+
 
 `createPreviewCaseMatrix()` returns explicit `caseKind` metadata: `baseline_reset`, `aspect`, `props_stress`, `fps_diagnostic`, and `duration_diagnostic`. Props stress cases should preserve the current author preview aspect/fps in scaffold UI; aspect, fps, and duration diagnostics are separate controls so a human author can see what changed. `probeCoverage` marks whether a case is platform-probe-equivalent or local-authoring-only.
 
@@ -146,16 +139,7 @@ export function PreviewPropsPanel() {
 
 控件类型以 schema 声明为准，字段名称和当前值不会把普通字符串变成颜色。枚举保留选择框；颜色由 `format: 'color'` 或宿主显式传入的颜色控件声明启用。颜色文本保留原始值，无法交给浏览器颜色选择器的值仍可用文本编辑，不自动替换为黑色。控件展示不改变原 schema 的校验规则。
 
-```ts
-import { resolvePromptFrameStyle } from '@promptframe/component-kit/style';
-
-const style = resolvePromptFrameStyle({ tone: 'tech', accentColor: '#38bdf8' }, {
-  width: 1920,
-  height: 1080,
-  fps: 30,
-  durationInFrames: 180,
-});
-```
+视觉参数由组件 schema 明确声明，组件将已验证的颜色、排版与布局映射到确定性的画面。现有公共风格意图数据合同仍可使用，不需要独立的 Kit 风格解析模块。
 
 ## Entrypoints
 
@@ -163,8 +147,6 @@ const style = resolvePromptFrameStyle({ tone: 'tech', accentColor: '#38bdf8' }, 
 import { getComponentStandardStamp } from '@promptframe/component-kit';
 import { COMPONENT_PREVIEW_CONSTRAINTS, createPreviewCaseMatrix, describePromptFramePreviewPropControl } from '@promptframe/component-kit/preview';
 import { PromptFramePreviewInspector } from '@promptframe/component-kit/preview-react';
-import { createDurationTimeline, createFillProgress, createRevealPhases } from '@promptframe/component-kit/timing';
-import { resolvePromptFrameStyle } from '@promptframe/component-kit/style';
 ```
 
 ## Peer Dependencies

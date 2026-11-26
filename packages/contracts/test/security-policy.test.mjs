@@ -71,8 +71,8 @@ test('public security policy exposes fps hardcoded timing as manual-review gate'
   assert.equal(rule?.action, 'manual_review');
   assert.equal(rule?.severity, 'medium');
   assert.equal(rule?.category, 'remotion_lifecycle');
-  assert.match(rule?.recommendation ?? '', /secondsToFrames|createDurationTimeline|createRevealPhases|createFillProgress/);
-  assert.match(rule?.repairHint ?? '', /secondsToFrames|createRevealPhases|createFillProgress/);
+  assert.match(rule?.recommendation ?? '', /Math\.round|interpolate|spring/);
+  assert.match(rule?.repairHint ?? '', /Math\.round|interpolate|spring/);
 });
 
 test('public security policy exposes a stable release-cohort digest', () => {
