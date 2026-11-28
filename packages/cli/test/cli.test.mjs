@@ -1524,7 +1524,7 @@ test('setup-ci --workspace reports version-one workflows as stale before rewriti
     assert.equal(payload.workspace, true);
     assert.equal(payload.diagnostic.code, 'setup_ci.workflow.upgrade_available');
     assert.equal(payload.workflow.currentVersion, 1);
-    assert.equal(payload.workflow.latestVersion, 3);
+    assert.equal(payload.workflow.latestVersion, 4);
     assert.match(payload.workflow.message, /workflow 模板已过期/);
     assert.match(await readFile(workflowPath, 'utf8'), /# promptframe-workflow-version: 1/);
   } finally {
@@ -1724,7 +1724,7 @@ test('workspace validate rejects manifest id mismatches before upload', async ()
   }
 });
 
-test('setup-ci --workspace writes a matrix workflow with explicit component paths', async () => {
+test('setup-ci auto-detects a workspace and separates hosted checks from scoped uploads', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-cli-setup-ci-workspace-'));
   try {
     const componentDir = path.join(dir, 'components/motion-intro/image-particle-remotion');
@@ -1743,7 +1743,6 @@ test('setup-ci --workspace writes a matrix workflow with explicit component path
       dir,
       '--provider',
       'github',
-      '--workspace',
       '--json',
     ])).stdout);
 
@@ -1755,10 +1754,10 @@ test('setup-ci --workspace writes a matrix workflow with explicit component path
       id: '@demo/fixture-component',
       path: 'components/motion-intro/image-particle-remotion',
     }]);
-    assert.deepEqual(payload.optionalVariables, ['RUNNER_LABELS']);
+    assert.deepEqual(payload.optionalVariables, ['RUNNER_LABELS', 'PROMPTFRAME_CI_ENVIRONMENT']);
 
     const workflow = await readFile(payload.workflowPath, 'utf8');
-    assert.match(workflow, /# promptframe-workflow-version: 3/);
+    assert.match(workflow, /# promptframe-workflow-version: 4/);
     const {parse} = await import('yaml');
     const parsed = parse(workflow);
     const steps = Object.values(parsed.jobs).flatMap(job => job.steps || []);
@@ -1772,19 +1771,30 @@ test('setup-ci --workspace writes a matrix workflow with explicit component path
     assert.doesNotMatch(review.run, /promptframe upload/);
     assert.ok(steps.some(step => step.id === 'upload'));
 
-    assert.match(workflow, /Discover PromptFrame components/);
-    assert.match(workflow, /promptframe-workspace\.json/);
+    assert.equal(parsed.jobs.discover['runs-on'], 'ubuntu-latest');
+    assert.equal(parsed.jobs.check['runs-on'], 'ubuntu-latest');
+    assert.equal(parsed.on.workflow_dispatch.inputs.upload.default, false);
+    assert.doesNotMatch(JSON.stringify([parsed.jobs.discover, parsed.jobs.check]), /PROMPTFRAME_CI_TOKEN|RUNNER_LABELS|PROMPTFRAME_API_BASE/);
+    assert.match(parsed.jobs.upload.environment, /PROMPTFRAME_CI_ENVIRONMENT/);
+    assert.match(parsed.jobs.upload.if, /github\.ref_protected/);
+    assert.ok(!parsed.jobs.upload.steps.some(step => step.uses?.startsWith('actions/checkout')));
+    for (const step of steps.filter(step => step.run)) {
+      const script = path.join(dir, 'workflow-step.sh');
+      await writeFile(script, step.run);
+      await execFileAsync('bash', ['-n', script]);
+    }
+    assert.match(workflow, /promptframe workspace ci-select \./);
     assert.match(workflow, /matrix: \$\{\{ fromJSON\(needs\.discover\.outputs\.matrix\) \}\}/);
     assert.match(workflow, /COMPONENT_ID: \$\{\{ matrix\.componentId \}\}/);
     assert.match(workflow, /COMPONENT_PATH: \$\{\{ matrix\.componentPath \}\}/);
     assert.match(workflow, /vars\.RUNNER_LABELS/);
     assert.match(workflow, /npm install -g pnpm@10/);
-    assert.match(workflow, /pnpm install --no-frozen-lockfile/);
-    assert.match(workflow, /promptframe workspace validate \. --json/);
+    assert.match(workflow, /pnpm install --frozen-lockfile/);
+    assert.match(workflow, /npm ci --prefix/);
     assert.match(workflow, /promptframe check \. --workspace-component "\$COMPONENT_ID" --json/);
     assert.match(workflow, /PROMPTFRAME_VERSION_NOTES=/);
-    assert.match(workflow, /promptframe upload \. --workspace-component "\$COMPONENT_ID" --endpoint "\$PROMPTFRAME_API_BASE" --release-notes "\$PROMPTFRAME_VERSION_NOTES" --json/);
-    assert.match(workflow, /promptframe status "\$BUILD_ID" --endpoint "\$PROMPTFRAME_API_BASE" --json --fail-on-build-failed/);
+    assert.match(workflow, /promptframe upload component\.zip --workspace-source-receipt component-source\.json --target project_private_generation --endpoint "\$PROMPTFRAME_API_BASE" --release-notes "\$PROMPTFRAME_VERSION_NOTES" --json/);
+    assert.match(workflow, /promptframe status "\$BUILD_ID" --wait --endpoint "\$PROMPTFRAME_API_BASE" --json --fail-on-build-failed/);
     assert.match(workflow, /promptframe-check-\$\{\{ matrix\.artifactName \}\}/);
     assert.match(workflow, /promptframe-upload-\$\{\{ matrix\.artifactName \}\}/);
     assert.doesNotMatch(workflow, /Link lockfile for workspace components/);
@@ -1853,6 +1863,20 @@ test('upload --workspace-component sends explicit source metadata headers', asyn
       '/components/standard',
       '/components/marketplace/upload',
     ]);
+    const archive = path.join(dir, 'checked.zip');
+    const receipt = path.join(dir, 'source-receipt.json');
+    const checked = (await execFileAsync('node', [cliPath, 'package', dir, '--workspace-component',
+      '@demo/fixture-component', '--out', archive])).stdout;
+    await writeFile(receipt, checked);
+    const archiveUpload = [cliPath, 'upload', archive, '--workspace-source-receipt', receipt, '--endpoint', server.url, '--json'];
+    const uploaded = JSON.parse((await execFileAsync('node', archiveUpload)).stdout);
+    assert.deepEqual(uploaded.source, payload.source);
+    assert.equal(uploaded.package.sha256, JSON.parse(checked).sha256);
+    const editedReceipt = JSON.parse(checked);
+    editedReceipt.sha256 = 'sha256:' + '0'.repeat(64);
+    await writeFile(receipt, JSON.stringify(editedReceipt));
+    await assert.rejects(execFileAsync('node', archiveUpload), /workspace\.ci\.receipt_mismatch/);
+    assert.equal(calls.filter(call => call.method === 'POST').length, 2);
   } finally {
     await server.close();
     await rm(dir, { recursive: true, force: true });

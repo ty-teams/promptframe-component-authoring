@@ -98,7 +98,7 @@ GitHub Actions setup:
 npx promptframe setup-ci --provider github
 ```
 
-This writes `.github/workflows/promptframe-component.yml`. Pull requests run `promptframe check . --json` and publish GitHub annotations / summary only; `main` and release-style tag pushes run `promptframe upload .`. Configure repository variable `PROMPTFRAME_API_BASE` and secret `PROMPTFRAME_CI_TOKEN` in GitHub. The generated workflow references only those names and does not write token values or private endpoints into the repo.
+This writes `.github/workflows/promptframe-component.yml` for a standalone component. A root `promptframe-workspace.json` selects the incremental workspace workflow. For configuration of hosted checks, the upload runner and the target environment, see the [CLI guide](packages/cli/README.md#工作区-github-actions). For repository layout and scaffold commands, see the [three repository examples](examples/component-repository-layouts/README.md).
 
 ## Repository Layouts
 

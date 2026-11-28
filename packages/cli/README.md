@@ -108,7 +108,7 @@ The upload-to-publish lifecycle has multiple gates. `upload` returning success m
 
 `package` checks the component directory for a lockfile. If the component shares a pnpm workspace root lockfile, leave `pnpm-lock.yaml` at the workspace root. The public source ZIP stores the lockfile name, size, and SHA-256 in `promptframe-lockfile-evidence.json`. The full lockfile, including its registry URLs and dependency tree, stays in the authoring repository. To reproduce the install, use the lockfile matching that digest.
 
-`setup-ci --provider github` writes `.github/workflows/promptframe-component.yml` for a component project. Pull requests run check-only diagnostics and GitHub annotations; `main` and release-style tag pushes upload with `${{ secrets.PROMPTFRAME_CI_TOKEN }}` against `${{ vars.PROMPTFRAME_API_BASE }}`. Add those values in GitHub repository settings. Do not paste the CI token into the workflow, README, issue, or component source.
+`setup-ci --provider github` writes `.github/workflows/promptframe-component.yml` for a standalone component. A root `promptframe-workspace.json` selects `.github/workflows/promptframe-workspace.yml`; `--workspace` explicitly requires that manifest. The standalone workflow checks pull requests and can upload on `main` and release-style tag pushes. Set the API address and upload credential in GitHub settings. Keep credentials in GitHub Secrets.
 
 <a id="shared-account-directory"></a>
 
@@ -186,7 +186,7 @@ npx -y create-promptframe-component@latest ./component-workspace \
 cd component-workspace
 npx promptframe workspace validate . --json
 npx promptframe check . --workspace-component @marketplace/image-particle-remotion --json
-npx promptframe setup-ci . --provider github --workspace
+npx promptframe setup-ci . --provider github
 npx promptframe upload . --workspace-component @marketplace/image-particle-remotion --endpoint "$PROMPTFRAME_API_BASE" --json
 ```
 
@@ -205,6 +205,15 @@ npx promptframe upload . --endpoint "$PROMPTFRAME_API_BASE" --json
 ```
 
 在有 `promptframe-workspace.json` 的根执行 `upload .` 会依次提交清单中的全部组件，单项上传加 `--workspace-component <id>`。若某项中断，已受理的构建各自保留，先查原单再决定剩余项。CI 标签用于触发工作流，清单和各组件的 manifest 决定上传对象。
+
+### 工作区 GitHub Actions
+
+- 推送 `main` 按 Git 差异选清单内的组件。共享目录、工作区依赖或锁文件变动会触发关联检查。确认内容树相同、锁文件独立且打包路径未参与交付的纯迁移仅校验。缺失基线以及无法准确选组件的通用标签执行全量检查。
+- 手动运行用完整组件 ID 或唯一 slug。默认只检查，显式开启 `upload` 时必须选一个组件，且上传运行在 `main`。组件标签使用 `component-<slug>-v<版本>`，只有受保护且能匹配一个清单组件及其 manifest 版本的标签才上传。公开审核沿专用审批开关和权限。
+- 发现和检查在 GitHub 托管 `ubuntu-latest` 运行。上传任务核 ZIP 摘要并上传同一份已检查的压缩包，同时带回校验过的工作区身份。首次启用前核对已有上传工作流，保留一条预期的上传路径。
+- 上传默认使用 GitHub 托管 Linux。需要访问私有网络时，在仓库变量 `RUNNER_LABELS` 配置可达目标的 Linux Runner 标签 JSON 数组。仓库变量 `PROMPTFRAME_CI_ENVIRONMENT` 选择上传使用的 GitHub Environment，默认 `promptframe-upload`。通过所选环境的 `PROMPTFRAME_API_BASE` 和 `PROMPTFRAME_CI_TOKEN` 配置目标和凭据。单环境仓库也可使用同名仓库变量和 Secret。多环境仓库应按环境分别保存地址和凭据，并移除同名仓库级配置，避免回退到其它环境的配置。为正式环境限制来源分支和标签。
+
+[独立仓、按作品组织及跨作品复用的示例](../../examples/component-repository-layouts/README.md)使用同一组件和工作区合同。
 
 For external CodingAI, the feedback order is: local CLI JSON diagnostics, GitHub Check annotations, Action summary, artifact report, then platform `status` / admission diagnostics. The CLI never needs internal PromptFrame REQ/TASK/QA docs, agent boards, private endpoint defaults, Auth0 subjects, cookies, or token secrets.
 

@@ -40,6 +40,8 @@ import ignore from 'ignore';
 import { ComponentFileSelectionError, selectComponentSourceFiles } from './component-file-selection.js';
 import {captureRegisteredComponentSource,capturedComponentSourceModule,componentSourceWorkspaceContext,registerComponentSourceWorkspace,validComponentLockEvidence,WorkspaceSourceError} from './workspace-source.js';
 import {capturePnpmWorkspaceLock} from './workspace-lockfile.js';
+import { selectWorkspaceCi } from './workspace-ci.js';
+import { workspaceCiWorkflow } from './workspace-ci-workflow.js';
 import {COMPONENT_SOURCE_LAYOUT_FILE, COMPONENT_SOURCE_LAYOUT_VERSION, componentSourceEntryPath,
   componentSourceLayoutSchema, componentSourceWorkspaceSchema, readComponentSourceLayout,
   type ComponentSourceLayout} from '@promptframe/contracts/source-layout';
@@ -128,6 +130,7 @@ const GENERATED_PREVIEW_ROOT_PATH = 'src/PreviewRoot.tsx';
 const REPAIRABLE_GENERATED_FILE_PATHS = new Set<string>([GENERATED_PREVIEW_ROOT_PATH]);
 const PROMPTFRAME_WORKSPACE_SCHEMA_VERSION = 'promptframe-workspace.v0.1.0';
 const PROMPTFRAME_WORKFLOW_VERSION = 3;
+const PROMPTFRAME_WORKSPACE_WORKFLOW_VERSION = 4;
 const PROMPTFRAME_PROJECT_CONTEXT_SCHEMA_VERSION = 'promptframe-project-context.v0.1.0';
 const PROMPTFRAME_PROJECT_CONTEXT_FILE_NAME = '.promptframerc';
 const PROJECT_CONTEXT_FORBIDDEN_KEY_NAMES = new Set([
@@ -278,7 +281,7 @@ async function run(name: string, argv: string[]): Promise<void> {
     '--reason', '--release-notes', '--scope', '--session-id', '--status', '--studio-origin', '--studio-slot', '--target',
     '--request-id', '--source-sha256', '--zip',
     '--tenant-id', '--timeout-seconds', '--token', '--token-id', '--upload-target',
-    '--user-id', '--version-notes', '--workspace-component', '--workspace-config',
+    '--user-id', '--version-notes', '--workspace-component', '--workspace-config', '--workspace-source-receipt',
   ]);
   const flagOptions = new Set([
     '--apply', '--check-latest', '--dry-run', '--fail-on-build-failed', '--force', '--watch', '--resources-only',
@@ -1105,6 +1108,9 @@ async function uploadComponent(argv: string[]): Promise<void> {
   const workspaceComponent = valueAfter(argv, '--workspace-component');
   const target = resolve(componentPathArg(argv) ?? '.');
   const uploadTarget = resolveUploadTarget(argv);
+  if (valueAfter(argv, '--workspace-source-receipt') && !target.endsWith('.zip')) {
+    fail('A workspace source receipt can only accompany its packaged ZIP.', 'workspace.ci.receipt_zip_required', 2);
+  }
   if (workspaceComponent && target.endsWith('.zip')) {
     fail('upload --workspace-component requires a workspace root, not a zip file.', 'workspace.component.zip_unsupported', 2);
   }
@@ -1242,6 +1248,8 @@ async function uploadPreparedComponent(
   const versionNotes = resolveVersionNotes(argv);
   const file = readFileSync(artifact.out);
   const sourceSha256 = sha256Buffer(file);
+  const receiptPath = valueAfter(argv, '--workspace-source-receipt');
+  const source = receiptPath ? workspaceArchiveSource(receiptPath, file, sourceSha256) : input.source;
   const workTarget=authorization.work?componentUploadWorkTarget(authorization.work,sourceSha256):undefined;
   const workHeaders:Record<string,string>=workTarget?{'x-request-id':workTarget.operationId,'x-project-id':workTarget.projectId,
     [COMPONENT_UPLOAD_WORK_HEADER]:JSON.stringify(workTarget)}:{};
@@ -1266,7 +1274,7 @@ async function uploadPreparedComponent(
       ...(authorization.observation && { [CLIENT_OBSERVATION_HEADER]: authorization.observation }),
       ...(authorization.expected && { [EXPECTED_IDENTITY_HEADER]: JSON.stringify(authorization.expected) }),
       ...buildSecurityPolicyHeaders(),
-      ...buildSourceMetadataHeaders(input.source),
+      ...buildSourceMetadataHeaders(source),
       ...buildVersionNotesHeaders(versionNotes),
       'x-promptframe-upload-target': uploadTarget,
     },
@@ -1288,7 +1296,7 @@ async function uploadPreparedComponent(
     auth: authorization.summary,
     ...(versionNotes ? { versionNotes } : {}),
     package: artifact,
-    source: input.source,
+    source,
     ...(versionOutcome ? { versionOutcome } : {}),
     ...(localReusability ? { localReusability, diagnostics } : {}),
     diagnostic: diagnostic('upload.completed', 'info', 'Component upload accepted by platform.'),
@@ -1837,9 +1845,32 @@ function workspace(argv: string[]): void {
     case 'add':
       workspaceAdd(rest);
       break;
+    case 'ci-select':
+      workspaceCiSelect(rest);
+      break;
     default:
       fail(`Unknown workspace command: ${subcommand}`, 'workspace.command.unknown', 2);
   }
+}
+
+function workspaceCiSelect(argv: string[]): void {
+  const root = resolve(componentPathArg(argv) ?? '.');
+  const config = componentSourceWorkspaceSchema.parse(readWorkspaceConfig(root));
+  const eventName = process.env.GITHUB_EVENT_NAME;
+  const eventPath = process.env.GITHUB_EVENT_PATH;
+  if (!eventPath || !eventName || !['pull_request', 'push', 'workflow_dispatch'].includes(eventName)) {
+    fail('workspace ci-select requires a GitHub push, pull request or manual event.', 'workspace.ci.event_required', 2);
+  }
+  const event = asRecord(JSON.parse(readFileSync(eventPath, 'utf8'))) ?? {};
+  const base = asRecord(asRecord(event.pull_request)?.base);
+  const inputs = asRecord(event.inputs);
+  printJson(selectWorkspaceCi(root, config, {
+    name: eventName,
+    ref: process.env.GITHUB_REF ?? stringValue(event.ref),
+    before: eventName === 'pull_request' ? stringValue(base?.sha) : stringValue(event.before),
+    component: stringValue(inputs?.component),
+    upload: inputs?.upload === true || inputs?.upload === 'true',
+  }));
 }
 
 function workspaceValidate(argv: string[]): void {
@@ -2348,6 +2379,27 @@ function buildSourceMetadataHeaders(source: ComponentSourceMetadata): Record<str
   };
 }
 
+function workspaceArchiveSource(receiptPath: string, file: Buffer, sourceSha256: string): ComponentSourceMetadata {
+  const receipt = asRecord(JSON.parse(readFileSync(receiptPath, 'utf8')));
+  const source = asRecord(receipt?.source);
+  const componentId = stringValue(source?.workspaceComponentId);
+  const componentPath = stringValue(source?.componentPath);
+  const invalid = () => fail('The workspace source receipt must match the ZIP and its manifest.', 'workspace.ci.receipt_mismatch', 2);
+  if (receipt?.command !== 'package' || receipt.sha256 !== sourceSha256 || source?.mode !== 'workspace'
+    || source.workspaceConfig !== 'promptframe-workspace.json' || !componentId || !componentPath
+    || source.manifestId !== componentId || !componentSourceWorkspaceSchema.safeParse({
+      schemaVersion: PROMPTFRAME_WORKSPACE_SCHEMA_VERSION, components: [{ id: componentId, path: componentPath }],
+    }).success || /[\r\n]/.test(componentPath)) return invalid();
+  const layout = readZipComponentSourceLayout(file);
+  if (layout && (layout.componentId !== componentId || layout.componentPath !== componentPath)) return invalid();
+  const encoded = readZipEntry(file, layout ? name => name === componentSourceEntryPath(layout, 'manifest.json') : isManifestZipEntry);
+  if (!encoded) return invalid();
+  const manifest = parseComponentManifest(normalizeLegacyManifest(JSON.parse(encoded.toString('utf8'))));
+  if (manifest.id !== componentId) return invalid();
+  return { mode: 'workspace', workspaceConfig: 'promptframe-workspace.json',
+    workspaceComponentId: componentId, componentPath, manifestId: manifest.id };
+}
+
 const VERSION_NOTES_MAX_LENGTH = 1000;
 
 function resolveVersionNotes(argv: string[]): string | undefined {
@@ -2412,6 +2464,7 @@ const POSITIONAL_VALUE_FLAGS = new Set([
   '--version-notes',
   '--workspace-config',
   '--workspace-component',
+  '--workspace-source-receipt',
 ]);
 
 function componentPathArg(argv: string[]): string | undefined {
@@ -3363,12 +3416,19 @@ function setupCi(argv: string[]): void {
     fail(`Unsupported CI provider: ${provider}.`, 'setup_ci.provider.unsupported', 2);
   }
   const targetDir = resolve(setupCiTargetDir(argv));
-  const workspaceMode = hasFlag(argv, '--workspace');
+  const workspaceMode = hasFlag(argv, '--workspace') || existsSync(workspaceConfigPath(targetDir));
   const upgradeMode = hasFlag(argv, '--upgrade');
   const dryRun = hasFlag(argv, '--dry-run');
   const workspaceReports = workspaceMode ? collectWorkspaceComponentReports(targetDir) : [];
   const workflowPath = workflowPathForMode(targetDir, workspaceMode);
-  const workflow = workspaceMode ? promptFrameGithubWorkspaceWorkflow(workspaceReports) : promptFrameGithubWorkflow();
+  const workflow = workspaceMode
+    ? workspaceCiWorkflow(promptFrameWorkflowHeader('--workspace'), JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version,
+      (cli, directory) => promptFramePublicReviewStep('$' + '{{ vars.PROMPTFRAME_API_BASE }}', cli, directory))
+    : promptFrameGithubWorkflow();
+  if (!dryRun && workspaceMode && existsSync(workflowPathForMode(targetDir, false))) {
+    fail('Review and remove or disable the existing .github/workflows/promptframe-component.yml before enabling workspace CI.',
+      'setup_ci.workflow.conflicting_single', 2);
+  }
   if (existsSync(workflowPath) && upgradeMode) {
     const existing = readFileSync(workflowPath, 'utf8');
     const upgrade = inspectPromptFrameWorkflow(existing, targetDir, workspaceMode);
@@ -3415,8 +3475,10 @@ function setupCi(argv: string[]): void {
       'setup_ci.workflow.exists',
     );
   }
-  mkdirSync(dirname(workflowPath), { recursive: true });
-  if (!dryRun) writeFileSync(workflowPath, workflow, 'utf8');
+  if (!dryRun) {
+    mkdirSync(dirname(workflowPath), { recursive: true });
+    writeFileSync(workflowPath, workflow, 'utf8');
+  }
   const output = {
     success: true,
     command: 'setup-ci',
@@ -3428,11 +3490,11 @@ function setupCi(argv: string[]): void {
     workflowPath,
     requiredSecrets: ['PROMPTFRAME_CI_TOKEN'],
     requiredVariables: ['PROMPTFRAME_API_BASE'],
-    ...(workspaceMode ? { optionalVariables: ['RUNNER_LABELS'] } : {}),
+    ...(workspaceMode ? { optionalVariables: ['RUNNER_LABELS', 'PROMPTFRAME_CI_ENVIRONMENT'] } : {}),
     dryRun,
     workflow: {
       currentVersion: null,
-      latestVersion: PROMPTFRAME_WORKFLOW_VERSION,
+      latestVersion: workspaceMode ? PROMPTFRAME_WORKSPACE_WORKFLOW_VERSION : PROMPTFRAME_WORKFLOW_VERSION,
       stale: false,
       message: 'PromptFrame GitHub Actions workflow template is current.',
       repairCommand: setupCiUpgradeCommand(targetDir, workspaceMode),
@@ -3447,7 +3509,7 @@ function setupCi(argv: string[]): void {
     printJson(output);
     return;
   }
-  console.log(`Wrote PromptFrame GitHub workflow: ${workflowPath}`);
+  console.log(`${dryRun ? 'Would write' : 'Wrote'} PromptFrame GitHub workflow: ${workflowPath}`);
   console.log('Add repository secret PROMPTFRAME_CI_TOKEN and variable PROMPTFRAME_API_BASE before enabling upload on main/release.');
 }
 
@@ -3474,7 +3536,8 @@ function workflowPathForMode(root: string, workspaceMode: boolean): string {
 
 function promptFrameWorkflowHeader(modeFlag: '' | '--workspace'): string {
   const command = modeFlag ? `promptframe setup-ci ${modeFlag}` : 'promptframe setup-ci';
-  return `# promptframe-workflow-version: ${PROMPTFRAME_WORKFLOW_VERSION}
+  const version = modeFlag ? PROMPTFRAME_WORKSPACE_WORKFLOW_VERSION : PROMPTFRAME_WORKFLOW_VERSION;
+  return `# promptframe-workflow-version: ${version}
 # Generated by ${command}. Keep this header when editing manually.`;
 }
 
@@ -3507,20 +3570,21 @@ function inspectPromptFrameWorkflow(
   repairCommand: string;
 } {
   const currentVersion = promptFrameWorkflowVersion(content);
-  const managed = currentVersion !== undefined
+  const managed = workspaceMode ? /^# Generated by promptframe setup-ci --workspace\./m.test(content) : currentVersion !== undefined
     || /PromptFrame Component(?: Workspace)?/i.test(content)
     || /\bpromptframe\b/i.test(content);
-  const stale = currentVersion === undefined || currentVersion < PROMPTFRAME_WORKFLOW_VERSION;
+  const latestVersion = workspaceMode ? PROMPTFRAME_WORKSPACE_WORKFLOW_VERSION : PROMPTFRAME_WORKFLOW_VERSION;
+  const stale = currentVersion === undefined || currentVersion < latestVersion;
   const repairCommand = setupCiUpgradeCommand(targetDir, workspaceMode);
   const displayVersion = currentVersion === undefined ? 'missing' : String(currentVersion);
   return {
     managed,
     currentVersion: currentVersion ?? null,
-    latestVersion: PROMPTFRAME_WORKFLOW_VERSION,
+    latestVersion,
     stale,
     message: stale
-      ? `PromptFrame workflow 模板已过期：当前版本 ${displayVersion}，最新版本 ${PROMPTFRAME_WORKFLOW_VERSION}。`
-      : `PromptFrame workflow 模板已是最新版本 ${PROMPTFRAME_WORKFLOW_VERSION}。`,
+      ? `PromptFrame workflow 模板已过期：当前版本 ${displayVersion}，最新版本 ${latestVersion}。`
+      : `PromptFrame workflow 模板已是最新版本 ${latestVersion}。`,
     repairCommand,
   };
 }
@@ -3554,277 +3618,19 @@ function workflowTemplateDiagnostics(
   }];
 }
 
-function promptFramePublicReviewStep(apiBaseVariable: string): string {
+function promptFramePublicReviewStep(apiBaseVariable: string, cli = 'npx promptframe', directory?: string): string {
   const enabled = '$' + "{{ startsWith(github.ref, 'refs/tags/') && vars.PROMPTFRAME_REQUEST_PUBLIC_ON_TAG == 'true' }}";
   const token = '$' + '{{ secrets.PROMPTFRAME_PUBLIC_REVIEW_TOKEN }}';
   const buildId = '$' + '{{ steps.upload.outputs.build_id }}';
   return `      - name: Request public review of this exact ready version
         if: ${enabled}
-        env:
+${directory ? `        working-directory: ${directory}\n` : ''}        env:
           PROMPTFRAME_API_BASE: ${apiBaseVariable}
           PROMPTFRAME_CI_TOKEN: ${token}
           PROMPTFRAME_BUILD_ID: ${buildId}
         run: |
           test -n "$PROMPTFRAME_CI_TOKEN" || { echo "Configure a project token with component.public.request."; exit 1; }
-          npx promptframe public-request "$PROMPTFRAME_BUILD_ID" --request-id "public-review-$GITHUB_RUN_ID-$PROMPTFRAME_BUILD_ID" --json
-`;
-}
-
-function promptFrameGithubWorkspaceWorkflow(_components: WorkspaceComponentReport[]): string {
-  const apiBaseVariable = '$' + '{{ vars.PROMPTFRAME_API_BASE }}';
-  const ciTokenSecret = '$' + '{{ secrets.PROMPTFRAME_CI_TOKEN }}';
-  const matrixComponentId = '$' + '{{ matrix.componentId }}';
-  const matrixComponentPath = '$' + '{{ matrix.componentPath }}';
-  const matrixArtifactName = '$' + '{{ matrix.artifactName }}';
-  const runnerLabels = '$' + '{{ vars.RUNNER_LABELS && fromJSON(vars.RUNNER_LABELS) || fromJSON(\'["ubuntu-latest"]\') }}';
-  const workspaceMatrixOutput = '$' + '{{ steps.workspace.outputs.matrix }}';
-  const workspaceCountOutput = '$' + '{{ steps.workspace.outputs.count }}';
-  const discoverMatrix = '$' + '{{ fromJSON(needs.discover.outputs.matrix) }}';
-  return `${promptFrameWorkflowHeader('--workspace')}
-
-name: PromptFrame Component Workspace
-
-on:
-  pull_request:
-  push:
-    branches: [main]
-    tags:
-      - 'v*'
-      - '*@*'
-      - 'component-*'
-
-permissions:
-  contents: read
-
-jobs:
-  discover:
-    name: Discover PromptFrame components
-    runs-on: ${runnerLabels}
-    outputs:
-      matrix: ${workspaceMatrixOutput}
-      count: ${workspaceCountOutput}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - id: workspace
-        name: Read promptframe-workspace.json
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs');
-          const path = require('node:path');
-          const configPath = 'promptframe-workspace.json';
-          function fail(message) {
-            console.error(message);
-            process.exit(1);
-          }
-          function artifactName(value) {
-            return String(value || 'component')
-              .replace(/^@/, '')
-              .replace(/[^A-Za-z0-9_.-]+/g, '-')
-              .replace(/^-+|-+$/g, '') || 'component';
-          }
-          if (!fs.existsSync(configPath)) {
-            fail('promptframe-workspace.json is required for promptframe workspace CI.');
-          }
-          const workspace = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-          const components = Array.isArray(workspace.components) ? workspace.components : [];
-          const include = components.map((component, index) => {
-            if (!component || typeof component.id !== 'string' || typeof component.path !== 'string') {
-              fail('promptframe-workspace.json components[' + index + '] must include string id and path.');
-            }
-            const manifestPath = path.join(component.path, 'manifest.json');
-            if (!fs.existsSync(manifestPath)) {
-              fail('Workspace component manifest not found: ' + manifestPath);
-            }
-            return {
-              componentId: component.id,
-              componentPath: component.path,
-              artifactName: artifactName(component.id),
-            };
-          });
-          const output = process.env.GITHUB_OUTPUT;
-          if (!output) fail('GITHUB_OUTPUT is not available.');
-          fs.appendFileSync(output, 'matrix=' + JSON.stringify({ include }) + '\\n');
-          fs.appendFileSync(output, 'count=' + String(include.length) + '\\n');
-          const summary = process.env.GITHUB_STEP_SUMMARY;
-          if (summary) {
-            const rows = include.map((item) => '- \`' + item.componentId + '\` -> \`' + item.componentPath + '\`');
-            fs.appendFileSync(summary, ['### PromptFrame workspace discover', '', '- Components: \`' + include.length + '\`', ...rows, ''].join('\\n'));
-          }
-          NODE
-
-  check:
-    name: PromptFrame check (${matrixComponentId})
-    needs: discover
-    if: needs.discover.outputs.count != '0'
-    runs-on: ${runnerLabels}
-    strategy:
-      fail-fast: false
-      matrix: ${discoverMatrix}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: pnpm
-      - run: npm install -g pnpm@10
-      - run: pnpm install --no-frozen-lockfile
-      - name: Validate workspace
-        env:
-          ARTIFACT_NAME: ${matrixArtifactName}
-        run: npx promptframe workspace validate . --json | tee "promptframe-workspace-report-$ARTIFACT_NAME.json"
-      - name: Validate component package
-        env:
-          PROMPTFRAME_API_BASE: ${apiBaseVariable}
-          COMPONENT_ID: ${matrixComponentId}
-          COMPONENT_PATH: ${matrixComponentPath}
-          ARTIFACT_NAME: ${matrixArtifactName}
-        run: |
-          set +e
-          npx promptframe check . --workspace-component "$COMPONENT_ID" --json > "promptframe-check-$ARTIFACT_NAME.json"
-          CHECK_EXIT=$?
-          set -e
-          node <<'NODE'
-          const fs = require('node:fs');
-          const payload = JSON.parse(fs.readFileSync('promptframe-check-' + process.env.ARTIFACT_NAME + '.json', 'utf8'));
-          const diagnostics = Array.isArray(payload.diagnostics) ? payload.diagnostics : [];
-          for (const item of diagnostics) {
-            const code = String(item.code || 'promptframe.diagnostic');
-            const message = String(item.message || code).replace(/\\r?\\n/g, ' ');
-            if (item.severity === 'error') {
-              console.log(\`::error title=\${code}::\${message}\`);
-            } else {
-              console.log(\`::warning title=\${code}::\${message}\`);
-            }
-          }
-          const summary = process.env.GITHUB_STEP_SUMMARY;
-          if (summary) {
-            fs.appendFileSync(summary, [
-              '### PromptFrame workspace check',
-              '',
-              \`- Component ID: \\\`\${process.env.COMPONENT_ID || payload.source?.workspaceComponentId || 'unknown'}\\\`\`,
-              \`- Component path: \\\`\${process.env.COMPONENT_PATH || payload.source?.componentPath || 'unknown'}\\\`\`,
-              \`- Diagnostic: \\\`\${payload.diagnostic?.code || 'unknown'}\\\`\`,
-              \`- Freshness: \\\`\${payload.freshness?.status || 'unknown'}\\\`\`,
-              \`- Diagnostics: \\\`\${diagnostics.length}\\\`\`,
-              '',
-            ].join('\\n'));
-          }
-          NODE
-          exit "$CHECK_EXIT"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: promptframe-check-${matrixArtifactName}
-          path: |
-            promptframe-workspace-report-${matrixArtifactName}.json
-            promptframe-check-${matrixArtifactName}.json
-
-  upload:
-    name: PromptFrame upload (${matrixComponentId})
-    if: github.event_name == 'push' && needs.discover.outputs.count != '0'
-    needs: [discover, check]
-    runs-on: ${runnerLabels}
-    strategy:
-      fail-fast: false
-      matrix: ${discoverMatrix}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: pnpm
-      - run: npm install -g pnpm@10
-      - run: pnpm install --no-frozen-lockfile
-      - name: Upload component to PromptFrame
-        id: upload
-        env:
-          PROMPTFRAME_API_BASE: ${apiBaseVariable}
-          PROMPTFRAME_CI_TOKEN: ${ciTokenSecret}
-          COMPONENT_ID: ${matrixComponentId}
-          COMPONENT_PATH: ${matrixComponentPath}
-          ARTIFACT_NAME: ${matrixArtifactName}
-        run: |
-          set -euo pipefail
-          PROMPTFRAME_VERSION_NOTES=$(node <<'NODE'
-          const fs = require('node:fs');
-          let notes = process.env.PROMPTFRAME_VERSION_NOTES || '';
-          if (!notes && process.env.GITHUB_EVENT_PATH) {
-            try {
-              const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
-              notes = event.head_commit?.message || event.pull_request?.title || '';
-            } catch {}
-          }
-          notes = String(notes || process.env.GITHUB_REF_NAME || process.env.GITHUB_SHA || 'PromptFrame component upload')
-            .split(/\\r?\\n/)[0]
-            .trim()
-            .slice(0, 1000);
-          process.stdout.write(notes);
-          NODE
-          )
-          npx promptframe upload . --workspace-component "$COMPONENT_ID" --endpoint "$PROMPTFRAME_API_BASE" --release-notes "$PROMPTFRAME_VERSION_NOTES" --json | tee "promptframe-upload-$ARTIFACT_NAME.json"
-          BUILD_ID=$(node <<'NODE'
-          const fs = require('node:fs');
-          const payload = JSON.parse(fs.readFileSync('promptframe-upload-' + process.env.ARTIFACT_NAME + '.json', 'utf8'));
-          process.stdout.write(String(payload.jobId || payload.buildId || payload.build?.buildId || ''));
-          NODE
-          )
-          if [ -z "$BUILD_ID" ]; then
-            echo "PromptFrame upload response did not include a build id." >&2
-            exit 1
-          fi
-          set +e
-          npx promptframe status "$BUILD_ID" --endpoint "$PROMPTFRAME_API_BASE" --json --fail-on-build-failed | tee "promptframe-status-$ARTIFACT_NAME.json"
-          STATUS_EXIT=\${PIPESTATUS[0]}
-          set -e
-          node <<'NODE'
-          const fs = require('node:fs');
-          const payload = JSON.parse(fs.readFileSync('promptframe-upload-' + process.env.ARTIFACT_NAME + '.json', 'utf8'));
-          const status = JSON.parse(fs.readFileSync('promptframe-status-' + process.env.ARTIFACT_NAME + '.json', 'utf8'));
-          const build = status.build || {};
-          const buildId = payload.jobId || payload.buildId || build.buildId || 'unknown';
-          if (!/^[A-Za-z0-9_.:-]{1,160}$/.test(buildId)) throw new Error('Invalid platform build identity.');
-          if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, 'build_id=' + buildId + '\\n');
-          const buildStatus = String(build.status || status.status || payload.status || 'queued');
-          const versionNotes = String(payload.versionNotes || build.versionNotes || process.env.PROMPTFRAME_VERSION_NOTES || '').replace(/\\r?\\n/g, ' ').slice(0, 300);
-          const diagnostics = Array.isArray(build.diagnostics) ? build.diagnostics : [];
-          const firstError = diagnostics.find((item) => item && item.severity === 'error') || diagnostics[0] || {};
-          if (['failed', 'cancelled', 'canceled'].includes(buildStatus.toLowerCase())) {
-            const message = [
-              \`buildId=\${buildId}\`,
-              \`status=\${buildStatus}\`,
-              firstError.code ? \`code=\${firstError.code}\` : '',
-              firstError.message ? \`message=\${String(firstError.message).replace(/\\r?\\n/g, ' ').slice(0, 300)}\` : '',
-            ].filter(Boolean).join(' ');
-            console.log(\`::error title=PromptFrame platform build failed::\${message}\`);
-          }
-          const summary = process.env.GITHUB_STEP_SUMMARY;
-          if (summary) {
-            fs.appendFileSync(summary, [
-              '### PromptFrame workspace upload',
-              '',
-              \`- Component ID: \\\`\${process.env.COMPONENT_ID || payload.source?.workspaceComponentId || 'unknown'}\\\`\`,
-              \`- Component path: \\\`\${process.env.COMPONENT_PATH || payload.source?.componentPath || 'unknown'}\\\`\`,
-              \`- Diagnostic: \\\`\${payload.diagnostic?.code || 'unknown'}\\\`\`,
-              versionNotes ? \`- Version notes: \${versionNotes}\` : '',
-              \`- Build ID: \\\`\${buildId}\\\`\`,
-              \`- Platform build status: \\\`\${buildStatus}\\\`\`,
-              firstError.code ? \`- Top diagnostic: \\\`\${firstError.code}\\\`\` : '- Top diagnostic: none',
-              firstError.message ? \`- Message: \${String(firstError.message).replace(/\\r?\\n/g, ' ').slice(0, 300)}\` : '',
-              '',
-            ].filter(Boolean).join('\\n'));
-          }
-          NODE
-          exit "$STATUS_EXIT"
-${promptFramePublicReviewStep(apiBaseVariable)}      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: promptframe-upload-${matrixArtifactName}
-          path: |
-            promptframe-upload-${matrixArtifactName}.json
-            promptframe-status-${matrixArtifactName}.json
+          ${cli} public-request "$PROMPTFRAME_BUILD_ID" --request-id "public-review-$GITHUB_RUN_ID-$PROMPTFRAME_BUILD_ID" --json
 `;
 }
 
@@ -5743,6 +5549,7 @@ Commands:
   dev stop [dir]                    Normally close this workspace's instance
   package <dir> --out <zip>        Validate and package a component source zip
   upload <dir|zip>                 Upload component source package to PromptFrame
+    --workspace-source-receipt <file>  Preserve workspace identity from the matching package JSON when uploading a ZIP
     --target <target>              Default project_private_generation; explicit marketplace_authoring remains supported
     --target marketplace --strict  Alias for strict external marketplace authoring
   review-clip --from-frame N --frames N --output clip.mp4   Review original audio and motion from --video FILE or --entry FILE --composition ID [--props JSON]
@@ -5771,9 +5578,11 @@ Commands:
   project list|current              List accessible projects or show the active project
   component list|create             List or declare Project-scoped components
   ci-token create|list|revoke       Manage self-service CI tokens for the current project
-  setup-ci [dir] --provider github   Write a GitHub Actions workflow skeleton
+  setup-ci [dir] --provider github   Write single-component or incremental workspace CI
+    --workspace                      Require a workspace manifest (auto-detected at the target root)
     --upgrade                        Refresh a PromptFrame-managed workflow when its version header is stale
     --dry-run                        Report the workflow action without writing files
+  workspace ci-select [dir]          Report check/upload matrices for the GitHub event
   configure --endpoint <url>       Write local CLI endpoint/context config
 
 Endpoint resolution:

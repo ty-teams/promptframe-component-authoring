@@ -20,10 +20,18 @@ Studio 的项目入门和 MCP 的 `platform_read_onboarding` 提供平台已采�
 | 同仓共享本地源码 | 工作区清单显式声明 `sharedDirectories`，从根选择 `--workspace-component` | 捕获选中组件及实际引用的共享 JS/TS/JSON/文本闭包，保留真实根相对路径；不纳入未引用组件或共享文件 |
 | 跨仓公共库 | 使用允许的精确 npm 版本并保留依赖锁证据 | 不自动内联 `workspace:*`、`file:`、宿主 `node_modules` 或任意 path alias；运行依赖仍须原准入 |
 | 手动上传 | 在目标项目 `check`，上传目录或先 `package` 再上传原 ZIP，用 `status <buildId> --wait --json` 读回锁定引用 | 普通上传默认项目私有。使用共享布局的包时平台须声明 `sourcePackageLayouts` 支持 `promptframe-component-source-layout/v1`。申请公开沿同一构建执行 `public-request` |
-| GitHub Actions 上传 | 在 Git 根运行 `promptframe setup-ci . --provider github`，清单工作区加 `--workspace` | 提交根 `.github/workflows/` 中生成的工作流后才启用。仅在组件子目录放模板不会触发整仓 CI。PR 运行检查，推送按工作流调用同一条 CLI 上传命令。CI Token 只提供相应项目与范围的权限 |
+| GitHub Actions 上传 | 在 Git 根运行 `promptframe setup-ci . --provider github`，自动识别根工作区清单 | 提交 `.github/workflows/` 中生成的工作流后启用。工作区 PR 只检查，上传使用已经校验的压缩包和目标项目的 CI Token |
 | 从历史版本恢复 | 在自己的构建详情下载源码，或让已授权的导演读取指定的历史构建 | 用构建号定位，按该版本的 ZIP 和包内目录恢复。具体操作见下方的历史源码步骤 |
 | 依赖恢复 | 原 Git 历史和安全的原锁文件优先；归档只含脱敏锁证据 | 证据绑定 package.json 和锁摘要，不是可执行锁文件；不得把 `.npmrc`、凭据或原始锁文件发布进源包 |
 | 本地与正式预览 | 共用上述捕获输入及原 public/素材槽 | dev 输入上限仍 16MiB，正式源包仍 50MiB；CSS Modules 继续沿原限制，不支持 CSS import/URL 或全局样式 |
+
+选择目录结构时按组件的复用范围判断。三种方式的可运行初始化步骤见[示例](examples/component-repository-layouts/README.md)。
+
+| 开局方式 | 适用场景 | 目录与入口 |
+| --- | --- | --- |
+| 单组件独立仓 | 一个组件独立发布和维护 | 仓根就是组件，从根运行 `check`、`package` 和 `setup-ci` |
+| 按作品组织的私有工作区 | 多个作品各有专用组件 | `works/<作品>/components/<组件>/`，在 Git 根的工作区清单登记 |
+| 按能力组织的复用工作区 | 组件在多部作品间复用 | `components/<能力域>/<组件>/`，同一根清单逐项登记，以平台目标和权限决定谁可采用 |
 
 例如同仓有三个组件，A、B 都引用同一套主题，C 有自己的样式。可用以下清单声明共享边界。
 
