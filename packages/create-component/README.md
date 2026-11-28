@@ -26,4 +26,6 @@ The generated workspace writes `promptframe-workspace.json`, a root `package.jso
 
 Running the same `--workspace` command against an existing workspace appends the new component and merges root files. It preserves existing component registrations and root package scripts, and CI workflows stay managed from the repository root through `promptframe setup-ci . --provider github --workspace`.
 
+`--component-path` 支持将组件放在作品或能力域目录下。脚手架把该目录登记到 `pnpm-workspace.yaml`，根锁文件即可记录组件依赖。参见[仓库目录示例](https://github.com/ty-teams/promptframe-component-authoring/tree/main/examples/component-repository-layouts)。
+
 Use `--force` only when intentionally refreshing template files in an existing target directory.

@@ -9,11 +9,20 @@
     {
       "name": "@promptframe/cli",
       "version": "0.1.99"
+    },
+    {
+      "name": "create-promptframe-component",
+      "version": "0.1.76"
     }
   ],
   "dependencies": {
     "cli": [
       "contracts"
+    ],
+    "createComponent": [
+      "contracts",
+      "componentKit",
+      "cli"
     ]
   },
   "reusedPackages": [
@@ -21,7 +30,12 @@
       "name": "@promptframe/contracts",
       "version": "0.1.55",
       "integrity": "sha512-NGVdPTaRPBe9wzCUCKkWAyp5MSVU3NnpG8rgIKDC2x/AmLbKL5uv0O/5tqmgLKjk+G0ZUIvDhlBHzwV1BKtnSw=="
+    },
+    {
+      "name": "@promptframe/component-kit",
+      "version": "0.1.48",
+      "integrity": "sha512-ZmYgFrl8q+0YMt+xuXWUGf57NYhIJLE+W/qQ0qpY6RY1l0kHYza7OZyu8jS6C5oQfbfkal/W2XJE0Al2Oq7kVA=="
     }
   ],
-  "intentDigest": "sha256:d15c56530bd0b4bb8ece641bf49a7d31f21e17aad08faff640b7744205eede84"
+  "intentDigest": "sha256:2aaa45d437f250356f61ef4ac90c9fadf57f157b692f71205dc39d54db6e3cde"
 }

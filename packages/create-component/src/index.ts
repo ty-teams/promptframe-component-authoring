@@ -155,7 +155,7 @@ function writeMergedPnpmWorkspace(root: string, componentPath: string): void {
   if (!existsSync(workspacePath)) {
     writeFileSync(workspacePath, [
       'packages:',
-      ...requiredGlobs.map((glob) => `  - "${glob}"`),
+      ...requiredGlobs.map((glob) => `  - ${JSON.stringify(glob)}`),
       '',
     ].join('\n'), 'utf8');
     return;
@@ -164,7 +164,7 @@ function writeMergedPnpmWorkspace(root: string, componentPath: string): void {
   let text = readFileSync(workspacePath, 'utf8');
   for (const glob of requiredGlobs) {
     if (pnpmWorkspaceContainsGlob(text, glob)) continue;
-    text = `${text.replace(/\s*$/, '\n')}  - "${glob}"\n`;
+    text = `${text.replace(/\s*$/, '\n')}  - ${JSON.stringify(glob)}\n`;
   }
   writeFileSync(workspacePath, text, 'utf8');
 }
@@ -263,8 +263,8 @@ function listTemplateFiles(root: string, prefix = ''): string[] {
 }
 
 function workspaceGlobForPath(componentPath: string): string {
-  const topLevel = componentPath.split('/')[0] ?? 'components';
-  return `${topLevel}/*`;
+  const parts = componentPath.split('/');
+  return parts.length === 2 ? `${parts[0]}/*` : componentPath;
 }
 
 function normalizeWorkspaceRelativePath(value: string): string {

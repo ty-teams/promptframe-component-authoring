@@ -158,6 +158,27 @@ test('create CLI scaffolds an advanced workspace with one component', async () =
   }
 });
 
+test('create CLI registers deep and root-relative component paths in the pnpm workspace', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-create-nested-workspace-'));
+  try {
+    const entries = [
+      ['title-card', 'works/film-a/components/title-card'],
+      ['flow-card', 'components/diagram/flow-card'],
+      ['metric-card', 'metric-card'],
+    ];
+    for (const [name, componentPath] of entries) {
+      await execFileAsync('node', [cliPath, dir, '--workspace', '--component', name, '--component-path', componentPath]);
+    }
+    const workspace = JSON.parse(await readFile(path.join(dir, 'promptframe-workspace.json'), 'utf8'));
+    assert.deepEqual(workspace.components.map(entry => entry.path), entries.map(([, componentPath]) => componentPath));
+    const pnpmWorkspace = await readFile(path.join(dir, 'pnpm-workspace.yaml'), 'utf8');
+    for (const [, componentPath] of entries) assert.ok(pnpmWorkspace.includes(`  - ${JSON.stringify(componentPath)}\n`));
+    assert.doesNotMatch(pnpmWorkspace, /"works\/\*"/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('create CLI appends workspace components without overwriting root state', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'promptframe-create-workspace-append-'));
   const target = path.join(dir, 'component-workspace');
